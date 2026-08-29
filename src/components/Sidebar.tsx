@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-6 border-b border-[#EFECE6] flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mb-3 border border-[#E8DEC9] overflow-hidden">
             <img 
-              src="/logo.png" 
+              src="./logo.png" 
               alt="Logo" 
               className="w-full h-full object-cover" 
               onError={(e) => {
@@ -79,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Informações do Usuário Logado */}
           <div className="mt-4 px-3 py-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl w-full flex items-center gap-2 text-left">
             <div className="w-8 h-8 rounded-full bg-[#8C6D58] text-white flex items-center justify-center font-bold text-xs shrink-0">
-              {currentUser?.nome.substring(0, 2).toUpperCase()}
+              {currentUser ? (currentUser.nome.trim().split(/\s+/).length >= 2 ? (currentUser.nome.trim().split(/\s+/)[0][0] + currentUser.nome.trim().split(/\s+/).slice(-1)[0][0]).toUpperCase() : currentUser.nome.substring(0, 2).toUpperCase()) : '?'}
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-[#5A4535] truncate">{currentUser?.nome}</p>

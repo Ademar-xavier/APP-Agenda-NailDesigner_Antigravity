@@ -56,12 +56,29 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [profissionalId, setProfissionalId] = useState<string>('u1');
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
 
+  // Local state for modal to prevent rendering lag
+  const [localNewAgendamentoOpen, setLocalNewAgendamentoOpen] = useState(isNewAgendamentoModalOpen);
+
+  useEffect(() => {
+    setLocalNewAgendamentoOpen(isNewAgendamentoModalOpen);
+  }, [isNewAgendamentoModalOpen]);
+
+  const handleOpenLocalModal = () => {
+    setLocalNewAgendamentoOpen(true);
+    openNewAgendamentoModal();
+  };
+
+  const handleCloseLocalModal = () => {
+    setLocalNewAgendamentoOpen(false);
+    closeNewAgendamentoModal();
+  };
+
   // Sincronizar o profissionalId com o profissional logado por padrão
   useEffect(() => {
     if (currentUser) {
       setProfissionalId(currentUser.id);
     }
-  }, [currentUser, isNewAgendamentoModalOpen]);
+  }, [currentUser, localNewAgendamentoOpen]);
 
   // Formatar Moeda
   const formatarMoeda = (val: number) => {
@@ -172,7 +189,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       setServicosSelecionados([]);
       setObsAgendamento('');
       setIsBloqueio(false);
-      closeNewAgendamentoModal();
+      handleCloseLocalModal();
     } else {
       setErrorAgendamento(res.error || 'Erro desconhecido');
     }
@@ -191,7 +208,7 @@ export const Agenda: React.FC<AgendaProps> = ({
           </p>
         </div>
         <button
-          onClick={openNewAgendamentoModal}
+          onClick={handleOpenLocalModal}
           className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
         >
           <Plus size={16} />
@@ -360,7 +377,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       )}
 
       {/* --- MODAL NOVO AGENDAMENTO --- */}
-      {isNewAgendamentoModalOpen && (
+      {localNewAgendamentoOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
@@ -369,7 +386,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                 <p className="text-xs text-[#8C7A6B] mt-0.5">Reserve um horário na agenda do salão</p>
               </div>
               <button 
-                onClick={closeNewAgendamentoModal}
+                onClick={handleCloseLocalModal}
                 className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
               >
                 <X size={18} />
@@ -574,7 +591,7 @@ export const Agenda: React.FC<AgendaProps> = ({
               <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
                 <button
                   type="button"
-                  onClick={closeNewAgendamentoModal}
+                  onClick={handleCloseLocalModal}
                   className="px-4 py-2.5 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
                 >
                   Cancelar

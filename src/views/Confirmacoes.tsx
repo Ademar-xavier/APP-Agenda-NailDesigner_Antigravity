@@ -3,17 +3,17 @@ import {
   BellRing, 
   UserCheck, 
   Users, 
-  XCircle, 
-  MessageCircle, 
+  XCircle,
+  MessageCircle,
   Send,
-  CalendarDays,
+  Calendar as CalendarIcon,
   Clock,
-  Sparkles,
-  HelpCircle
+  X,
+  AlertTriangle
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { Agendamento, ListaEspera } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
-import { Agendamento } from '../types';
 
 type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'lista_espera' | 'cancelados';
 
@@ -23,43 +23,115 @@ export const Confirmacoes: React.FC = () => {
     clientes, 
     servicos, 
     listaEspera,
-    configSalao,
+    updateListaEsperaStatus, 
+    configSalao, 
     obterServicosDeAgendamento,
-    updateListaEsperaStatus
+    addAgendamento,
+    equipe,
+    currentUser
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
 
-  const agora = new Date();
+  // States para confirmar vaga da Lista de Espera
+  const [confirmarVagaItem, setConfirmarVagaItem] = useState<ListaEspera | null>(null);
+  const [vagaData, setVagaData] = useState('');
+  const [vagaHora, setVagaHora] = useState('09:00');
+  const [vagaProfissionalId, setVagaProfissionalId] = useState('u1');
+  const [errorVaga, setErrorVaga] = useState('');
 
-  // Filtrar agendamentos futuros
-  const aConfirmar = agendamentos
-    .filter(a => a.status === 'pendente' && new Date(a.inicio) > agora)
-    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  // Sincronizar data e profissional padrão ao abrir a vaga
+  const handleOpenConfirmarVaga = (item: ListaEspera) => {
+    setConfirmarVagaItem(item);
+    setVagaData(item.data_preferida);
+    setVagaHora('09:00');
+    setVagaProfissionalId(currentUser?.id || 'u1');
+    setErrorVaga('');
+  };
 
-  const confirmados = agendamentos
-    .filter(a => a.status === 'confirmado' && new Date(a.inicio) > agora)
-    .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const handleConfirmarVagaSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirmarVagaItem) return;
 
-  const cancelados = agendamentos
-    .filter(a => a.status === 'cancelado')
-    .sort((a, b) => b.inicio.localeCompare(a.inicio));
+    const client = clientes.find(c => c.id === confirmarVagaItem.cliente_id);
+    const serv = servicos.find(s => s.id === confirmarVagaItem.servico_id);
+    if (!client || !serv) return;
 
-  const listaEsperaAtiva = listaEspera
-    .filter(w => w.status === 'aguardando')
-    .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+    // Calcular valores do agendamento
+    const total = serv.preco;
+    let sinal = 0;
+    if (serv.sinal_tipo === 'fixo') sinal = serv.sinal_valor;
+    else if (serv.sinal_tipo === 'porcentagem') sinal = (serv.preco * serv.sinal_valor) / 100;
+
+    const dataInicioStr = `${vagaData}T${vagaHora}:00`;
+
+    // Criar agendamento
+    const res = addAgendamento({
+      cliente_id: client.id,
+      profissional_id: vagaProfissionalId,
+      inicio: dataInicioStr,
+      status: 'confirmado', // Confirma o horário direto
+      valor_total: total,
+      valor_sinal: sinal,
+      observacoes: `Convertido da lista de espera. Período preferido: ${confirmarVagaItem.periodo_preferido}`,
+      origem: 'admin'
+    }, [serv.id]);
+
+    if (res.success) {
+      // 1. Atualizar status na lista de espera para atendido
+      updateListaEsperaStatus(confirmarVagaItem.id, 'atendido');
+
+      // 2. Abrir WhatsApp notificando a cliente do horário agendado!
+      const fone = client.telefone.replace(/\D/g, '');
+      const prof = equipe.find(u => u.id === vagaProfissionalId);
+      
+      const msg = `Olá, ${client.nome}! O horário que você aguardava ficou disponível! Agendamos você para o dia ${new Date(dataInicioStr).toLocaleDateString('pt-BR')} às ${vagaHora} com a profissional ${prof?.nome || 'Sheila'} para realizar o serviço ${serv.nome}. Confirmado? Te esperamos!`;
+      
+      const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+      window.open(url, '_blank');
+
+      // 3. Fechar modal
+      setConfirmarVagaItem(null);
+    } else {
+      setErrorVaga(res.error || 'Erro ao agendar horário');
+    }
+  };
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const formatarDataHora = (isoStr: string) => {
-    const d = new Date(isoStr);
-    return `${d.toLocaleDateString('pt-BR')} às ${isoStr.split('T')[1].substring(0, 5)}`;
+  const formatarDataHora = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   };
 
-  // WhatsApp helpers
+  // Filtragem de dados com base nas abas
+  const hoje = '2026-08-29';
+  
+  // A confirmar: pendentes e futuros
+  const aConfirmar = agendamentos.filter(a => {
+    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+    return a.status === 'pendente' && a.inicio >= hoje;
+  });
+
+  // Confirmados: futuros confirmados
+  const confirmados = agendamentos.filter(a => {
+    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+    return a.status === 'confirmado' && a.inicio >= hoje;
+  });
+
+  // Lista de espera: ativa (aguardando)
+  const listaEsperaAtiva = listaEspera.filter(w => w.status === 'aguardando');
+
+  // Cancelados: histórico de cancelamentos
+  const cancelados = agendamentos.filter(a => {
+    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+    return a.status === 'cancelado';
+  });
+
+  // WhatsApp manual para confirmação rápida
   const handleEnviarMensagemWhatsApp = (a: Agendamento, tipo: 'confirmacao' | 'lembrete') => {
     const client = clientes.find(c => c.id === a.cliente_id);
     if (!client) return;
@@ -93,24 +165,12 @@ export const Confirmacoes: React.FC = () => {
     window.open(url, '_blank');
   };
 
-  const handleNotificarListaEspera = (item: any) => {
-    const client = clientes.find(c => c.id === item.cliente_id);
-    const serv = servicos.find(s => s.id === item.servico_id);
-    if (!client || !serv) return;
-
-    const fone = client.telefone.replace(/\D/g, '');
-    const msg = configSalao.templates_whatsapp.lista_espera
-      .replace('{cliente}', client.nome)
-      .replace('{servico}', serv.nome)
-      .replace('{data}', item.data_preferida)
-      .replace('{periodo}', item.periodo_preferido);
-
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
-    
-    // Atualizar para atendido / notificado
-    updateListaEsperaStatus(item.id, 'atendido');
-  };
+  // Horários disponíveis para seleção na lista de espera (das 08:00 às 20:00)
+  const horasExpediente = Array.from({ length: 25 }, (_, i) => {
+    const hora = 8 + Math.floor(i / 2);
+    const min = (i % 2) * 30;
+    return `${String(hora).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+  });
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
@@ -302,11 +362,11 @@ export const Confirmacoes: React.FC = () => {
                         Aguardando
                       </span>
                       <button
-                        onClick={() => handleNotificarListaEspera(w)}
-                        className="flex items-center gap-1 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        onClick={() => handleOpenConfirmarVaga(w)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
                       >
                         <Send size={12} />
-                        <span>Notificar vaga</span>
+                        <span>Definir horário e agendar</span>
                       </button>
                     </div>
                   </div>
@@ -322,7 +382,7 @@ export const Confirmacoes: React.FC = () => {
             {cancelados.length === 0 ? (
               <div className="text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
                 <XCircle size={36} className="mx-auto text-[#E8DEC9] mb-3" />
-                <h4 className="font-semibold text-sm">Nenhum cancelamento registrado</h4>
+                <h4 className="font-semibold text-sm">Nenhum cancelamento</h4>
                 <p className="text-xs mt-1 text-[#C2B7AE]">Histórico de cancelamentos aparecerá aqui.</p>
               </div>
             ) : (
@@ -333,7 +393,7 @@ export const Confirmacoes: React.FC = () => {
                 return (
                   <div 
                     key={a.id} 
-                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-red-200 transition-colors bg-opacity-75"
+                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
                   >
                     <button 
                       onClick={() => setSelectedAgendamentoId(a.id)}
@@ -364,6 +424,101 @@ export const Confirmacoes: React.FC = () => {
         )}
 
       </div>
+
+      {/* --- MODAL DEFINIR HORÁRIO DA VAGA (LISTA DE ESPERA) --- */}
+      {confirmarVagaItem && (() => {
+        const client = clientes.find(c => c.id === confirmarVagaItem.cliente_id);
+        const serv = servicos.find(s => s.id === confirmarVagaItem.servico_id);
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+              <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535]">Definir Horário da Vaga</h3>
+                  <p className="text-xs text-[#8C7A6B] mt-0.5">Converta a lista de espera em agendamento</p>
+                </div>
+                <button 
+                  onClick={() => setConfirmarVagaItem(null)}
+                  className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmarVagaSubmit} className="space-y-4">
+                {errorVaga && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                    <AlertTriangle size={14} />
+                    <span>{errorVaga}</span>
+                  </div>
+                )}
+
+                <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs space-y-1">
+                  <p className="text-[#8C7A6B]">Cliente: <strong className="text-[#5A4535]">{client?.nome} ({client?.telefone})</strong></p>
+                  <p className="text-[#8C7A6B]">Serviço: <strong className="text-[#5A4535]">{serv?.nome} ({formatarMoeda(serv?.preco || 0)})</strong></p>
+                  <p className="text-[#8C7A6B]">Período de preferência: <strong className="text-[#5A4535]">{confirmarVagaItem.periodo_preferido}</strong></p>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Escolher Data</label>
+                  <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6]">
+                    <CalendarIcon size={14} className="text-[#8C6D58]" />
+                    <input 
+                      type="date" required
+                      value={vagaData}
+                      onChange={(e) => setVagaData(e.target.value)}
+                      className="text-xs font-bold text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Horário</label>
+                    <select
+                      value={vagaHora}
+                      onChange={(e) => setVagaHora(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                    >
+                      {horasExpediente.map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Profissional</label>
+                    <select
+                      value={vagaProfissionalId}
+                      onChange={(e) => setVagaProfissionalId(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                    >
+                      {equipe.filter(u => u.ativo).map(u => (
+                        <option key={u.id} value={u.id}>{u.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarVagaItem(null)}
+                    className="px-4 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                  >
+                    Confirmar e Agendar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Unified AgendamentoDetalheModal */}
       {selectedAgendamentoId && (

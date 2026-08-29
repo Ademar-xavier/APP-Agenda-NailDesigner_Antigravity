@@ -20,6 +20,11 @@ function AppContent() {
   // Controle global de abertura do modal de novo agendamento
   const [isNewAgendamentoModalOpen, setIsNewAgendamentoModalOpen] = useState<boolean>(false);
 
+  const openNewAgendamentoModal = () => {
+    setCurrentView('agenda');
+    setIsNewAgendamentoModalOpen(true);
+  };
+
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
@@ -27,7 +32,7 @@ function AppContent() {
           <Dashboard 
             setCurrentView={setCurrentView}
             setSelectedClienteIdForDetails={setSelectedClienteIdForDetails}
-            openNewAgendamentoModal={() => setIsNewAgendamentoModalOpen(true)}
+            openNewAgendamentoModal={openNewAgendamentoModal}
           />
         );
       case 'agenda':
@@ -35,7 +40,7 @@ function AppContent() {
           <Agenda 
             currentView={currentView}
             isNewAgendamentoModalOpen={isNewAgendamentoModalOpen}
-            openNewAgendamentoModal={() => setIsNewAgendamentoModalOpen(true)}
+            openNewAgendamentoModal={openNewAgendamentoModal}
             closeNewAgendamentoModal={() => setIsNewAgendamentoModalOpen(false)}
           />
         );

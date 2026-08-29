@@ -30,7 +30,7 @@ export interface Cliente {
 export interface Servico {
   id: string;
   nome: string;
-  categoria: 'mao' | 'pe' | 'alongamento' | 'manutencao' | 'decoracao' | 'spa' | 'outros';
+  categoria: string;
   duracao_minutos: number;
   preco: number;
   sinal_tipo: 'porcentagem' | 'fixo' | 'nenhum';

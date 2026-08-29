@@ -227,7 +227,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
         <div className="text-center mb-6 border-b border-[#FAF9F6] pb-4">
           <div className="w-16 h-16 rounded-full bg-[#1A1A1A] border border-[#E8DEC9] mx-auto flex items-center justify-center mb-3 overflow-hidden">
             <img 
-              src="/logo.png" 
+              src="./logo.png" 
               alt="Logo Sheila" 
               className="w-full h-full object-cover"
               onError={(e) => {

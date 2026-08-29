@@ -27,7 +27,9 @@ export const Servicos: React.FC = () => {
 
   // Form Fields
   const [nome, setNome] = useState('');
-  const [categoria, setCategoria] = useState<Servico['categoria']>('alongamento');
+  const [categoria, setCategoria] = useState<string>('alongamento');
+  const [customCategoria, setCustomCategoria] = useState('');
+  const [showCustomCategoria, setShowCustomCategoria] = useState(false);
   const [duracaoMinutos, setDuracaoMinutos] = useState(60);
   const [preco, setPreco] = useState(100);
   const [sinalTipo, setSinalTipo] = useState<Servico['sinal_tipo']>('nenhum');
@@ -43,6 +45,8 @@ export const Servicos: React.FC = () => {
     setServicoEdicao(null);
     setNome('');
     setCategoria('alongamento');
+    setCustomCategoria('');
+    setShowCustomCategoria(false);
     setDuracaoMinutos(60);
     setPreco(100);
     setSinalTipo('nenhum');
@@ -55,7 +59,16 @@ export const Servicos: React.FC = () => {
   const handleOpenEditar = (serv: Servico) => {
     setServicoEdicao(serv);
     setNome(serv.nome);
-    setCategoria(serv.categoria);
+    const defaultCats = ['alongamento', 'manutencao', 'mao', 'pe', 'decoracao', 'spa', 'outros'];
+    if (defaultCats.includes(serv.categoria)) {
+      setCategoria(serv.categoria);
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
+    } else {
+      setCategoria('outros');
+      setCustomCategoria(serv.categoria);
+      setShowCustomCategoria(true);
+    }
     setDuracaoMinutos(serv.duracao_minutos);
     setPreco(serv.preco);
     setSinalTipo(serv.sinal_tipo);
@@ -69,9 +82,15 @@ export const Servicos: React.FC = () => {
     e.preventDefault();
     if (!nome) return;
 
+    const catFinal = showCustomCategoria ? customCategoria.trim() : categoria;
+    if (showCustomCategoria && !customCategoria) {
+      alert('Por favor, digite o nome da categoria customizada.');
+      return;
+    }
+
     const dados = {
       nome,
-      categoria,
+      categoria: catFinal,
       duracao_minutos: duracaoMinutos,
       preco,
       sinal_tipo: sinalTipo,
@@ -218,7 +237,14 @@ export const Servicos: React.FC = () => {
                   <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
                   <select
                     value={categoria}
-                    onChange={(e) => setCategoria(e.target.value as Servico['categoria'])}
+                    onChange={(e) => {
+                      setCategoria(e.target.value);
+                      if (e.target.value === 'outros') {
+                        setShowCustomCategoria(true);
+                      } else {
+                        setShowCustomCategoria(false);
+                      }
+                    }}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   >
                     <option value="alongamento">Alongamento</option>
@@ -227,7 +253,7 @@ export const Servicos: React.FC = () => {
                     <option value="pe">Pé Simples</option>
                     <option value="decoracao">Decoração</option>
                     <option value="spa">Spa / Cuidado</option>
-                    <option value="outros">Outros</option>
+                    <option value="outros">Outros (Digitar)</option>
                   </select>
                 </div>
                 <div>
@@ -242,6 +268,20 @@ export const Servicos: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {showCustomCategoria && (
+                <div className="animate-in slide-in-from-top-2 duration-200">
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Categoria Customizada</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={customCategoria}
+                    onChange={(e) => setCustomCategoria(e.target.value)}
+                    placeholder="Ex: Cílios, Sobrancelha, Depilação..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
