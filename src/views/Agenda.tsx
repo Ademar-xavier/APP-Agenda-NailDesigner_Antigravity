@@ -55,6 +55,7 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [isBloqueio, setIsBloqueio] = useState<boolean>(false);
   const [profissionalId, setProfissionalId] = useState<string>('u1');
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
+  const [cobrarSinal, setCobrarSinal] = useState<boolean>(true);
 
   // Local state for modal to prevent rendering lag
   const [localNewAgendamentoOpen, setLocalNewAgendamentoOpen] = useState(isNewAgendamentoModalOpen);
@@ -162,7 +163,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const total = isBloqueio ? 0 : servs.reduce((acc, s) => acc + s.preco, 0);
     
     // Sinal total (soma)
-    const sinal = isBloqueio ? 0 : servs.reduce((acc, s) => {
+    const sinal = (isBloqueio || !cobrarSinal) ? 0 : servs.reduce((acc, s) => {
       if (s.sinal_tipo === 'fixo') return acc + s.sinal_valor;
       if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * s.sinal_valor / 100);
       return acc;
@@ -534,6 +535,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* Cobrar Sinal Toggle */}
+                  <div className="flex items-center gap-2 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6]">
+                    <input 
+                      type="checkbox" 
+                      id="cobrar_sinal_agend" 
+                      checked={cobrarSinal} 
+                      onChange={(e) => setCobrarSinal(e.target.checked)}
+                      className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
+                    />
+                    <label htmlFor="cobrar_sinal_agend" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
+                      Cobrar sinal para este agendamento
+                    </label>
                   </div>
                 </>
               ) : (

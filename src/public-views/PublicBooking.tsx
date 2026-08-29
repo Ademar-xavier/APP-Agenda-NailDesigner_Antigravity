@@ -387,14 +387,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
             </div>
 
             {horariosDisponiveis.length > 0 && (
-              <button
-                onClick={() => setStep(3)}
-                disabled={!horarioSelecionado}
-                className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5 mt-4"
-              >
-                <span>Avançar para Identificação</span>
-                <ChevronRight size={14} />
-              </button>
+              <div className="space-y-3 mt-4">
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!horarioSelecionado}
+                  className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <span>Avançar para Identificação</span>
+                  <ChevronRight size={14} />
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setStep(5)}
+                  className="w-full bg-white border border-dashed border-[#8C6D58] text-[#8C6D58] hover:bg-[#FAF6F0] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Users size={13} />
+                  <span>Não encontrou seu horário? Entrar na lista de espera</span>
+                </button>
+              </div>
             )}
           </div>
         )}
