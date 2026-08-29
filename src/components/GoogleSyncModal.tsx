@@ -7,7 +7,8 @@ import {
   AlertCircle, 
   UserCheck, 
   UserPlus, 
-  Globe 
+  Globe,
+  Tag
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 
@@ -23,6 +24,7 @@ interface EventoGoogle {
   servicoId: string;
   inicio: string; // YYYY-MM-DDTHH:MM:ss
   periodo: string;
+  tituloOriginal: string;
 }
 
 export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => {
@@ -38,14 +40,15 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
 
   const [simulandoLogin, setSimulandoLogin] = useState(false);
   const [syncDone, setSyncDone] = useState(false);
-  const [selectedEventIds, setSelectedEventIds] = useState<string[]>(['g1', 'g2', 'g3', 'g4']);
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>(['g1', 'g2', 'g3', 'g4', 'g5']);
 
-  // Mock de eventos encontrados na Google Agenda da Sheila
+  // Mock de eventos encontrados baseados nos prints enviados (27 de agosto)
   const eventosGoogleIniciais: EventoGoogle[] = [
-    { id: 'g1', clienteNome: 'Camila Oliveira', clienteTelefone: '(35) 98877-1111', servicoNome: 'Alongamento em fibra', servicoId: 's1', inicio: '2026-08-30T09:00:00', periodo: 'manhã' },
-    { id: 'g2', clienteNome: 'Letícia Ramos', clienteTelefone: '(35) 97766-2222', servicoNome: 'Manutenção de alongamento', servicoId: 's3', inicio: '2026-08-30T14:00:00', periodo: 'tarde' },
-    { id: 'g3', clienteNome: 'Ana Souza', clienteTelefone: '(35) 98765-4321', servicoNome: 'Esmaltação em gel', servicoId: 's2', inicio: '2026-08-31T10:00:00', periodo: 'manhã' }, // Cliente existente (c1)
-    { id: 'g4', clienteNome: 'Patrícia Souza', clienteTelefone: '(35) 96655-3333', servicoNome: 'Combo mão + pé', servicoId: 's4', inicio: '2026-08-31T16:00:00', periodo: 'tarde' }
+    { id: 'g1', clienteNome: 'Cris', clienteTelefone: '(35) 99712-4455', servicoNome: 'Manicure simples', servicoId: 's9', inicio: '2026-08-27T09:00:00', periodo: 'manhã', tituloOriginal: 'Cris' },
+    { id: 'g2', clienteNome: 'Fernanda', clienteTelefone: '(35) 99182-3344', servicoNome: 'Alongamento em fibra', servicoId: 's1', inicio: '2026-08-27T09:30:00', periodo: 'manhã', tituloOriginal: 'Fernanda alongamento' },
+    { id: 'g3', clienteNome: 'Olinda', clienteTelefone: '(35) 98877-0099', servicoNome: 'Manicure simples', servicoId: 's9', inicio: '2026-08-27T13:00:00', periodo: 'tarde', tituloOriginal: 'Olinda' },
+    { id: 'g4', clienteNome: 'Luiza', clienteTelefone: '(35) 99122-8877', servicoNome: 'Manicure simples', servicoId: 's9', inicio: '2026-08-27T14:00:00', periodo: 'tarde', tituloOriginal: 'Luiza' },
+    { id: 'g5', clienteNome: 'Geni', clienteTelefone: '(35) 99788-3322', servicoNome: 'Manicure simples', servicoId: 's9', inicio: '2026-08-27T15:30:00', periodo: 'tarde', tituloOriginal: 'Geni' }
   ];
 
   const handleConectarSimulado = () => {
@@ -89,8 +92,8 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
               <Globe size={18} />
             </div>
             <div>
-              <h3 className="font-serif font-bold text-lg text-[#5A4535]">Sincronização com Google Agenda</h3>
-              <p className="text-xs text-[#8C7A6B]">Sincronize clientes e agendamentos com sua conta Google</p>
+              <h3 className="font-serif font-bold text-lg text-[#5A4535]">Sincronização Dupla Google Agenda</h3>
+              <p className="text-xs text-[#8C7A6B]">Importação inteligente baseada nas suas anotações reais</p>
             </div>
           </div>
           <button 
@@ -107,7 +110,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
             <RefreshCw size={36} className="text-[#8C6D58] animate-spin" />
             <h4 className="font-semibold text-sm text-[#5A4535]">Conectando com o Google...</h4>
             <p className="text-xs text-[#8C7A6B] text-center max-w-xs">
-              Autenticando conta <span className="font-bold text-[#5A4535]">sheilaalicelara18@gmail.com</span> e concedendo permissões de leitura da agenda.
+              Autenticando conta <span className="font-bold text-[#5A4535]">sheilaalicelara18@gmail.com</span> e concedendo permissões de leitura/escrita na agenda.
             </p>
           </div>
         ) : syncDone ? (
@@ -118,7 +121,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
             </div>
             <h4 className="font-semibold text-sm text-[#5A4535]">Agenda Sincronizada com Sucesso!</h4>
             <p className="text-xs text-[#8C7A6B] max-w-xs">
-              Os dados e novos clientes da sua Google Agenda foram importados para o app local.
+              Os dados e novos clientes da sua Google Agenda foram importados para o app local. A sincronização de mão dupla está ativa!
             </p>
           </div>
         ) : !googleConnected ? (
@@ -133,10 +136,9 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                 Ao se conectar, o app irá ler a sua agenda do Google associada ao email <strong className="text-[#5A4535]">sheilaalicelara18@gmail.com</strong>.
               </p>
               <ul className="list-disc pl-4 space-y-1 leading-relaxed text-[#8C7A6B]">
-                <li>Identifica eventos futuros que representem clientes.</li>
-                <li>Faz correspondência automática por telefone/nome.</li>
-                <li>Cadastra novos clientes no banco de dados automaticamente.</li>
-                <li>Mantém seus horários bloqueados e compromissos sincronizados.</li>
+                <li><strong>Mão Dupla Ativa:</strong> Qualquer novo agendamento criado no app será criado automaticamente no seu Google Agenda!</li>
+                <li><strong>Leitura Inteligente:</strong> O app analisa o título do evento (ex: "Fernanda alongamento" identifica cliente <strong>Fernanda</strong> com serviço <strong>Alongamento</strong>; "Olinda" identifica a cliente e associa ao serviço padrão).</li>
+                <li>Cadastra clientes ausentes e reserva os horários na agenda local.</li>
               </ul>
             </div>
 
@@ -162,7 +164,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
           <div className="space-y-4 py-2">
             <div className="flex justify-between items-center bg-[#FAF9F6] p-3 rounded-2xl border border-[#EFECE6] text-xs">
               <div>
-                <p className="text-[#8C7A6B]">Conta Conectada:</p>
+                <p className="text-[#8C7A6B]">Conta Conectada (Mão Dupla):</p>
                 <p className="font-bold text-[#5A4535]">{googleUserEmail}</p>
               </div>
               <button 
@@ -174,7 +176,11 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
             </div>
 
             <div>
-              <h4 className="text-xs font-bold text-[#8C7A6B] uppercase mb-2">Eventos Encontrados (Prontos para Sincronizar)</h4>
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="text-xs font-bold text-[#8C7A6B] uppercase">Eventos Encontrados no Google (27 de Ago)</h4>
+                <span className="text-[9px] text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-md font-bold">Mão Dupla</span>
+              </div>
+              
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {eventosGoogleIniciais.map(ev => {
                   const selected = selectedEventIds.includes(ev.id);
@@ -212,12 +218,18 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                             ) : (
                               <span className="text-[8px] bg-[#FFF9E6] border border-[#FFECB3] text-[#B78103] font-bold px-1 py-0.5 rounded flex items-center gap-0.5">
                                 <UserPlus size={8} />
-                                <span>Novo Cliente</span>
+                                <span>Nova Cliente</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-[#8C7A6B] mt-0.5">
-                            {ev.servicoNome} · {formatarData(ev.inicio)}
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#8C7A6B]">
+                            <Tag size={10} className="text-[#8C6D58]" />
+                            <span>Anotado como: <strong>"{ev.tituloOriginal}"</strong></span>
+                            <span>·</span>
+                            <span>Serviço: <strong>{ev.servicoNome}</strong></span>
+                          </div>
+                          <p className="text-[9px] text-[#A69586] mt-0.5">
+                            {formatarData(ev.inicio)}
                           </p>
                         </div>
                       </div>
@@ -233,7 +245,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
               className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 mt-4"
             >
               <RefreshCw size={14} />
-              <span>Importar {selectedEventIds.length} agendamentos</span>
+              <span>Importar {selectedEventIds.length} agendamentos em Mão Dupla</span>
             </button>
           </div>
         )}

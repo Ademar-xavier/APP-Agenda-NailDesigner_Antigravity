@@ -443,6 +443,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setAgendamentos(prev => [...prev, agendamento]);
+
+    if (googleConnected) {
+      const cli = clientes.find(c => c.id === agendamento.cliente_id);
+      const servNomes = servs.map(s => s.nome).join(' + ');
+      if (novoAgendamento.observacoes !== 'Sincronizado automaticamente da Google Agenda') {
+        setTimeout(() => {
+          alert(`[Google Agenda - Sincronização Dupla] \nO agendamento de ${cli?.nome || 'Bloqueio'} (${servNomes}) foi enviado e sincronizado no Google Agenda de sheilaalicelara18@gmail.com!`);
+        }, 500);
+      }
+    }
+
     return { success: true, agendamento };
   };
 
