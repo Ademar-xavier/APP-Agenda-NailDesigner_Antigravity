@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Paleta extraída da identidade visual real (logo + painel Sheila Santos Nails Designer):
+     rosa claro de fundo, magenta/pink de destaque e rosé-gold do monograma. */
+  --color-cream: #fdf9f7;
+  --color-cream-dark: #f7ecf0;
+
+  --color-nude-50: #fbeef2;
+  --color-nude-100: #f5d9e2;
+  --color-nude-200: #eab8c7;
+  --color-nude-300: #d98ea5;
+  --color-nude-400: #c26d87;
+
+  --color-terracotta-50: #fbf0e9;
+  --color-terracotta-300: #e7b190;
+  --color-terracotta-400: #da8b65;
+  --color-terracotta-500: #c17048;
+
+  --color-plum-50: #fbeef2;
+  --color-plum-100: #f0d2dc;
+  --color-plum-400: #b8567a;
+  --color-plum-500: #96395a;
+  --color-plum-600: #7c2c48;
+  --color-plum-700: #5e2036;
+
+  --color-graphite-50: #f6f5f4;
+  --color-graphite-200: #ddd8d5;
+  --color-graphite-400: #8b8481;
+  --color-graphite-600: #574f4c;
+  --color-graphite-700: #3d3634;
+  --color-graphite-900: #241f1e;
+
+  --color-success-50: #edf7ef;
+  --color-success-500: #4a9a5c;
+  --color-success-600: #3a7c49;
+
+  --color-warning-50: #fdf3e4;
+  --color-warning-500: #d99a2b;
+  --color-warning-600: #b57e1c;
+
+  --color-danger-50: #fbebe9;
+  --color-danger-500: #c85f4f;
+  --color-danger-600: #a8493c;
+
+  --color-info-50: #eaf1f6;
+  --color-info-500: #5182a6;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-cream text-graphite-900 antialiased;
+    font-family: var(--font-sans);
+  }
+  ::selection {
+    @apply bg-plum-100 text-plum-700;
+  }
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+}
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
