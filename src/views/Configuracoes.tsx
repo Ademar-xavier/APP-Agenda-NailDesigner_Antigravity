@@ -14,9 +14,12 @@ import {
   AlertTriangle,
   Plus,
   X,
-  User as UserIcon
+  User as UserIcon,
+  Globe,
+  RefreshCw
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { GoogleSyncModal } from '../components/GoogleSyncModal';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -24,11 +27,16 @@ export const Configuracoes: React.FC = () => {
     updateConfigSalao, 
     equipe, 
     addEquipe, 
-    toggleEquipeAtivo 
+    toggleEquipeAtivo,
+    googleConnected,
+    googleUserEmail,
+    googleLastSync,
+    desconectarGoogleAgenda
   } = useAppState();
   
   const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe'>('geral');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
 
   // Form Geral Fields
   const [nome, setNome] = useState(configSalao.nome);
@@ -173,8 +181,9 @@ export const Configuracoes: React.FC = () => {
           
           {/* TAB 1: GERAL */}
           {activeTab === 'geral' && (
-            <form onSubmit={handleSalvarGeral} className="space-y-6">
-              <h3 className="font-serif font-bold text-base text-[#5A4535] border-b border-[#FAF9F6] pb-2">Configurações Gerais</h3>
+            <>
+              <form onSubmit={handleSalvarGeral} className="space-y-6">
+                <h3 className="font-serif font-bold text-base text-[#5A4535] border-b border-[#FAF9F6] pb-2">Configurações Gerais</h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -273,7 +282,80 @@ export const Configuracoes: React.FC = () => {
                 </button>
               </div>
             </form>
-          )}
+
+            {/* Seção de Integração com Google Agenda */}
+            <div className="mt-8 pt-8 border-t border-[#EFECE6] space-y-4">
+              <div className="flex items-center justify-between border-b border-[#FAF9F6] pb-2">
+                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                  <Globe size={18} className="text-[#8C6D58]" />
+                  <span>Google Agenda (Sincronização)</span>
+                </h3>
+              </div>
+              <p className="text-xs text-[#8C7A6B]">
+                Sincronize sua agenda de compromissos e traga todos os dados de clientes para o aplicativo.
+              </p>
+
+              {!googleConnected ? (
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-gray-100 text-gray-700 border border-gray-200 text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                        Desconectado
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-[#5A4535] mt-1">Conta: sheilaalicelara18@gmail.com</p>
+                    <p className="text-[10px] text-[#8C7A6B]">Clique em conectar para trazer seus compromissos e clientes.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsGoogleSyncModalOpen(true)}
+                    className="flex items-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0"
+                  >
+                    <RefreshCw size={13} />
+                    <span>Conectar e Sincronizar</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-[#EBF7EE] border border-[#C2EAD0] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-[#2B7A4B] text-white border border-[#2B7A4B] text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                        Conectado
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-[#2B7A4B] mt-1">Sincronizado com: {googleUserEmail}</p>
+                    {googleLastSync && (
+                      <p className="text-[10px] text-[#2B7A4B] opacity-80">Última sincronização: {googleLastSync}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsGoogleSyncModalOpen(true)}
+                      className="flex items-center gap-1.5 bg-[#2B7A4B] hover:bg-[#205C38] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      <RefreshCw size={13} />
+                      <span>Sincronizar Eventos</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={desconectarGoogleAgenda}
+                      className="flex items-center gap-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                    >
+                      <span>Desconectar</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Developer credentials warning info */}
+              <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl text-[10px] text-amber-800 leading-relaxed space-y-1">
+                <p className="font-bold flex items-center gap-1"><AlertTriangle size={12} /> Nota de Configuração de Produção</p>
+                <p>Por padrão no protótipo, o login usa chaves de API virtuais e importa com sucesso os agendamentos da conta informada. Para vincular chaves oficiais do Google Cloud de produção do seu próprio negócio, acesse a documentação do Google API Console.</p>
+              </div>
+            </div>
+          </>
+        )}
 
           {/* TAB 2: EXPEDIENTE */}
           {activeTab === 'expediente' && (
@@ -547,6 +629,10 @@ export const Configuracoes: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {isGoogleSyncModalOpen && (
+        <GoogleSyncModal onClose={() => setIsGoogleSyncModalOpen(false)} />
       )}
     </div>
   );

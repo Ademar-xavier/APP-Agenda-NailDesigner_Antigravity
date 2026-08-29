@@ -53,6 +53,14 @@ interface AppStateContextType {
   // Configurações
   updateConfigSalao: (config: Partial<ConfigSalao>) => void;
   
+  // Google Agenda
+  googleConnected: boolean;
+  googleUserEmail: string;
+  googleLastSync: string;
+  conectarGoogleAgenda: (email: string) => void;
+  desconectarGoogleAgenda: () => void;
+  sincronizarGoogleAgenda: (eventos: any[]) => void;
+
   // Auxiliares
   checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string) => boolean;
   obterServicosDeAgendamento: (agendamentoId: string) => Servico[];
@@ -619,6 +627,78 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return null;
   };
 
+  // --- Google Agenda Sync Action ---
+  const [googleConnected, setGoogleConnected] = useState<boolean>(() => localStorage.getItem('nail_google_connected') === 'true');
+  const [googleUserEmail, setGoogleUserEmail] = useState<string>(() => localStorage.getItem('nail_google_email') || '');
+  const [googleLastSync, setGoogleLastSync] = useState<string>(() => localStorage.getItem('nail_google_last_sync') || '');
+
+  useEffect(() => {
+    localStorage.setItem('nail_google_connected', String(googleConnected));
+  }, [googleConnected]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_google_email', googleUserEmail);
+  }, [googleUserEmail]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_google_last_sync', googleLastSync);
+  }, [googleLastSync]);
+
+  const conectarGoogleAgenda = (email: string) => {
+    setGoogleConnected(true);
+    setGoogleUserEmail(email);
+    setGoogleLastSync(new Date().toLocaleString('pt-BR'));
+  };
+
+  const desconectarGoogleAgenda = () => {
+    setGoogleConnected(false);
+    setGoogleUserEmail('');
+    setGoogleLastSync('');
+    localStorage.removeItem('nail_google_connected');
+    localStorage.removeItem('nail_google_email');
+    localStorage.removeItem('nail_google_last_sync');
+  };
+
+  const sincronizarGoogleAgenda = (eventos: any[]) => {
+    eventos.forEach(evento => {
+      // 1. Extrair nome e telefone
+      let clientNome = evento.clienteNome.trim();
+      let clientFone = evento.clienteTelefone ? evento.clienteTelefone.replace(/\D/g, '') : '';
+      let servId = evento.servicoId;
+
+      // Encontrar ou cadastrar cliente
+      let client = clientes.find(c => {
+        if (clientFone) {
+          return c.telefone.replace(/\D/g, '') === clientFone;
+        }
+        return c.nome.toLowerCase() === clientNome.toLowerCase();
+      });
+
+      if (!client) {
+        client = addCliente({
+          nome: clientNome,
+          telefone: evento.clienteTelefone || '(35) 99999-9999',
+          consentimento_imagem: false
+        });
+      }
+
+      // Adicionar agendamento
+      const total = servicos.find(s => s.id === servId)?.preco || 70;
+      addAgendamento({
+        cliente_id: client.id,
+        profissional_id: 'u1', // Padrão: Sheila
+        inicio: evento.inicio,
+        status: 'confirmado',
+        valor_total: total,
+        valor_sinal: 0,
+        observacoes: 'Sincronizado automaticamente da Google Agenda',
+        origem: 'cliente'
+      }, [servId]);
+    });
+
+    setGoogleLastSync(new Date().toLocaleString('pt-BR'));
+  };
+
   return (
     <AppStateContext.Provider value={{
       clientes,
@@ -650,7 +730,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       checkConflitoHorario,
       obterServicosDeAgendamento,
       obterRecomendacoesManutencao,
-      obterProximoHorarioLivre
+      obterProximoHorarioLivre,
+      googleConnected,
+      googleUserEmail,
+      googleLastSync,
+      conectarGoogleAgenda,
+      desconectarGoogleAgenda,
+      sincronizarGoogleAgenda
     }}>
       {children}
     </AppStateContext.Provider>
