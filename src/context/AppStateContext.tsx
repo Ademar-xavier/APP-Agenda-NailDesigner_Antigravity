@@ -447,7 +447,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (googleConnected) {
       const cli = clientes.find(c => c.id === agendamento.cliente_id);
       const servNomes = servs.map(s => s.nome).join(' + ');
-      if (novoAgendamento.observacoes !== 'Sincronizado automaticamente da Google Agenda') {
+      const isFake = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10'].includes(agendamento.cliente_id);
+      if (!isFake && novoAgendamento.observacoes !== 'Sincronizado automaticamente da Google Agenda') {
         setTimeout(() => {
           alert(`[Google Agenda - Sincronização Dupla] \nO agendamento de ${cli?.nome || 'Bloqueio'} (${servNomes}) foi enviado e sincronizado no Google Agenda de sheilaalicelara18@gmail.com!`);
         }, 500);
