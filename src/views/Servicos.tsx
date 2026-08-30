@@ -21,7 +21,9 @@ export const Servicos: React.FC = () => {
     addServico, 
     updateServico, 
     deleteServico,
-    materiais
+    materiais,
+    categoriasServico,
+    addCategoriaServico
   } = useAppState();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,7 +61,7 @@ export const Servicos: React.FC = () => {
   const handleOpenCriar = () => {
     setServicoEdicao(null);
     setNome('');
-    setCategoria('alongamento');
+    setCategoria(categoriasServico[0] || 'Alongamento');
     setCustomCategoria('');
     setShowCustomCategoria(false);
     setDuracaoMinutos(60);
@@ -74,13 +76,12 @@ export const Servicos: React.FC = () => {
   const handleOpenEditar = (serv: Servico) => {
     setServicoEdicao(serv);
     setNome(serv.nome);
-    const defaultCats = ['alongamento', 'manutencao', 'mao', 'pe', 'decoracao', 'spa', 'outros'];
-    if (defaultCats.includes(serv.categoria)) {
+    if (categoriasServico.includes(serv.categoria)) {
       setCategoria(serv.categoria);
       setCustomCategoria('');
       setShowCustomCategoria(false);
     } else {
-      setCategoria('outros');
+      setCategoria('nova');
       setCustomCategoria(serv.categoria);
       setShowCustomCategoria(true);
     }
@@ -97,10 +98,14 @@ export const Servicos: React.FC = () => {
     e.preventDefault();
     if (!nome) return;
 
-    const catFinal = showCustomCategoria ? customCategoria.trim() : categoria;
-    if (showCustomCategoria && !customCategoria) {
-      alert('Por favor, digite o nome da categoria customizada.');
-      return;
+    let catFinal = categoria;
+    if (categoria === 'nova') {
+      if (!customCategoria.trim()) {
+        alert('Por favor, digite o nome da categoria customizada.');
+        return;
+      }
+      addCategoriaServico(customCategoria.trim());
+      catFinal = customCategoria.trim();
     }
 
     const dados = {
@@ -268,7 +273,7 @@ export const Servicos: React.FC = () => {
                     value={categoria}
                     onChange={(e) => {
                       setCategoria(e.target.value);
-                      if (e.target.value === 'outros') {
+                      if (e.target.value === 'nova') {
                         setShowCustomCategoria(true);
                       } else {
                         setShowCustomCategoria(false);
@@ -276,13 +281,10 @@ export const Servicos: React.FC = () => {
                     }}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   >
-                    <option value="alongamento">Alongamento</option>
-                    <option value="manutencao">Manutenção</option>
-                    <option value="mao">Mão Simples</option>
-                    <option value="pe">Pé Simples</option>
-                    <option value="decoracao">Decoração</option>
-                    <option value="spa">Spa / Cuidado</option>
-                    <option value="outros">Outros (Digitar)</option>
+                    {categoriasServico.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                    <option value="nova">+ Nova Categoria</option>
                   </select>
                 </div>
                 <div>

@@ -40,6 +40,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     updateCliente,
     deleteCliente,
     tecnicas,
+    formatos,
     obterServicosDeAgendamento,
     configSalao
   } = useAppState();
@@ -84,7 +85,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setAniversario('');
     setObservacoes('');
     setAlergias('');
-    setFormato('Quadrada');
+    setFormato(formatos[0] || 'Quadrada');
     setTamanho('Médio');
     setTecnica(tecnicas[0] || 'Gel');
     setCores('');
@@ -607,12 +608,9 @@ export const Clientes: React.FC<ClientesProps> = ({
                       onChange={(e) => setFormato(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
                     >
-                      <option value="Quadrada">Quadrada</option>
-                      <option value="Amendoada">Amendoada</option>
-                      <option value="Oval">Oval</option>
-                      <option value="Stiletto">Stiletto</option>
-                      <option value="Redonda">Redonda</option>
-                      <option value="Bailarina">Bailarina</option>
+                      {formatos.map(f => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
                     </select>
                   </div>
                   

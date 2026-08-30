@@ -78,6 +78,16 @@ interface AppStateContextType {
   addTecnica: (nome: string) => void;
   deleteTecnica: (nome: string) => void;
 
+  // Formatos
+  formatos: string[];
+  addFormato: (nome: string) => void;
+  deleteFormato: (nome: string) => void;
+
+  // Categorias de Serviços
+  categoriasServico: string[];
+  addCategoriaServico: (nome: string) => void;
+  deleteCategoriaServico: (nome: string) => void;
+
   // Materiais
   materiais: Material[];
   addMaterial: (material: Omit<Material, 'id' | 'custo_por_uso'>) => void;
@@ -314,13 +324,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return saved ? JSON.parse(saved) : ['Gel', 'Fibra de Vidro', 'Banho de Gel', 'Blindagem', 'Esmaltação em Gel', 'Mão Simples'];
   });
 
+  const [formatos, setFormatos] = useState<string[]>(() => {
+    const saved = localStorage.getItem('nail_formatos');
+    return saved ? JSON.parse(saved) : ['Quadrada', 'Amendoada', 'Oval', 'Stiletto', 'Redonda', 'Bailarina'];
+  });
+
+  const [categoriasServico, setCategoriasServico] = useState<string[]>(() => {
+    const saved = localStorage.getItem('nail_categorias_servico');
+    return saved ? JSON.parse(saved) : ['Alongamento', 'Manutenção', 'Mão Simples', 'Pé Simples', 'Decoração', 'Spa / Cuidado'];
+  });
+
   const [materiais, setMateriais] = useState<Material[]>(() => {
     const saved = localStorage.getItem('nail_materiais');
     return saved ? JSON.parse(saved) : [
       { id: 'm1', nome: 'Gel UV Construtor', marca: 'X&D', preco_compra: 60, rendimento: 15, custo_por_uso: 4 },
       { id: 'm2', nome: 'Tips de Unha (caixa)', marca: 'Gelish', preco_compra: 45, rendimento: 50, custo_por_uso: 0.9 },
       { id: 'm3', nome: 'Esmalte em Gel Nude', marca: 'D&Z', preco_compra: 25, rendimento: 20, custo_por_uso: 1.25 },
-      { id: 'm4', nome: 'Prep Higienizador', marca: 'Beltrat', preco_compra: 35, rendimento: 70, custo_por_uso: 0.5 },
+      { id: 'm4', nome: 'Prep Higienizador', marca: 'Beltart', preco_compra: 35, rendimento: 70, custo_por_uso: 0.5 },
       { id: 'm5', nome: 'Base Coat Gel', marca: 'Volia', preco_compra: 80, rendimento: 40, custo_por_uso: 2 },
       { id: 'm6', nome: 'Top Coat Selante', marca: 'Volia', preco_compra: 85, rendimento: 40, custo_por_uso: 2.12 }
     ];
@@ -342,6 +362,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     localStorage.setItem('nail_tecnicas', JSON.stringify(tecnicas));
   }, [tecnicas]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_formatos', JSON.stringify(formatos));
+  }, [formatos]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_categorias_servico', JSON.stringify(categoriasServico));
+  }, [categoriasServico]);
 
   useEffect(() => {
     localStorage.setItem('nail_materiais', JSON.stringify(materiais));
@@ -487,6 +515,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteTecnica = (nome: string) => {
     setTecnicas(prev => prev.filter(t => t !== nome));
+  };
+
+  // --- Ações de Formatos ---
+  const addFormato = (nome: string) => {
+    if (!formatos.includes(nome)) {
+      setFormatos(prev => [...prev, nome]);
+    }
+  };
+
+  const deleteFormato = (nome: string) => {
+    setFormatos(prev => prev.filter(f => f !== nome));
+  };
+
+  // --- Ações de Categorias de Serviços ---
+  const addCategoriaServico = (nome: string) => {
+    if (!categoriasServico.includes(nome)) {
+      setCategoriasServico(prev => [...prev, nome]);
+    }
+  };
+
+  const deleteCategoriaServico = (nome: string) => {
+    setCategoriasServico(prev => prev.filter(c => c !== nome));
   };
 
   // --- Ações de Materiais ---
@@ -901,6 +951,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       tecnicas,
       addTecnica,
       deleteTecnica,
+      formatos,
+      addFormato,
+      deleteFormato,
+      categoriasServico,
+      addCategoriaServico,
+      deleteCategoriaServico,
       materiais,
       addMaterial,
       updateMaterial,

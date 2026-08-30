@@ -16,7 +16,9 @@ import {
   X,
   User as UserIcon,
   Globe,
-  RefreshCw
+  RefreshCw,
+  Bookmark,
+  Trash2
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -31,12 +33,22 @@ export const Configuracoes: React.FC = () => {
     googleConnected,
     googleUserEmail,
     googleLastSync,
-    desconectarGoogleAgenda
+    desconectarGoogleAgenda,
+    categoriasServico,
+    addCategoriaServico,
+    deleteCategoriaServico,
+    categoriasDespesa,
+    addCategoriaDespesa,
+    deleteCategoriaDespesa
   } = useAppState();
   
-  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'categorias'>('geral');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
+
+  // Categorias tab inputs
+  const [novoServCat, setNovoServCat] = useState('');
+  const [novoDespCat, setNovoDespCat] = useState('');
 
   // Form Geral Fields
   const [nome, setNome] = useState(configSalao.nome);
@@ -156,7 +168,8 @@ export const Configuracoes: React.FC = () => {
             { id: 'geral', label: 'Dados Gerais & Pix', icon: Settings },
             { id: 'expediente', label: 'Horários de Trabalho', icon: Clock },
             { id: 'mensagens', label: 'Mensagens WhatsApp', icon: MessageSquare },
-            { id: 'equipe', label: 'Equipe & Permissões', icon: Users }
+            { id: 'equipe', label: 'Equipe & Permissões', icon: Users },
+            { id: 'categorias', label: 'Categorias de Dados', icon: Bookmark }
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -558,6 +571,131 @@ export const Configuracoes: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: CATEGORIAS */}
+          {activeTab === 'categorias' && (
+            <div className="space-y-6">
+              <h3 className="font-serif font-bold text-base text-[#5A4535] border-b border-[#FAF9F6] pb-2">
+                Gerenciar Categorias
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Categorias de Serviços */}
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] p-5 rounded-2xl space-y-4">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#EFECE6] pb-2 flex items-center justify-between">
+                    <span>Categorias de Serviços</span>
+                    <span className="text-[10px] text-[#8C7A6B] font-bold bg-white px-2 py-0.5 border rounded-lg">
+                      {categoriasServico.length} Ativas
+                    </span>
+                  </h4>
+
+                  {/* Add form */}
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const val = novoServCat.trim();
+                      if (val) {
+                        addCategoriaServico(val);
+                        setNovoServCat('');
+                      }
+                    }} 
+                    className="flex gap-2"
+                  >
+                    <input 
+                      type="text" 
+                      placeholder="Nova categoria de serviço..." 
+                      value={novoServCat}
+                      onChange={(e) => setNovoServCat(e.target.value)}
+                      className="flex-1 border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                    />
+                    <button 
+                      type="submit"
+                      className="bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {/* List */}
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 pt-1">
+                    {categoriasServico.map(cat => (
+                      <div key={cat} className="flex justify-between items-center bg-white border border-[#EFECE6] px-3 py-2 rounded-xl text-xs">
+                        <span className="font-semibold text-[#5A4535]">{cat}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            if (confirm(`Deseja remover a categoria de serviço "${cat}"?`)) {
+                              deleteCategoriaServico(cat);
+                            }
+                          }}
+                          className="text-[#8C7A6B] hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Categorias de Despesas */}
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] p-5 rounded-2xl space-y-4">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#EFECE6] pb-2 flex items-center justify-between">
+                    <span>Categorias de Despesas</span>
+                    <span className="text-[10px] text-[#8C7A6B] font-bold bg-white px-2 py-0.5 border rounded-lg">
+                      {categoriasDespesa.length} Ativas
+                    </span>
+                  </h4>
+
+                  {/* Add form */}
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const val = novoDespCat.trim();
+                      if (val) {
+                        addCategoriaDespesa(val);
+                        setNovoDespCat('');
+                      }
+                    }} 
+                    className="flex gap-2"
+                  >
+                    <input 
+                      type="text" 
+                      placeholder="Nova categoria de despesa..." 
+                      value={novoDespCat}
+                      onChange={(e) => setNovoDespCat(e.target.value)}
+                      className="flex-1 border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                    />
+                    <button 
+                      type="submit"
+                      className="bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  {/* List */}
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 pt-1">
+                    {categoriasDespesa.map(cat => (
+                      <div key={cat} className="flex justify-between items-center bg-white border border-[#EFECE6] px-3 py-2 rounded-xl text-xs">
+                        <span className="font-semibold text-[#5A4535]">{cat}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => {
+                            if (confirm(`Deseja remover a categoria de despesa "${cat}"?`)) {
+                              deleteCategoriaDespesa(cat);
+                            }
+                          }}
+                          className="text-[#8C7A6B] hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}

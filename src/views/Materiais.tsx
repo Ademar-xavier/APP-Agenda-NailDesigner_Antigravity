@@ -22,10 +22,13 @@ export const Materiais: React.FC = () => {
     deleteMaterial,
     tecnicas,
     addTecnica,
-    deleteTecnica
+    deleteTecnica,
+    formatos,
+    addFormato,
+    deleteFormato
   } = useAppState();
 
-  const [activeTab, setActiveTab] = useState<'materiais' | 'tecnicas'>('materiais');
+  const [activeTab, setActiveTab] = useState<'materiais' | 'tecnicas' | 'formatos'>('materiais');
   const [modalOpen, setModalOpen] = useState(false);
   const [materialEdicao, setMaterialEdicao] = useState<Material | null>(null);
 
@@ -39,6 +42,10 @@ export const Materiais: React.FC = () => {
   // Form Técnica Fields
   const [novaTecnica, setNovaTecnica] = useState('');
   const [errorTecnica, setErrorTecnica] = useState('');
+
+  // Form Formato Fields
+  const [novoFormato, setNovoFormato] = useState('');
+  const [errorFormato, setErrorFormato] = useState('');
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -114,6 +121,27 @@ export const Materiais: React.FC = () => {
     }
   };
 
+  const handleSalvarFormato = (e: React.FormEvent) => {
+    e.preventDefault();
+    const nomeTrimmed = novoFormato.trim();
+    if (!nomeTrimmed) return;
+
+    if (formatos.some(f => f.toLowerCase() === nomeTrimmed.toLowerCase())) {
+      setErrorFormato('Este formato já está cadastrado.');
+      return;
+    }
+
+    addFormato(nomeTrimmed);
+    setNovoFormato('');
+    setErrorFormato('');
+  };
+
+  const handleExcluirFormato = (nome: string) => {
+    if (confirm(`Deseja remover o formato "${nome}"?`)) {
+      deleteFormato(nome);
+    }
+  };
+
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
@@ -156,6 +184,17 @@ export const Materiais: React.FC = () => {
         >
           <Sparkles size={14} />
           <span>Técnicas de Unha</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('formatos')}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all ${
+            activeTab === 'formatos' 
+              ? 'border-[#8C6D58] text-[#8C6D58]' 
+              : 'border-transparent text-[#8C7A6B] hover:text-[#5A4535]'
+          }`}
+        >
+          <Bookmark size={14} />
+          <span>Formatos de Unha</span>
         </button>
       </div>
 
@@ -273,6 +312,66 @@ export const Materiais: React.FC = () => {
                     <span className="font-semibold text-[#5A4535]">{tec}</span>
                     <button
                       onClick={() => handleExcluirTecnica(tec)}
+                      className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- TAB 3: FORMATOS --- */}
+        {activeTab === 'formatos' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            
+            {/* Form Cadastro */}
+            <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-sm space-y-4">
+              <h3 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#FAF9F6] pb-2">
+                Cadastrar Formato de Unha
+              </h3>
+              <form onSubmit={handleSalvarFormato} className="space-y-3">
+                {errorFormato && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-1.5">
+                    <AlertTriangle size={14} />
+                    <span>{errorFormato}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Nome do Formato</label>
+                  <input 
+                    type="text" required placeholder="Ex: Quadrada, Stiletto, Bailarina..."
+                    value={novoFormato} onChange={(e) => setNovoFormato(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={14} />
+                  <span>Adicionar Formato</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Listagem */}
+            <div className="lg:col-span-2 bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-sm space-y-4">
+              <h3 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#FAF9F6] pb-2">
+                Formatos Ativos ({formatos.length})
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {formatos.map((form) => (
+                  <div 
+                    key={form}
+                    className="flex justify-between items-center p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"
+                  >
+                    <span className="font-semibold text-[#5A4535]">{form}</span>
+                    <button
+                      onClick={() => handleExcluirFormato(form)}
                       className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
                     >
                       <Trash2 size={12} />
