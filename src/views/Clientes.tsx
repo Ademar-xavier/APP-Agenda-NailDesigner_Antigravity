@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Users, 
   Search, 
@@ -17,7 +17,9 @@ import {
   ChevronRight,
   ArrowLeft,
   Settings,
-  X
+  X,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
@@ -36,12 +38,15 @@ export const Clientes: React.FC<ClientesProps> = ({
     agendamentos, 
     addCliente, 
     updateCliente,
+    deleteCliente,
+    tecnicas,
     obterServicosDeAgendamento,
     configSalao
   } = useAppState();
 
   const [busca, setBusca] = useState('');
   const [novoClienteModal, setNovoClienteModal] = useState(false);
+  const [clienteEdicao, setClienteEdicao] = useState<Cliente | null>(null);
   
   // Estado para edição/criação
   const [nome, setNome] = useState('');
@@ -58,22 +63,56 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [cores, setCores] = useState('');
   const [estilo, setEstilo] = useState('');
   
-  // Fotos Mock
+  // Fotos Carregadas
   const [fotosMock, setFotosMock] = useState<{ [clienteId: string]: string[] }>({
     'c1': ['https://images.unsplash.com/photo-1604654894610-df63bc536371?w=400', 'https://images.unsplash.com/photo-1632345031435-8797b2d58045?w=400'],
     'c2': ['https://images.unsplash.com/photo-1607779097040-26e80aa78e66?w=400'],
     'c4': ['https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=400']
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
+
+  const handleOpenCriar = () => {
+    setClienteEdicao(null);
+    setNome('');
+    setTelefone('');
+    setEmail('');
+    setAniversario('');
+    setObservacoes('');
+    setAlergias('');
+    setFormato('Quadrada');
+    setTamanho('Médio');
+    setTecnica(tecnicas[0] || 'Gel');
+    setCores('');
+    setEstilo('');
+    setNovoClienteModal(true);
+  };
+
+  const handleOpenEditar = (cli: Cliente) => {
+    setClienteEdicao(cli);
+    setNome(cli.nome);
+    setTelefone(cli.telefone);
+    setEmail(cli.email || '');
+    setAniversario(cli.aniversario || '');
+    setObservacoes(cli.observacoes || '');
+    setAlergias(cli.alergias || '');
+    setFormato(cli.preferencias?.formato || 'Quadrada');
+    setTamanho(cli.preferencias?.tamanho || 'Médio');
+    setTecnica(cli.preferencias?.tecnica || tecnicas[0] || 'Gel');
+    setCores(cli.preferencias?.cores || '');
+    setEstilo(cli.preferencias?.estilo || '');
+    setNovoClienteModal(true);
   };
 
   const handleSalvarCliente = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome || !telefone) return;
 
-    addCliente({
+    const payload = {
       nome,
       telefone,
       email: email || undefined,
@@ -88,16 +127,44 @@ export const Clientes: React.FC<ClientesProps> = ({
         estilo: estilo || undefined
       },
       consentimento_imagem: true
-    });
+    };
 
-    // Reset
-    setNome('');
-    setTelefone('');
-    setEmail('');
-    setAniversario('');
-    setObservacoes('');
-    setAlergias('');
+    if (clienteEdicao) {
+      updateCliente(clienteEdicao.id, payload);
+    } else {
+      addCliente(payload);
+    }
+
     setNovoClienteModal(false);
+  };
+
+  const handleExcluirCliente = (id: string) => {
+    if (confirm('Tem certeza de que deseja excluir permanentemente o cadastro desta cliente?')) {
+      deleteCliente(id);
+      setSelectedClienteIdForDetails(null);
+    }
+  };
+
+  // Upload real de fotos usando input de arquivo
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedClienteIdForDetails) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        const base64Url = event.target.result as string;
+        setFotosMock(prev => ({
+          ...prev,
+          [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), base64Url]
+        }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   // Filtrar clientes
@@ -139,33 +206,22 @@ export const Clientes: React.FC<ClientesProps> = ({
     window.open(url, '_blank');
   };
 
-  // Simular upload de foto
-  const handleSimulatePhotoUpload = () => {
-    if (!selectedClienteIdForDetails) return;
-    
-    // Lista de imagens mock de nail art
-    const mockImages = [
-      'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=400',
-      'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=400',
-      'https://images.unsplash.com/photo-1632345031435-8797b2d58045?w=400',
-      'https://images.unsplash.com/photo-1607779097040-26e80aa78e66?w=400'
-    ];
-    
-    const randomImg = mockImages[Math.floor(Math.random() * mockImages.length)];
-    
-    setFotosMock(prev => ({
-      ...prev,
-      [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), randomImg]
-    }));
-  };
-
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
+      {/* Hidden file input for uploading actual photos */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        accept="image/*" 
+        onChange={handlePhotoSelect} 
+        className="hidden" 
+      />
+
       {clienteSelecionado ? (
         // --- TELA DETALHADA DA CLIENTE ---
         <div className="flex-1 flex flex-col h-full overflow-hidden animate-in slide-in-from-right duration-200">
           {/* Header de Detalhes */}
-          <div className="flex items-center justify-between border-b border-[#EFECE6] pb-4 mb-4 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#EFECE6] pb-4 mb-4 gap-3">
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setSelectedClienteIdForDetails(null)}
@@ -175,17 +231,33 @@ export const Clientes: React.FC<ClientesProps> = ({
               </button>
               <div>
                 <h2 className="font-serif font-bold text-lg md:text-xl text-[#5A4535]">{clienteSelecionado.nome}</h2>
-                <p className="text-xs text-[#8C7A6B]">Visualizando ficha da cliente</p>
+                <p className="text-xs text-[#8C7A6B]">Visualizando ficha e preferências de esmaltação</p>
               </div>
             </div>
             
-            <button
-              onClick={() => handleEnviarMensagemWhatsApp(clienteSelecionado, 'geral')}
-              className="flex items-center gap-1.5 bg-[#4FA97A] hover:bg-[#419266] text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all"
-            >
-              <MessageCircle size={14} />
-              <span>Chamar no Whats</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleOpenEditar(clienteSelecionado)}
+                className="flex items-center gap-1.5 bg-white border border-[#EFECE6] text-[#8C6D58] hover:bg-[#FAF9F6] px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <Edit2 size={13} />
+                <span>Editar Cadastro</span>
+              </button>
+              <button
+                onClick={() => handleExcluirCliente(clienteSelecionado.id)}
+                className="flex items-center gap-1.5 bg-red-50 border border-red-100 text-red-700 hover:bg-red-100 px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <Trash2 size={13} />
+                <span>Excluir Cadastro</span>
+              </button>
+              <button
+                onClick={() => handleEnviarMensagemWhatsApp(clienteSelecionado, 'geral')}
+                className="flex items-center gap-1.5 bg-[#4FA97A] hover:bg-[#419266] text-white px-3 py-2 rounded-xl text-xs font-semibold shadow-sm transition-all"
+              >
+                <MessageCircle size={14} />
+                <span>Chamar</span>
+              </button>
+            </div>
           </div>
 
           {/* Grid Principal de Conteúdo */}
@@ -248,34 +320,32 @@ export const Clientes: React.FC<ClientesProps> = ({
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <span className="text-[#8C7A6B] block">Formato:</span>
-                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.formato || 'Não informado'}</span>
+                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.formato || 'Não Informado'}</span>
                   </div>
                   <div>
                     <span className="text-[#8C7A6B] block">Tamanho:</span>
-                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.tamanho || 'Não informado'}</span>
+                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.tamanho || 'Não Informado'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[#8C7A6B] block">Técnica Principal:</span>
+                    <span className="font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-lg border border-[#F3ECE0] inline-block mt-0.5">
+                      {clienteSelecionado.preferencias?.tecnica || 'Gel'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#8C7A6B] block">Estilo Predominante:</span>
+                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.estilo || 'Não Informado'}</span>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-[#8C7A6B] block">Técnica Preferida:</span>
-                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.tecnica || 'Não informada'}</span>
+                    <span className="text-[#8C7A6B] block">Cores Preferidas:</span>
+                    <span className="font-bold text-[#5A4535]">{clienteSelecionado.preferencias?.cores || 'Sem restrição de cores'}</span>
                   </div>
-                  {clienteSelecionado.preferencias?.cores && (
-                    <div className="col-span-2">
-                      <span className="text-[#8C7A6B] block">Cores Mais Usadas:</span>
-                      <span className="font-semibold text-[#5A4535]">{clienteSelecionado.preferencias.cores}</span>
-                    </div>
-                  )}
-                  {clienteSelecionado.preferencias?.estilo && (
-                    <div className="col-span-2">
-                      <span className="text-[#8C7A6B] block">Estilo:</span>
-                      <span className="font-semibold text-[#5A4535]">{clienteSelecionado.preferencias.estilo}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
 
-            {/* Coluna Central: Histórico / Linha do tempo */}
-            <div className="space-y-6 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Coluna Central e Direita: Linha do tempo e galeria */}
+            <div className="lg:col-span-2 space-y-6">
               
               {/* KPIs & Histórico */}
               <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4 h-fit">
@@ -343,11 +413,11 @@ export const Clientes: React.FC<ClientesProps> = ({
                     Fotos de Acompanhamento
                   </h3>
                   <button
-                    onClick={handleSimulatePhotoUpload}
+                    onClick={triggerFileInput}
                     className="flex items-center gap-1 text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] hover:bg-[#ebdace] px-2.5 py-1.5 rounded-lg transition-colors"
                   >
                     <Camera size={12} />
-                    <span>Adicionar Foto</span>
+                    <span>Selecionar e Adicionar Foto</span>
                   </button>
                 </div>
 
@@ -366,7 +436,7 @@ export const Clientes: React.FC<ClientesProps> = ({
                           className="w-full h-full object-cover" 
                         />
                         <span className="absolute bottom-1 right-1 bg-black bg-opacity-65 text-white text-[8px] px-1 rounded">
-                          {idx === 0 ? 'Antes' : 'Depois'}
+                          {idx % 2 === 0 ? 'Antes' : 'Depois'}
                         </span>
                       </div>
                     ))}
@@ -378,15 +448,16 @@ export const Clientes: React.FC<ClientesProps> = ({
           </div>
         </div>
       ) : (
-        // --- LISTA DE CLIENTES ---
+        // --- LISTAGEM DE CLIENTES ---
         <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
             <div>
-              <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Base de Clientes</h2>
-              <p className="text-xs text-[#8C7A6B]">Visualize preferências, linha do tempo e envie lembretes</p>
+              <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Clientes ({clientes.length})</h2>
+              <p className="text-xs text-[#8C7A6B]">Gerencie fichas técnicas, alergias e a galeria de unhas de cada cliente</p>
             </div>
+
             <button
-              onClick={() => setNovoClienteModal(true)}
+              onClick={handleOpenCriar}
               className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
             >
               <Plus size={16} />
@@ -394,9 +465,9 @@ export const Clientes: React.FC<ClientesProps> = ({
             </button>
           </div>
 
-          {/* Caixa de Busca */}
-          <div className="flex items-center gap-2 px-3 py-2 bg-white border border-[#EFECE6] rounded-2xl mb-4 max-w-md shadow-sm">
-            <Search size={16} className="text-[#8C7A6B]" />
+          {/* Barra de Filtro */}
+          <div className="bg-white border border-[#EFECE6] rounded-2xl px-3 py-2 flex items-center gap-2 mb-6 shadow-sm max-w-md">
+            <Search size={16} className="text-[#C2B7AE]" />
             <input
               type="text"
               placeholder="Buscar por nome, telefone ou técnica..."
@@ -462,13 +533,13 @@ export const Clientes: React.FC<ClientesProps> = ({
         </>
       )}
 
-      {/* --- MODAL NOVA CLIENTE --- */}
+      {/* --- MODAL NOVA/EDITAR CLIENTE --- */}
       {novoClienteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
               <div>
-                <h3 className="font-serif font-bold text-lg text-[#5A4535]">Nova Cliente</h3>
+                <h3 className="font-serif font-bold text-lg text-[#5A4535]">{clienteEdicao ? 'Editar Cliente' : 'Nova Cliente'}</h3>
                 <p className="text-xs text-[#8C7A6B] mt-0.5">Cadastre uma cliente e suas preferências de esmaltação/técnica</p>
               </div>
               <button 
@@ -565,12 +636,9 @@ export const Clientes: React.FC<ClientesProps> = ({
                       onChange={(e) => setTecnica(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
                     >
-                      <option value="Gel">Gel</option>
-                      <option value="Fibra de Vidro">Fibra de Vidro</option>
-                      <option value="Banho de Gel">Banho de Gel</option>
-                      <option value="Blindagem">Blindagem</option>
-                      <option value="Esmaltação em Gel">Esmaltação em Gel</option>
-                      <option value="Mão Simples">Mão Simples</option>
+                      {tecnicas.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
                     </select>
                   </div>
                 </div>

@@ -10,6 +10,7 @@ import { Configuracoes } from './views/Configuracoes';
 import { PublicBooking } from './public-views/PublicBooking';
 import { Login } from './views/Login';
 import { Confirmacoes } from './views/Confirmacoes';
+import { Materiais } from './views/Materiais';
 
 function AppContent() {
   const { currentUser } = useAppState();
@@ -55,6 +56,8 @@ function AppContent() {
         return <Confirmacoes />;
       case 'servicos':
         return <Servicos />;
+      case 'materiais':
+        return <Materiais />;
       case 'financeiro':
         return <Financeiro />;
       case 'configuracoes':

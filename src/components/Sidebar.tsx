@@ -10,7 +10,8 @@ import {
   Crown,
   LogOut,
   User as UserIcon,
-  CheckCircle
+  CheckCircle,
+  Package
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 
@@ -35,6 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'clientes', name: 'Clientes', icon: Users, adminOnly: true },
     { id: 'confirmacoes', name: 'Confirmações', icon: CheckCircle, adminOnly: true },
     { id: 'servicos', name: 'Serviços', icon: Scissors, adminOnly: true },
+    { id: 'materiais', name: 'Materiais', icon: Package, adminOnly: true },
     { id: 'financeiro', name: 'Financeiro', icon: DollarSign, adminOnly: true },
     { id: 'configuracoes', name: 'Configurações', icon: Settings, adminOnly: true },
   ];

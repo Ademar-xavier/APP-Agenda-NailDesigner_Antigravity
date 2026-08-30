@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Plus, 
   Scissors, 
@@ -9,7 +9,8 @@ import {
   Edit, 
   Check, 
   X,
-  RefreshCw
+  RefreshCw,
+  Package
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
@@ -19,7 +20,8 @@ export const Servicos: React.FC = () => {
     servicos, 
     addServico, 
     updateServico, 
-    deleteServico 
+    deleteServico,
+    materiais
   } = useAppState();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -35,7 +37,20 @@ export const Servicos: React.FC = () => {
   const [sinalTipo, setSinalTipo] = useState<Servico['sinal_tipo']>('nenhum');
   const [sinalValor, setSinalValor] = useState(0);
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
-  const [custoEstimado, setCustoEstimado] = useState(0);
+  
+  // Lista de materiais vinculados ao serviço
+  const [materiaisSelecionados, setMateriaisSelecionados] = useState<{ material_id: string; quantidade: number }[]>([]);
+
+  // Custo Estimado Calculado
+  const custoCalculado = useMemo(() => {
+    return materiaisSelecionados.reduce((acc, item) => {
+      const mat = materiais.find(m => m.id === item.material_id);
+      if (mat) {
+        return acc + (mat.custo_por_uso * item.quantidade);
+      }
+      return acc;
+    }, 0);
+  }, [materiaisSelecionados, materiais]);
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -52,7 +67,7 @@ export const Servicos: React.FC = () => {
     setSinalTipo('nenhum');
     setSinalValor(0);
     setIntervaloManutencaoDias(20);
-    setCustoEstimado(0);
+    setMateriaisSelecionados([]);
     setModalOpen(true);
   };
 
@@ -74,7 +89,7 @@ export const Servicos: React.FC = () => {
     setSinalTipo(serv.sinal_tipo);
     setSinalValor(serv.sinal_valor);
     setIntervaloManutencaoDias(serv.intervalo_manutencao_dias);
-    setCustoEstimado(serv.custo_estimado || 0);
+    setMateriaisSelecionados(serv.materiais_utilizados || []);
     setModalOpen(true);
   };
 
@@ -96,7 +111,8 @@ export const Servicos: React.FC = () => {
       sinal_tipo: sinalTipo,
       sinal_valor: sinalTipo === 'nenhum' ? 0 : sinalValor,
       intervalo_manutencao_dias: intervaloManutencaoDias,
-      custo_estimado: custoEstimado || undefined
+      custo_estimado: custoCalculado,
+      materiais_utilizados: materiaisSelecionados
     };
 
     if (servicoEdicao) {
@@ -132,7 +148,7 @@ export const Servicos: React.FC = () => {
           .map((s) => (
             <div 
               key={s.id} 
-              className="bg-white p-5 rounded-2xl border border-[#EFECE6] flex flex-col justify-between gap-4 shadow-sm"
+              className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] flex flex-col justify-between gap-4 shadow-sm transition-all"
             >
               <div>
                 <div className="flex justify-between items-start gap-2">
@@ -140,10 +156,19 @@ export const Servicos: React.FC = () => {
                     <Scissors size={18} />
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px]">
+                    <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5">
                       {s.categoria}
                     </span>
                     <span className="text-base font-extrabold text-[#5A4535]">{formatarMoeda(s.preco)}</span>
+                    
+                    {s.custo_estimado !== undefined && s.custo_estimado > 0 && (
+                      <div className="text-[10px] mt-1 font-semibold flex items-center justify-end gap-1">
+                        <span className="text-[#8C7A6B]">Insumos: {formatarMoeda(s.custo_estimado)}</span>
+                        <span className="bg-green-50 border border-green-200 text-green-700 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                          Margem: {Math.round(((s.preco - s.custo_estimado) / s.preco) * 100)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -171,6 +196,12 @@ export const Servicos: React.FC = () => {
                         </span>
                       </div>
                     )}
+                    {s.materiais_utilizados && s.materiais_utilizados.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <Package size={13} className="text-[#8C7A6B]" />
+                        <span>Insumos Vinculados: <strong>{s.materiais_utilizados.length} itens</strong></span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -179,21 +210,19 @@ export const Servicos: React.FC = () => {
               <div className="flex items-center gap-2 border-t border-[#FAF9F6] pt-3.5 mt-2">
                 <button
                   onClick={() => handleOpenEditar(s)}
-                  className="flex-1 flex items-center justify-center gap-1.5 border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6] py-2 rounded-xl text-xs font-bold transition-all"
+                  className="flex-1 bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6] hover:text-[#5A4535] py-2 rounded-xl text-xs font-semibold shadow-sm transition-all"
                 >
-                  <Edit size={13} />
-                  <span>Editar</span>
+                  Editar
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm(`Deseja realmente arquivar o serviço "${s.nome}"?`)) {
+                    if (confirm('Deseja realmente desativar este serviço?')) {
                       deleteServico(s.id);
                     }
                   }}
-                  className="p-2 border border-[#EFECE6] text-[#C81E1E] hover:bg-[#FDF2F2] rounded-xl transition-all"
-                  title="Arquivar Serviço"
+                  className="px-3 bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-xl text-xs font-semibold transition-all border border-red-100"
                 >
-                  <Trash2 size={14} />
+                  Excluir
                 </button>
               </div>
             </div>
@@ -202,8 +231,8 @@ export const Servicos: React.FC = () => {
 
       {/* --- MODAL ADICIONAR / EDITAR SERVIÇO --- */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">
@@ -283,27 +312,83 @@ export const Servicos: React.FC = () => {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Preço Total (R$)</label>
-                  <input 
-                    type="number" 
-                    required
-                    min={0}
-                    value={preco}
-                    onChange={(e) => setPreco(Number(e.target.value))}
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Custo Estimado Material (R$)</label>
-                  <input 
-                    type="number" 
-                    min={0}
-                    value={custoEstimado}
-                    onChange={(e) => setCustoEstimado(Number(e.target.value))}
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
-                  />
+              <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Preço Cobrado do Cliente (R$)</label>
+                <input 
+                  type="number" 
+                  required
+                  min={0}
+                  value={preco}
+                  onChange={(e) => setPreco(Number(e.target.value))}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
+                />
+              </div>
+
+              {/* Materiais/Insumos Utilizados */}
+              <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5 flex items-center gap-1.5">
+                  <Package size={14} className="text-[#8C6D58]" />
+                  <span>Insumos e Quantidades</span>
+                </h4>
+                
+                {materiais.length === 0 ? (
+                  <p className="text-[10px] text-[#8C7A6B] italic">
+                    Nenhum insumo cadastrado na base de dados. Cadastre insumos na aba "Materiais" primeiro.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {materiais.map(mat => {
+                      const vinculo = materiaisSelecionados.find(ms => ms.material_id === mat.id);
+                      const checked = !!vinculo;
+                      
+                      return (
+                        <div key={mat.id} className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-[#EFECE6] text-xs">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input 
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setMateriaisSelecionados(prev => [...prev, { material_id: mat.id, quantidade: 1 }]);
+                                } else {
+                                  setMateriaisSelecionados(prev => prev.filter(item => item.material_id !== mat.id));
+                                }
+                              }}
+                              className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                            />
+                            <div>
+                              <span className="font-semibold block text-[#5A4535]">{mat.nome}</span>
+                              <span className="text-[9px] text-[#8C7A6B]">{mat.marca} · {formatarMoeda(mat.custo_por_uso)}/uso</span>
+                            </div>
+                          </label>
+
+                          {checked && vinculo && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] text-[#8C7A6B]">Qtd:</span>
+                              <input 
+                                type="number"
+                                min={1}
+                                value={vinculo.quantidade}
+                                onChange={(e) => {
+                                  const val = Math.max(1, Number(e.target.value));
+                                  setMateriaisSelecionados(prev => prev.map(item => 
+                                    item.material_id === mat.id ? { ...item, quantidade: val } : item
+                                  ));
+                                }}
+                                className="w-12 border border-[#EFECE6] rounded-md px-1.5 py-0.5 text-center text-xs text-[#5A4535]"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                
+                {/* Totalizador de Custo */}
+                <div className="flex justify-between items-center pt-2.5 border-t border-[#EFECE6] text-xs font-bold">
+                  <span className="text-[#8C7A6B]">Custo Estimado Insumos:</span>
+                  <span className="text-[#8C6D58]">{formatarMoeda(custoCalculado)}</span>
                 </div>
               </div>
 

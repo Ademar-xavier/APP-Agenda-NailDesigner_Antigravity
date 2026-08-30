@@ -8,7 +8,9 @@ import {
   ConfigSalao,
   AgendamentoStatus,
   MetodoPagamento,
-  Usuario
+  Usuario,
+  Despesa,
+  Material
 } from '../types';
 
 interface AppStateContextType {
@@ -32,6 +34,7 @@ interface AppStateContextType {
   // Ações de Clientes
   addCliente: (cliente: Omit<Cliente, 'id' | 'criado_em'>) => Cliente;
   updateCliente: (id: string, cliente: Partial<Cliente>) => void;
+  deleteCliente: (id: string) => void;
   
   // Ações de Serviços
   addServico: (servico: Omit<Servico, 'id' | 'ativo'>) => void;
@@ -60,6 +63,26 @@ interface AppStateContextType {
   conectarGoogleAgenda: (email: string) => void;
   desconectarGoogleAgenda: () => void;
   sincronizarGoogleAgenda: (eventos: any[]) => void;
+
+  // Despesas
+  despesas: Despesa[];
+  addDespesa: (despesa: Omit<Despesa, 'id'>) => void;
+  updateDespesa: (id: string, despesa: Partial<Despesa>) => void;
+  deleteDespesa: (id: string) => void;
+  categoriasDespesa: string[];
+  addCategoriaDespesa: (nome: string) => void;
+  deleteCategoriaDespesa: (nome: string) => void;
+
+  // Técnicas
+  tecnicas: string[];
+  addTecnica: (nome: string) => void;
+  deleteTecnica: (nome: string) => void;
+
+  // Materiais
+  materiais: Material[];
+  addMaterial: (material: Omit<Material, 'id' | 'custo_por_uso'>) => void;
+  updateMaterial: (id: string, material: Partial<Material>) => void;
+  deleteMaterial: (id: string) => void;
 
   // Auxiliares
   checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string) => boolean;
@@ -272,10 +295,57 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return saved ? JSON.parse(saved) : equipeInicial[0]; // Logado como Sheila por padrão para facilitar
   });
 
+  const [despesas, setDespesas] = useState<Despesa[]>(() => {
+    const saved = localStorage.getItem('nail_despesas');
+    return saved ? JSON.parse(saved) : [
+      { id: 'd1', descricao: 'Gel UV X&D e Tips de unha', categoria: 'Materiais', valor: 85, data: '2026-08-24' },
+      { id: 'd2', descricao: 'Esmaltes novos tons nude', categoria: 'Materiais', valor: 60, data: '2026-08-26' },
+      { id: 'd3', descricao: 'Lixas banana e luvas desc.', categoria: 'Materiais', valor: 45, data: '2026-08-28' }
+    ];
+  });
+
+  const [categoriasDespesa, setCategoriasDespesa] = useState<string[]>(() => {
+    const saved = localStorage.getItem('nail_categorias_despesa');
+    return saved ? JSON.parse(saved) : ['Aluguel', 'Energia/Água', 'Materiais', 'Marketing', 'Impostos', 'Outros'];
+  });
+
+  const [tecnicas, setTecnicas] = useState<string[]>(() => {
+    const saved = localStorage.getItem('nail_tecnicas');
+    return saved ? JSON.parse(saved) : ['Gel', 'Fibra de Vidro', 'Banho de Gel', 'Blindagem', 'Esmaltação em Gel', 'Mão Simples'];
+  });
+
+  const [materiais, setMateriais] = useState<Material[]>(() => {
+    const saved = localStorage.getItem('nail_materiais');
+    return saved ? JSON.parse(saved) : [
+      { id: 'm1', nome: 'Gel UV Construtor', marca: 'X&D', preco_compra: 60, rendimento: 15, custo_por_uso: 4 },
+      { id: 'm2', nome: 'Tips de Unha (caixa)', marca: 'Gelish', preco_compra: 45, rendimento: 50, custo_por_uso: 0.9 },
+      { id: 'm3', nome: 'Esmalte em Gel Nude', marca: 'D&Z', preco_compra: 25, rendimento: 20, custo_por_uso: 1.25 },
+      { id: 'm4', nome: 'Prep Higienizador', marca: 'Beltrat', preco_compra: 35, rendimento: 70, custo_por_uso: 0.5 },
+      { id: 'm5', nome: 'Base Coat Gel', marca: 'Volia', preco_compra: 80, rendimento: 40, custo_por_uso: 2 },
+      { id: 'm6', nome: 'Top Coat Selante', marca: 'Volia', preco_compra: 85, rendimento: 40, custo_por_uso: 2.12 }
+    ];
+  });
+
   // Salvar no LocalStorage sempre que houver modificações
   useEffect(() => {
     localStorage.setItem('nail_clientes', JSON.stringify(clientes));
   }, [clientes]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_despesas', JSON.stringify(despesas));
+  }, [despesas]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_categorias_despesa', JSON.stringify(categoriasDespesa));
+  }, [categoriasDespesa]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_tecnicas', JSON.stringify(tecnicas));
+  }, [tecnicas]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_materiais', JSON.stringify(materiais));
+  }, [materiais]);
 
   useEffect(() => {
     localStorage.setItem('nail_servicos', JSON.stringify(servicos));
@@ -359,6 +429,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
   };
 
+  const deleteCliente = (id: string) => {
+    setClientes(prev => prev.filter(c => c.id !== id));
+  };
+
   // --- Ações de Serviços ---
   const addServico = (newServico: Omit<Servico, 'id' | 'ativo'>) => {
     const servico: Servico = {
@@ -375,6 +449,73 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteServico = (id: string) => {
     setServicos(prev => prev.map(s => s.id === id ? { ...s, ativo: false } : s));
+  };
+
+  // --- Ações de Despesas ---
+  const addDespesa = (nova: Omit<Despesa, 'id'>) => {
+    const despesa: Despesa = {
+      ...nova,
+      id: 'd_' + gerarId()
+    };
+    setDespesas(prev => [...prev, despesa]);
+  };
+
+  const updateDespesa = (id: string, updated: Partial<Despesa>) => {
+    setDespesas(prev => prev.map(d => d.id === id ? { ...d, ...updated } : d));
+  };
+
+  const deleteDespesa = (id: string) => {
+    setDespesas(prev => prev.filter(d => d.id !== id));
+  };
+
+  const addCategoriaDespesa = (nome: string) => {
+    if (!categoriasDespesa.includes(nome)) {
+      setCategoriasDespesa(prev => [...prev, nome]);
+    }
+  };
+
+  const deleteCategoriaDespesa = (nome: string) => {
+    setCategoriasDespesa(prev => prev.filter(c => c !== nome));
+  };
+
+  // --- Ações de Técnicas ---
+  const addTecnica = (nome: string) => {
+    if (!tecnicas.includes(nome)) {
+      setTecnicas(prev => [...prev, nome]);
+    }
+  };
+
+  const deleteTecnica = (nome: string) => {
+    setTecnicas(prev => prev.filter(t => t !== nome));
+  };
+
+  // --- Ações de Materiais ---
+  const addMaterial = (novo: Omit<Material, 'id' | 'custo_por_uso'>) => {
+    const custo = novo.preco_compra / (novo.rendimento || 1);
+    const material: Material = {
+      ...novo,
+      id: 'm_' + gerarId(),
+      custo_por_uso: Number(custo.toFixed(2))
+    };
+    setMateriais(prev => [...prev, material]);
+  };
+
+  const updateMaterial = (id: string, updated: Partial<Material>) => {
+    setMateriais(prev => prev.map(m => {
+      if (m.id === id) {
+        const merged = { ...m, ...updated };
+        const custo = merged.preco_compra / (merged.rendimento || 1);
+        return {
+          ...merged,
+          custo_por_uso: Number(custo.toFixed(2))
+        };
+      }
+      return m;
+    }));
+  };
+
+  const deleteMaterial = (id: string) => {
+    setMateriais(prev => prev.filter(m => m.id !== id));
   };
 
   // --- Lógica de Conflitos ---
@@ -727,6 +868,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toggleEquipeAtivo,
       addCliente,
       updateCliente,
+      deleteCliente,
       addServico,
       updateServico,
       deleteServico,
@@ -748,7 +890,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       googleLastSync,
       conectarGoogleAgenda,
       desconectarGoogleAgenda,
-      sincronizarGoogleAgenda
+      sincronizarGoogleAgenda,
+      despesas,
+      addDespesa,
+      updateDespesa,
+      deleteDespesa,
+      categoriasDespesa,
+      addCategoriaDespesa,
+      deleteCategoriaDespesa,
+      tecnicas,
+      addTecnica,
+      deleteTecnica,
+      materiais,
+      addMaterial,
+      updateMaterial,
+      deleteMaterial
     }}>
       {children}
     </AppStateContext.Provider>

@@ -38,6 +38,7 @@ export interface Servico {
   intervalo_manutencao_dias: number; // ex: 15, 20, 30 dias (0 se não aplicável)
   custo_estimado?: number;
   ativo: boolean;
+  materiais_utilizados?: { material_id: string; quantidade: number }[];
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';
@@ -142,4 +143,21 @@ export interface ConfigSalao {
     retorno_manutencao: string;
     lista_espera: string;
   };
+}
+
+export interface Despesa {
+  id: string;
+  descricao: string;
+  categoria: string;
+  valor: number;
+  data: string;
+}
+
+export interface Material {
+  id: string;
+  nome: string;
+  marca: string;
+  preco_compra: number;
+  rendimento: number; // quantidade de usos/aplicações
+  custo_por_uso: number; // preco_compra / rendimento
 }
