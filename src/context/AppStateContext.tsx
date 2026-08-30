@@ -45,6 +45,7 @@ interface AppStateContextType {
   addAgendamento: (agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, servicosSelecionados: string[]) => { success: boolean; error?: string; agendamento?: Agendamento };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
+  deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
   concluirAtendimento: (id: string, valorRestante: number, metodo: MetodoPagamento, dataProximaManutencao?: string) => void;
   
@@ -714,6 +715,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
+  const deleteAgendamento = (id: string) => {
+    setAgendamentos(prev => prev.filter(a => a.id !== id));
+  };
+
   const confirmarSinal = (agendamentoId: string, valor: number, metodo: MetodoPagamento) => {
     setAgendamentos(prev => prev.map(a => {
       if (a.id === agendamentoId && a.status === 'pendente') {
@@ -965,6 +970,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addAgendamento,
       updateAgendamentoStatus,
       cancelAgendamento,
+      deleteAgendamento,
       confirmarSinal,
       concluirAtendimento,
       addListaEspera,

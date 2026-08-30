@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BellRing, 
   UserCheck, 
@@ -9,7 +9,8 @@ import {
   Calendar as CalendarIcon,
   Clock,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Agendamento, ListaEspera } from '../types';
@@ -24,6 +25,7 @@ export const Confirmacoes: React.FC = () => {
     servicos, 
     listaEspera,
     updateListaEsperaStatus, 
+    deleteAgendamento,
     configSalao, 
     obterServicosDeAgendamento,
     addAgendamento,
@@ -198,6 +200,23 @@ export const Confirmacoes: React.FC = () => {
     const d = new Date(dateStr);
     return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   };
+
+  // Keyboard Escape listener to close details and modals in Confirmacoes.tsx
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmarVagaItem) {
+          setConfirmarVagaItem(null);
+        } else if (loteModalOpen) {
+          setLoteModalOpen(false);
+        } else if (selectedAgendamentoId) {
+          setSelectedAgendamentoId(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmarVagaItem, loteModalOpen, selectedAgendamentoId]);
 
   // Filtragem de dados com base nas abas
   const hoje = '2026-08-29';
@@ -458,8 +477,8 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2.5">
-                      <span className="bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3] text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3] text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase mr-1.5">
                         Aguardando
                       </span>
                       <button
@@ -468,6 +487,18 @@ export const Confirmacoes: React.FC = () => {
                       >
                         <Send size={12} />
                         <span>Definir horário e agendar</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Deseja realmente remover esta cliente da lista de espera?')) {
+                            updateListaEsperaStatus(w.id, 'cancelado');
+                          }
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl text-xs font-bold transition-all"
+                        title="Remover da lista de espera"
+                      >
+                        <XCircle size={13} />
+                        <span>Remover</span>
                       </button>
                     </div>
                   </div>
@@ -511,12 +542,25 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </button>
                     
-                    <button
-                      onClick={() => setSelectedAgendamentoId(a.id)}
-                      className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
-                    >
-                      Ver detalhes
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedAgendamentoId(a.id)}
+                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
+                      >
+                        Ver detalhes
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Tem certeza de que deseja excluir permanentemente este registro de cancelamento?')) {
+                            deleteAgendamento(a.id);
+                          }
+                        }}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl transition-colors"
+                        title="Excluir histórico de cancelamento"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -531,14 +575,21 @@ export const Confirmacoes: React.FC = () => {
         const client = clientes.find(c => c.id === confirmarVagaItem.cliente_id);
         const serv = servicos.find(s => s.id === confirmarVagaItem.servico_id);
         return (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+            onClick={() => setConfirmarVagaItem(null)}
+          >
+            <div 
+              className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
                 <div>
                   <h3 className="font-serif font-bold text-base text-[#5A4535]">Definir Horário da Vaga</h3>
                   <p className="text-xs text-[#8C7A6B] mt-0.5">Converta a lista de espera em agendamento</p>
                 </div>
                 <button 
+                  type="button"
                   onClick={() => setConfirmarVagaItem(null)}
                   className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
                 >

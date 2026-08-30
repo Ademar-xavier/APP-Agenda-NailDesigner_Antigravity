@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Plus, 
   Scissors, 
@@ -41,6 +41,17 @@ export const Servicos: React.FC = () => {
   const [sinalValor, setSinalValor] = useState(0);
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
   const [descricao, setDescricao] = useState('');
+
+  // Keyboard Escape listener to close modal in Servicos.tsx
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && modalOpen) {
+        setModalOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalOpen]);
   
   // Lista de materiais vinculados ao serviço
   const [materiaisSelecionados, setMateriaisSelecionados] = useState<{ material_id: string; quantidade: number }[]>([]);
@@ -301,8 +312,14 @@ export const Servicos: React.FC = () => {
 
       {/* --- MODAL ADICIONAR / EDITAR SERVIÇO --- */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">

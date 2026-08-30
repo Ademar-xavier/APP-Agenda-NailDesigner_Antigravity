@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -40,6 +40,17 @@ export const Financeiro: React.FC = () => {
   const [busca, setBusca] = useState('');
   const [despesaModal, setDespesaModal] = useState(false);
   const [financeTab, setFinanceTab] = useState<'pendentes' | 'despesas'>('pendentes');
+
+  // Keyboard Escape listener to close modal in Financeiro.tsx
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && despesaModal) {
+        setDespesaModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [despesaModal]);
   
   // Form Despesa Fields
   const [descricao, setDescricao] = useState('');
@@ -429,8 +440,14 @@ export const Financeiro: React.FC = () => {
 
       {/* --- MODAL REGISTRAR DESPESA --- */}
       {despesaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setDespesaModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-sm w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <h3 className="font-serif font-bold text-lg text-[#5A4535]">Registrar Despesa</h3>
               <button 

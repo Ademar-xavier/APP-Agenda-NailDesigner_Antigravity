@@ -110,6 +110,21 @@ function AppContent() {
   // Controle global de abertura do modal de novo agendamento
   const [isNewAgendamentoModalOpen, setIsNewAgendamentoModalOpen] = useState<boolean>(false);
 
+  // Listen for Escape key to close active views/modals in App.tsx
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isNewAgendamentoModalOpen) {
+          setIsNewAgendamentoModalOpen(false);
+        } else if (selectedClienteIdForDetails) {
+          setSelectedClienteIdForDetails(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNewAgendamentoModalOpen, selectedClienteIdForDetails]);
+
   const openNewAgendamentoModal = () => {
     setCurrentView('agenda');
     setIsNewAgendamentoModalOpen(true);

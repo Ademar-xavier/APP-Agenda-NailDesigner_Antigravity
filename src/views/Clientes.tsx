@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Users, 
   Search, 
@@ -138,6 +138,21 @@ export const Clientes: React.FC<ClientesProps> = ({
 
     setNovoClienteModal(false);
   };
+
+  // Keyboard Escape listener to close modal or details in Clientes.tsx
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (novoClienteModal) {
+          setNovoClienteModal(false);
+        } else if (selectedClienteIdForDetails) {
+          setSelectedClienteIdForDetails(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [novoClienteModal, selectedClienteIdForDetails, setSelectedClienteIdForDetails]);
 
   const handleExcluirCliente = (id: string) => {
     if (confirm('Tem certeza de que deseja excluir permanentemente o cadastro desta cliente?')) {
@@ -536,8 +551,14 @@ export const Clientes: React.FC<ClientesProps> = ({
 
       {/* --- MODAL NOVA/EDITAR CLIENTE --- */}
       {novoClienteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setNovoClienteModal(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">{clienteEdicao ? 'Editar Cliente' : 'Nova Cliente'}</h3>

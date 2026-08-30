@@ -58,6 +58,16 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     }
   }, [agendamento]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!agendamento) return null;
 
   const initials = cliente?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
@@ -148,8 +158,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header (Like Claude's UI) */}
         <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
