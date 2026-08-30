@@ -278,7 +278,13 @@ export const Confirmacoes: React.FC = () => {
 
   const handleRemoverListaEspera = (w: ListaEspera) => {
     const client = clientes.find(c => c.id === w.cliente_id);
-    if (!client) return;
+    
+    if (!client) {
+      if (confirm('Esta solicitação de lista de espera não possui um cliente associado no sistema (provavelmente foi excluído). Deseja remover este item da lista de espera mesmo assim?')) {
+        updateListaEsperaStatus(w.id, 'cancelado');
+      }
+      return;
+    }
 
     if (confirm(`Deseja realmente remover ${client.nome} da lista de espera e enviar o aviso de impossibilidade de encaixe por WhatsApp?`)) {
       updateListaEsperaStatus(w.id, 'cancelado');
@@ -621,7 +627,7 @@ export const Confirmacoes: React.FC = () => {
                 )}
 
                 <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs space-y-1">
-                  <p className="text-[#8C7A6B]">Cliente: <strong className="text-[#5A4535]">{client?.nome} ({client?.telefone})</strong></p>
+                  <p className="text-[#8C7A6B]">Cliente: <strong className="text-[#5A4535]">{client ? `${client.nome} (${client.telefone})` : 'Cliente não cadastrado'}</strong></p>
                   <p className="text-[#8C7A6B]">Serviço: <strong className="text-[#5A4535]">{serv?.nome} ({formatarMoeda(serv?.preco || 0)})</strong></p>
                   <p className="text-[#8C7A6B]">Período de preferência: <strong className="text-[#5A4535]">{confirmarVagaItem.periodo_preferido}</strong></p>
                 </div>
@@ -666,20 +672,33 @@ export const Confirmacoes: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+                <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] w-full">
                   <button
                     type="button"
-                    onClick={() => setConfirmarVagaItem(null)}
-                    className="px-4 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                    onClick={() => {
+                      setConfirmarVagaItem(null);
+                      handleRemoverListaEspera(confirmarVagaItem);
+                    }}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold rounded-xl transition-all"
                   >
-                    Cancelar
+                    Cancelar Solicitação
                   </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
-                  >
-                    Confirmar e Agendar
-                  </button>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmarVagaItem(null)}
+                      className="px-3 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                    >
+                      Confirmar e Agendar
+                    </button>
+                  </div>
                 </div>
               </form>
             </div>
