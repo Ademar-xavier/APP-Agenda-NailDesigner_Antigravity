@@ -249,7 +249,8 @@ export const Configuracoes: React.FC = () => {
                   <div>
                     <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Políticas / Horas limite para Cancelar</label>
                     <input 
-                      type="number" required value={cancelamentoLimite} onChange={(e) => setCancelamentoLimite(Number(e.target.value))}
+                      type="number" required 
+                      value={cancelamentoLimite === 0 ? '' : cancelamentoLimite} onChange={(e) => setCancelamentoLimite(Number(e.target.value))}
                       className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white"
                     />
                   </div>

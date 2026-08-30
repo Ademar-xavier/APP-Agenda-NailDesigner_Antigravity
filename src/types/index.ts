@@ -41,6 +41,8 @@ export interface Servico {
   materiais_utilizados?: { material_id: string; quantidade: number }[];
   is_pacote?: boolean;
   servicos_pacote?: string[];
+  servicos_pacote_detalhes?: { servico_id: string; quantidade: number }[];
+  descricao?: string;
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';

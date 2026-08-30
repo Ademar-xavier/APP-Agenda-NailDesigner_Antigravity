@@ -204,8 +204,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#FFF5F7] via-[#FFEBEF] to-[#FAD0DC] flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden">
+    <div className="min-h-screen bg-[url('https://images.unsplash.com/photo-1632345031435-8797b2d58045?q=80&w=1200&auto=format&fit=crop')] bg-cover bg-center flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden">
       
+      {/* Background Pink/Rose overlay to ensure premium branding and readability */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#FFF5F7]/85 via-[#FFEBEF]/90 to-[#FAD0DC]/95 backdrop-blur-[1px] pointer-events-none" />
+
       {/* Decorative ambient glowing circles */}
       <div className="absolute top-[-10%] left-[-10%] w-72 h-72 rounded-full bg-[#FFD1DC] opacity-40 blur-3xl pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 rounded-full bg-[#E57399] opacity-20 blur-3xl pointer-events-none" />
@@ -284,8 +287,36 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                         className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
                       />
                       <div>
-                        <span className="font-semibold text-xs block">{s.nome}</span>
-                        <span className="text-[10px] text-[#A88690]">{s.duracao_minutos} min</span>
+                        <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
+                        {s.descricao && (
+                          <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
+                            {s.descricao}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
+                        
+                        {/* Se for Pacote, detalha os serviços internos para o cliente */}
+                        {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
+                          <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
+                            <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
+                            {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
+                              const sub = servicos.find(item => item.id === det.servico_id);
+                              return sub ? (
+                                <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
+                                  <div className="flex justify-between font-bold text-[#5A3F45]">
+                                    <span>{det.quantidade}x {sub.nome}</span>
+                                  </div>
+                                  {sub.descricao && (
+                                    <span className="text-[8px] text-[#A88690] leading-snug italic">"{sub.descricao}"</span>
+                                  )}
+                                  <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
+                                    <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
+                                  </span>
+                                </div>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>

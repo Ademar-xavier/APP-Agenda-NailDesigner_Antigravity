@@ -40,29 +40,30 @@ export const Servicos: React.FC = () => {
   const [sinalTipo, setSinalTipo] = useState<Servico['sinal_tipo']>('nenhum');
   const [sinalValor, setSinalValor] = useState(0);
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
+  const [descricao, setDescricao] = useState('');
   
   // Lista de materiais vinculados ao serviço
   const [materiaisSelecionados, setMateriaisSelecionados] = useState<{ material_id: string; quantidade: number }[]>([]);
 
   // Pacotes/Combos
   const [isPacote, setIsPacote] = useState(false);
-  const [servicosPacote, setServicosPacote] = useState<string[]>([]);
+  const [servicosPacoteDetalhes, setServicosPacoteDetalhes] = useState<{ servico_id: string; quantidade: number }[]>([]);
 
-  // Duração somada dos sub-serviços do pacote
+  // Duração somada dos sub-serviços do pacote considerando as quantidades
   const duracaoPacoteSomada = useMemo(() => {
-    return servicosPacote.reduce((acc, id) => {
-      const s = servicos.find(item => item.id === id);
-      return acc + (s?.duracao_minutos || 0);
+    return servicosPacoteDetalhes.reduce((acc, item) => {
+      const s = servicos.find(sub => sub.id === item.servico_id);
+      return acc + ((s?.duracao_minutos || 0) * item.quantidade);
     }, 0);
-  }, [servicosPacote, servicos]);
+  }, [servicosPacoteDetalhes, servicos]);
 
-  // Preço sugerido (soma) dos sub-serviços do pacote
+  // Preço sugerido (soma) dos sub-serviços do pacote considerando as quantidades
   const precoPacoteSugerido = useMemo(() => {
-    return servicosPacote.reduce((acc, id) => {
-      const s = servicos.find(item => item.id === id);
-      return acc + (s?.preco || 0);
+    return servicosPacoteDetalhes.reduce((acc, item) => {
+      const s = servicos.find(sub => sub.id === item.servico_id);
+      return acc + ((s?.preco || 0) * item.quantidade);
     }, 0);
-  }, [servicosPacote, servicos]);
+  }, [servicosPacoteDetalhes, servicos]);
 
   // Custo Estimado Calculado
   const custoCalculado = useMemo(() => {
@@ -90,9 +91,10 @@ export const Servicos: React.FC = () => {
     setSinalTipo('nenhum');
     setSinalValor(0);
     setIntervaloManutencaoDias(20);
+    setDescricao('');
     setMateriaisSelecionados([]);
     setIsPacote(false);
-    setServicosPacote([]);
+    setServicosPacoteDetalhes([]);
     setModalOpen(true);
   };
 
@@ -113,9 +115,10 @@ export const Servicos: React.FC = () => {
     setSinalTipo(serv.sinal_tipo);
     setSinalValor(serv.sinal_valor);
     setIntervaloManutencaoDias(serv.intervalo_manutencao_dias);
+    setDescricao(serv.descricao || '');
     setMateriaisSelecionados(serv.materiais_utilizados || []);
     setIsPacote(serv.is_pacote || false);
-    setServicosPacote(serv.servicos_pacote || []);
+    setServicosPacoteDetalhes(serv.servicos_pacote_detalhes || (serv.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })));
     setModalOpen(true);
   };
 
@@ -144,7 +147,9 @@ export const Servicos: React.FC = () => {
       custo_estimado: isPacote ? 0 : custoCalculado,
       materiais_utilizados: isPacote ? [] : materiaisSelecionados,
       is_pacote: isPacote,
-      servicos_pacote: isPacote ? servicosPacote : []
+      servicos_pacote: isPacote ? servicosPacoteDetalhes.map(d => d.servico_id) : [],
+      servicos_pacote_detalhes: isPacote ? servicosPacoteDetalhes : [],
+      descricao
     };
 
     if (servicoEdicao) {
@@ -211,17 +216,26 @@ export const Servicos: React.FC = () => {
 
                 <div className="mt-3">
                   <h3 className="font-bold text-sm text-[#5A4535]">{s.nome}</h3>
+                  {s.descricao && (
+                    <p className="text-[10px] text-[#8C7A6B] mt-1 leading-relaxed line-clamp-2 italic">
+                      "{s.descricao}"
+                    </p>
+                  )}
                   
                   <div className="mt-4 space-y-2 text-xs text-[#8C7A6B]">
                     <div className="flex items-center gap-1.5">
-                      <Clock size={13} className="text-[#8C6D58]" />
-                      <span>Duração: <strong>{s.duracao_minutos} minutos</strong></span>
+                      <Clock size={13} className="text-[#8C7A6B]" />
+                      <span>Duração total: <strong>{s.duracao_minutos} minutos</strong></span>
                     </div>
                     {s.sinal_tipo !== 'nenhum' && (
                       <div className="flex items-center gap-1.5">
-                        <DollarSign size={13} className="text-[#4FA97A]" />
+                        <DollarSign size={13} className="text-amber-600" />
                         <span>
-                          Sinal: <strong>{s.sinal_tipo === 'fixo' ? formatarMoeda(s.sinal_valor) : `${s.sinal_valor}%`}</strong>
+                          Sinal Exigido: <strong>
+                            {s.sinal_tipo === 'fixo' 
+                              ? formatarMoeda(s.sinal_valor) 
+                              : `${s.sinal_valor}% (${formatarMoeda(s.preco * s.sinal_valor / 100)})`}
+                          </strong>
                         </span>
                       </div>
                     )}
@@ -239,18 +253,18 @@ export const Servicos: React.FC = () => {
                         <span>Insumos Vinculados: <strong>{s.materiais_utilizados.length} itens</strong></span>
                       </div>
                     )}
-                    {s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0 && (
+                    {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
                       <div className="flex items-start gap-1.5 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] text-[11px] text-[#5A4535]">
                         <Sparkles size={12} className="text-[#8C6D58] mt-0.5 shrink-0" />
                         <div className="w-full">
                           <span className="font-bold block mb-1">Serviços inclusos:</span>
                           <div className="space-y-1 w-full">
-                            {s.servicos_pacote.map(subId => {
-                              const sub = servicos.find(item => item.id === subId);
+                            {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
+                              const sub = servicos.find(item => item.id === det.servico_id);
                               return sub ? (
-                                <div key={subId} className="flex justify-between w-full text-[10px] text-[#8C7A6B]">
-                                  <span>• {sub.nome}</span>
-                                  <span className="font-semibold text-[#5A4535] shrink-0">{sub.duracao_minutos} min</span>
+                                <div key={idx} className="flex justify-between w-full text-[10px] text-[#8C7A6B]">
+                                  <span>• <strong className="text-[#8C6D58]">{det.quantidade}x</strong> {sub.nome}</span>
+                                  <span className="font-semibold text-[#5A4535] shrink-0">{sub.duracao_minutos * det.quantidade} min</span>
                                 </div>
                               ) : null;
                             })}
@@ -320,6 +334,18 @@ export const Servicos: React.FC = () => {
                   />
                 </div>
 
+                {/* Descrição do Serviço */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Descrição do Serviço (Visível para o Cliente)</label>
+                  <textarea 
+                    rows={2}
+                    value={descricao}
+                    onChange={(e) => setDescricao(e.target.value)}
+                    placeholder="Descreva detalhes ou orientações sobre este serviço..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6] resize-none"
+                  />
+                </div>
+
                 {/* Categoria */}
                 <div>
                   <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
@@ -363,7 +389,7 @@ export const Servicos: React.FC = () => {
                     type="number" 
                     required
                     min={0}
-                    value={preco}
+                    value={preco === 0 ? '' : preco}
                     onChange={(e) => setPreco(Number(e.target.value))}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   />
@@ -380,7 +406,7 @@ export const Servicos: React.FC = () => {
                       if (e.target.checked) {
                         setMateriaisSelecionados([]);
                       } else {
-                        setServicosPacote([]);
+                        setServicosPacoteDetalhes([]);
                       }
                     }}
                     className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
@@ -401,32 +427,66 @@ export const Servicos: React.FC = () => {
                     {servicos.filter(s => !s.is_pacote && s.id !== servicoEdicao?.id).length === 0 ? (
                       <p className="text-[10px] text-[#8C7A6B] italic">Nenhum serviço individual cadastrado para compor o pacote.</p>
                     ) : (
-                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                         {servicos.filter(s => !s.is_pacote && s.id !== servicoEdicao?.id).map(s => {
-                          const checked = servicosPacote.includes(s.id);
+                          const itemDetalhe = servicosPacoteDetalhes.find(d => d.servico_id === s.id);
+                          const checked = !!itemDetalhe;
+                          const qtd = itemDetalhe?.quantidade || 1;
+                          
                           return (
-                            <div key={s.id} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-[#EFECE6] text-xs">
-                              <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input 
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setServicosPacote(prev => [...prev, s.id]);
-                                    } else {
-                                      setServicosPacote(prev => prev.filter(id => id !== s.id));
-                                    }
-                                  }}
-                                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
-                                />
-                                <div>
-                                  <span className="font-semibold block text-[#5A4535]">{s.nome}</span>
-                                  <span className="text-[9px] text-[#8C7A6B]">
-                                    Duração: {s.duracao_minutos} min · Retorno em: {s.intervalo_manutencao_dias > 0 ? `${s.intervalo_manutencao_dias} dias` : 'Sem retorno'}
-                                  </span>
+                            <div key={s.id} className="flex flex-col gap-2 p-2.5 bg-white rounded-lg border border-[#EFECE6] text-xs">
+                              <div className="flex items-center justify-between">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setServicosPacoteDetalhes(prev => [...prev, { servico_id: s.id, quantidade: 1 }]);
+                                      } else {
+                                        setServicosPacoteDetalhes(prev => prev.filter(d => d.servico_id !== s.id));
+                                      }
+                                    }}
+                                    className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                  />
+                                  <div>
+                                    <span className="font-semibold block text-[#5A4535]">{s.nome}</span>
+                                    <span className="text-[9px] text-[#8C7A6B]">
+                                      Duração: {s.duracao_minutos} min · Retorno: {s.intervalo_manutencao_dias > 0 ? `${s.intervalo_manutencao_dias} dias` : 'Sem retorno'}
+                                    </span>
+                                  </div>
+                                </label>
+                                <span className="font-bold text-[#8C6D58]">{formatarMoeda(s.preco)}</span>
+                              </div>
+                              
+                              {/* Se selecionado, permite escolher quantidade */}
+                              {checked && (
+                                <div className="flex items-center justify-between pt-1.5 border-t border-[#FAF9F6] text-[10px]">
+                                  <span className="text-[#8C7A6B] font-semibold">Quantidade no pacote:</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={qtd <= 1}
+                                      onClick={() => {
+                                        setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade - 1 } : d));
+                                      }}
+                                      className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535] disabled:opacity-50"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="font-bold w-4 text-center text-xs text-[#5A4535]">{qtd}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade + 1 } : d));
+                                      }}
+                                      className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535]"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </div>
-                              </label>
-                              <span className="font-bold text-[#8C6D58]">{formatarMoeda(s.preco)}</span>
+                              )}
                             </div>
                           );
                         })}
@@ -465,7 +525,7 @@ export const Servicos: React.FC = () => {
                         type="number" 
                         required
                         min={10}
-                        value={duracaoMinutos}
+                        value={duracaoMinutos === 0 ? '' : duracaoMinutos}
                         onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                       />
@@ -564,7 +624,7 @@ export const Servicos: React.FC = () => {
                         <input 
                           type="number"
                           min={0}
-                          value={sinalValor}
+                          value={sinalValor === 0 ? '' : sinalValor}
                           onChange={(e) => setSinalValor(Number(e.target.value))}
                           className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
                         />
@@ -578,7 +638,7 @@ export const Servicos: React.FC = () => {
                       <input 
                         type="number"
                         min={0}
-                        value={intervaloManutencaoDias}
+                        value={intervaloManutencaoDias === 0 ? '' : intervaloManutencaoDias}
                         onChange={(e) => setIntervaloManutencaoDias(Number(e.target.value))}
                         className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
                       />
