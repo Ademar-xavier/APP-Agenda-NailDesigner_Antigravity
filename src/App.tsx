@@ -28,6 +28,38 @@ function AppContent() {
     });
   }, [currentView]);
 
+  // Patch global confirm/alert para reatar foco ao webview após janelas nativas
+  useEffect(() => {
+    const originalConfirm = window.confirm;
+    const originalAlert = window.alert;
+
+    window.confirm = (message?: string) => {
+      const result = originalConfirm(message);
+      setTimeout(() => {
+        window.focus();
+        document.body.focus();
+        const active = document.activeElement as HTMLElement;
+        if (active && typeof active.blur === 'function') {
+          active.blur();
+        }
+      }, 150);
+      return result;
+    };
+
+    window.alert = (message?: any) => {
+      originalAlert(message);
+      setTimeout(() => {
+        window.focus();
+        document.body.focus();
+      }, 150);
+    };
+
+    return () => {
+      window.confirm = originalConfirm;
+      window.alert = originalAlert;
+    };
+  }, []);
+
   // Controle global de abertura do modal de novo agendamento
   const [isNewAgendamentoModalOpen, setIsNewAgendamentoModalOpen] = useState<boolean>(false);
 

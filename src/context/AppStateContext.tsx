@@ -117,16 +117,7 @@ const servicosIniciais: Servico[] = [
 ];
 
 const clientesIniciais: Cliente[] = [
-  { id: 'c1', nome: 'Ana Souza', telefone: '(35) 98765-4321', email: 'ana.souza@gmail.com', aniversario: '1995-05-12', observacoes: 'Prefere lixar bem os cantinhos. Gosta de tons nude.', alergias: 'Nenhuma', preferencias: { formato: 'Quadrada', tamanho: 'Médio', tecnica: 'Gel', cores: 'Tons Nude', estilo: 'Clássico' }, consentimento_imagem: true, criado_em: '2026-06-01T10:00:00Z' },
-  { id: 'c2', nome: 'Beatriz Silva', telefone: '(35) 97654-3210', email: 'beatriz.silva@hotmail.com', aniversario: '1988-08-20', observacoes: 'Unha muito fina, cuidado na preparação com a lixa elétrica.', alergias: 'Esmalte comum (usar hipoalergênico)', preferencias: { formato: 'Amendoada', tamanho: 'Curto', tecnica: 'Banho de Gel', cores: 'Vermelho e Vinho', estilo: 'Minimalista' }, consentimento_imagem: true, criado_em: '2026-06-15T14:30:00Z' },
-  { id: 'c3', nome: 'Carla Santos', telefone: '(35) 96543-2109', aniversario: '1999-12-05', observacoes: 'Cutícula fina que sangra fácil.', alergias: 'Nenhuma', preferencias: { formato: 'Redonda', tamanho: 'Médio', tecnica: 'Combo mão + pé', cores: 'Rosa Claro', estilo: 'Delicado' }, consentimento_imagem: false, criado_em: '2026-07-10T11:15:00Z' },
-  { id: 'c4', nome: 'Diana Pereira', telefone: '(35) 95432-1098', email: 'diana.p@outlook.com', aniversario: '1992-03-28', observacoes: 'Trabalha no teclado o dia todo, reforçar o ponto de tensão.', alergias: 'Nenhuma', preferencias: { formato: 'Stiletto', tamanho: 'Longo', tecnica: 'Alongamento em fibra', cores: 'Preto e Glitter', estilo: 'Ousado' }, consentimento_imagem: true, criado_em: '2026-07-22T09:00:00Z' },
-  { id: 'c5', nome: 'Elisa Lima', telefone: '(35) 94321-0987', aniversario: '2001-10-15', observacoes: 'Costuma roer unhas quando está ansiosa.', alergias: 'Nenhuma', preferencias: { formato: 'Oval', tamanho: 'Curto', tecnica: 'Esmaltação em gel', cores: 'Azul e Tons Pastel', estilo: 'Moderno' }, consentimento_imagem: true, criado_em: '2026-08-01T16:00:00Z' },
-  { id: 'c6', nome: 'Ana Beatriz Souza', telefone: '(35) 98877-6655', preferencias: { tecnica: 'Esmaltação em gel' }, consentimento_imagem: true, criado_em: '2026-08-20T10:00:00Z' },
-  { id: 'c7', nome: 'Elaine Cristina', telefone: '11991234005', preferencias: { tecnica: 'Manicure tradicional' }, consentimento_imagem: true, criado_em: '2026-08-28T10:00:00Z' },
-  { id: 'c8', nome: 'Juliana Castro', telefone: '11988887777', preferencias: { tecnica: 'Esmaltação em gel' }, consentimento_imagem: true, criado_em: '2026-08-28T11:00:00Z' },
-  { id: 'c9', nome: 'Fernanda Lima', telefone: '11977776666', preferencias: { tecnica: 'Esmaltação em gel' }, consentimento_imagem: true, criado_em: '2026-08-28T12:00:00Z' },
-  { id: 'c10', nome: 'Camille Duarte', telefone: '11966665555', preferencias: { tecnica: 'Esmaltação em gel' }, consentimento_imagem: true, criado_em: '2026-08-28T13:00:00Z' }
+  { id: 'c1', nome: 'Ana Souza', telefone: '(35) 98765-4321', email: 'ana.souza@gmail.com', aniversario: '1995-05-12', observacoes: 'Prefere lixar bem os cantinhos. Gosta de tons nude.', alergias: 'Nenhuma', preferencias: { formato: 'Quadrada', tamanho: 'Médio', tecnica: 'Gel', cores: 'Tons Nude', estilo: 'Clássico' }, consentimento_imagem: true, criado_em: '2026-06-01T10:00:00Z' }
 ];
 
 // Equipe inicial com dados reais
@@ -256,21 +247,20 @@ const itensAgendamentoMock: { [agendamentoId: string]: string[] } = {
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [clientes, setClientes] = useState<Cliente[]>(() => {
     const saved = localStorage.getItem('nail_clientes');
-    const parsed = saved ? JSON.parse(saved) : [];
-    // Migration: ensure we have at least 10 clients to match the screenshot list
-    return parsed.length >= 10 ? parsed : clientesIniciais;
+    const seeded = localStorage.getItem('nail_app_seeded');
+    return (seeded === 'true' && saved) ? JSON.parse(saved) : clientesIniciais;
   });
   
   const [servicos, setServicos] = useState<Servico[]>(() => {
     const saved = localStorage.getItem('nail_servicos');
-    const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.length >= 9 ? parsed : servicosIniciais;
+    const seeded = localStorage.getItem('nail_app_seeded');
+    return (seeded === 'true' && saved) ? JSON.parse(saved) : servicosIniciais;
   });
 
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(() => {
     const saved = localStorage.getItem('nail_agendamentos');
-    const parsed = saved ? JSON.parse(saved) : [];
-    return parsed.length >= 20 ? parsed : agendamentosIniciais;
+    const seeded = localStorage.getItem('nail_app_seeded');
+    return (seeded === 'true' && saved) ? JSON.parse(saved) : agendamentosIniciais;
   });
 
   const [pagamentos, setPagamentos] = useState<Pagamento[]>(() => {
@@ -290,8 +280,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [itensAgendamento, setItensAgendamento] = useState<{ [key: string]: string[] }>(() => {
     const saved = localStorage.getItem('nail_itens_agendamento');
-    const parsed = saved ? JSON.parse(saved) : {};
-    return Object.keys(parsed).length >= 15 ? parsed : itensAgendamentoMock;
+    const seeded = localStorage.getItem('nail_app_seeded');
+    return (seeded === 'true' && saved) ? JSON.parse(saved) : itensAgendamentoMock;
   });
 
   // Estado de Equipe e Autenticação
@@ -347,6 +337,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   // Salvar no LocalStorage sempre que houver modificações
+  useEffect(() => {
+    localStorage.setItem('nail_app_seeded', 'true');
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('nail_clientes', JSON.stringify(clientes));
   }, [clientes]);

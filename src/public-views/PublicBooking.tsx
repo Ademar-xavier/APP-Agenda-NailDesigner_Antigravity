@@ -204,7 +204,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[url('https://images.unsplash.com/photo-1632345031435-8797b2d58045?q=80&w=1200&auto=format&fit=crop')] bg-cover bg-center flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden">
+    <div 
+      className="min-h-screen bg-cover bg-center flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden"
+      style={{ backgroundImage: "url('https://images.unsplash.com/photo-1632345031435-8797b2d58045?q=80&w=1200&auto=format&fit=crop')" }}
+    >
       
       {/* Background Pink/Rose overlay to ensure premium branding and readability */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#FFF5F7]/85 via-[#FFEBEF]/90 to-[#FAD0DC]/95 backdrop-blur-[1px] pointer-events-none" />
