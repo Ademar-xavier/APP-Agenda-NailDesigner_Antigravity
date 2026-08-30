@@ -206,11 +206,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
   return (
     <div 
       className="min-h-screen bg-cover bg-center flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden"
-      style={{ backgroundImage: "url('/bg_nail.jpg')" }}
+      style={{ backgroundImage: "url('bg_nail.jpg')" }}
     >
       
       {/* Background Pink/Rose overlay to ensure premium branding and readability */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#FFF5F7]/85 via-[#FFEBEF]/90 to-[#FAD0DC]/95 backdrop-blur-[1px] pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#FFF5F7]/40 via-[#FFEBEF]/55 to-[#FAD0DC]/70 backdrop-blur-[1px] pointer-events-none" />
 
       {/* Decorative ambient glowing circles */}
       <div className="absolute top-[-10%] left-[-10%] w-72 h-72 rounded-full bg-[#FFD1DC] opacity-40 blur-3xl pointer-events-none" />

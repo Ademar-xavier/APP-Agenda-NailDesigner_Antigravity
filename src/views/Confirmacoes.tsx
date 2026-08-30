@@ -276,6 +276,25 @@ export const Confirmacoes: React.FC = () => {
     window.open(url, '_blank');
   };
 
+  const handleRemoverListaEspera = (w: ListaEspera) => {
+    const client = clientes.find(c => c.id === w.cliente_id);
+    if (!client) return;
+
+    if (confirm(`Deseja realmente remover ${client.nome} da lista de espera e enviar o aviso de impossibilidade de encaixe por WhatsApp?`)) {
+      updateListaEsperaStatus(w.id, 'cancelado');
+      
+      const fone = client.telefone.replace(/\D/g, '');
+      const dataFormatada = w.data_preferida.split('-').reverse().join('/');
+      const periodoLabel = w.periodo_preferido === 'manha' ? 'Manhã' : 
+                           w.periodo_preferido === 'tarde' ? 'Tarde' : 
+                           w.periodo_preferido === 'noite' ? 'Noite' : 'Qualquer Período';
+      
+      const msg = `Olá, ${client.nome}! Infelizmente não conseguimos uma vaga para encaixe no dia ${dataFormatada} (${periodoLabel}) como solicitado. Havendo novas oportunidades e desistências futuras, entraremos em contato. Agradecemos muito a sua compreensão! 💕`;
+      
+      window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+  };
+
   // Horários disponíveis para seleção na lista de espera (das 08:00 às 20:00)
   const horasExpediente = Array.from({ length: 25 }, (_, i) => {
     const hora = 8 + Math.floor(i / 2);
@@ -489,11 +508,7 @@ export const Confirmacoes: React.FC = () => {
                         <span>Definir horário e agendar</span>
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('Deseja realmente remover esta cliente da lista de espera?')) {
-                            updateListaEsperaStatus(w.id, 'cancelado');
-                          }
-                        }}
+                        onClick={() => handleRemoverListaEspera(w)}
                         className="flex items-center gap-1 px-2.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl text-xs font-bold transition-all"
                         title="Remover da lista de espera"
                       >

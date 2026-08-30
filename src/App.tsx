@@ -28,39 +28,7 @@ function AppContent() {
     });
   }, [currentView]);
 
-  // Patch global confirm/alert para reatar foco ao webview após janelas nativas
-  useEffect(() => {
-    const originalConfirm = window.confirm;
-    const originalAlert = window.alert;
-
-    window.confirm = (message?: string) => {
-      const result = originalConfirm(message);
-      setTimeout(() => {
-        window.focus();
-        document.body.focus();
-        const active = document.activeElement as HTMLElement;
-        if (active && typeof active.blur === 'function') {
-          active.blur();
-        }
-      }, 150);
-      return result;
-    };
-
-    window.alert = (message?: any) => {
-      originalAlert(message);
-      setTimeout(() => {
-        window.focus();
-        document.body.focus();
-      }, 150);
-    };
-
-    return () => {
-      window.confirm = originalConfirm;
-      window.alert = originalAlert;
-    };
-  }, []);
-
-  // Efeito para acordar o cursor (caret) no Android WebView
+  // Patch global confirm/alert e acordar o cursor (caret) no Android WebView após janelas nativas
   useEffect(() => {
     const wakeUpCaret = () => {
       const input = document.createElement('input');
@@ -81,29 +49,55 @@ function AppContent() {
             if (document.body.contains(input)) {
               document.body.removeChild(input);
             }
-            window.focus();
           }, 50);
         } catch (e) {
           console.error(e);
         }
-      }, 100);
+      }, 50);
     };
 
-    // Acorda ao inicializar
+    // Chamar no início
     wakeUpCaret();
-    
-    // Acorda no primeiro toque do usuário para garantir ativação
-    const handleFirstTouch = () => {
-      wakeUpCaret();
-      window.removeEventListener('touchstart', handleFirstTouch);
-      window.removeEventListener('click', handleFirstTouch);
+
+    // Patch confirm/alert
+    const originalConfirm = window.confirm;
+    const originalAlert = window.alert;
+
+    window.confirm = (message?: string) => {
+      const result = originalConfirm(message);
+      setTimeout(() => {
+        window.focus();
+        document.body.focus();
+        wakeUpCaret();
+      }, 150);
+      return result;
     };
-    window.addEventListener('touchstart', handleFirstTouch);
-    window.addEventListener('click', handleFirstTouch);
-    
+
+    window.alert = (message?: any) => {
+      originalAlert(message);
+      setTimeout(() => {
+        window.focus();
+        document.body.focus();
+        wakeUpCaret();
+      }, 150);
+    };
+
+    // Acordar também ao ganhar foco na janela (ex: voltando pro app ou fechando janelas nativas)
+    window.addEventListener('focus', wakeUpCaret);
+
+    // Acordar em toques/cliques na tela para assegurar reconexão contínua
+    const handleTouch = () => {
+      wakeUpCaret();
+    };
+    window.addEventListener('touchstart', handleTouch);
+    window.addEventListener('click', handleTouch);
+
     return () => {
-      window.removeEventListener('touchstart', handleFirstTouch);
-      window.removeEventListener('click', handleFirstTouch);
+      window.confirm = originalConfirm;
+      window.alert = originalAlert;
+      window.removeEventListener('focus', wakeUpCaret);
+      window.removeEventListener('touchstart', handleTouch);
+      window.removeEventListener('click', handleTouch);
     };
   }, []);
 

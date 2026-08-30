@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   Calendar, 
@@ -12,7 +12,9 @@ import {
   User as UserIcon,
   CheckCircle,
   Package,
-  ClipboardList
+  ClipboardList,
+  Menu,
+  X
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 
@@ -30,6 +32,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsAdmin 
 }) => {
   const { configSalao, currentUser, logout } = useAppState();
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const allMenuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
@@ -166,13 +169,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
         {currentUser?.perfil === 'admin' ? (
           <button
-            onClick={() => setCurrentView('configuracoes')}
+            onClick={() => setShowMobileMenu(true)}
             className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-              currentView === 'configuracoes' ? 'text-[#8C6D58]' : 'text-[#8C7A6B]'
+              showMobileMenu ? 'text-[#8C6D58]' : 'text-[#8C7A6B]'
             }`}
           >
-            <Settings size={20} className={currentView === 'configuracoes' ? 'text-[#8C6D58]' : 'text-[#8C7A6B]'} />
-            <span className="mt-1">Config</span>
+            <Menu size={20} className={showMobileMenu ? 'text-[#8C6D58]' : 'text-[#8C7A6B]'} />
+            <span className="mt-1">Mais</span>
           </button>
         ) : (
           <button
@@ -184,6 +187,78 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
       </nav>
+
+      {/* Mobile Slide-up Menu Sheet */}
+      {showMobileMenu && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center md:hidden"
+          onClick={() => setShowMobileMenu(false)}
+        >
+          <div 
+            className="bg-white w-full rounded-t-3xl max-h-[80vh] flex flex-col shadow-2xl border-t border-[#EFECE6] p-6 animate-in slide-in-from-bottom duration-200 pb-16"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center border-b border-[#EFECE6] pb-3 mb-4">
+              <h3 className="font-serif font-bold text-base text-[#5A4535]">Menu Completo</h3>
+              <button 
+                onClick={() => setShowMobileMenu(false)}
+                className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[50vh] pr-1">
+              {/* Remaining items starting from index 4 */}
+              {menuItems.slice(4).map((item) => {
+                const Icon = item.icon;
+                const active = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCurrentView(item.id);
+                      setShowMobileMenu(false);
+                    }}
+                    className={`flex items-center gap-3 p-3.5 rounded-2xl text-xs font-semibold transition-all border ${
+                      active 
+                        ? 'bg-[#8C6D58] border-[#8C6D58] text-white shadow-sm' 
+                        : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535] hover:bg-[#F3ECE0]'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    <span>{item.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-[#EFECE6] space-y-2">
+              <button
+                onClick={() => {
+                  setIsAdmin(false);
+                  setShowMobileMenu(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl text-xs font-bold text-[#8C6D58] hover:bg-[#F3ECE0] transition-colors"
+              >
+                <ExternalLink size={14} />
+                <span>Ver Link de Agendamento</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  logout();
+                  setShowMobileMenu(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 p-3 bg-white border border-red-100 hover:bg-red-50 rounded-2xl text-xs font-bold text-[#C81E1E] transition-colors"
+              >
+                <LogOut size={14} />
+                <span>Sair da Conta</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
