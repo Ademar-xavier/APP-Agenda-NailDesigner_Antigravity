@@ -536,9 +536,9 @@ export const Clientes: React.FC<ClientesProps> = ({
 
       {/* --- MODAL NOVA/EDITAR CLIENTE --- */}
       {novoClienteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">{clienteEdicao ? 'Editar Cliente' : 'Nova Cliente'}</h3>
                 <p className="text-xs text-[#8C7A6B] mt-0.5">Cadastre uma cliente e suas preferências de esmaltação/técnica</p>
@@ -551,144 +551,146 @@ export const Clientes: React.FC<ClientesProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSalvarCliente} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome Completo</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    placeholder="Ex: Amanda Santos"
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={telefone}
-                    onChange={(e) => setTelefone(e.target.value)}
-                    placeholder="Ex: (11) 99999-9999"
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Email (Opcional)</label>
-                  <input 
-                    type="email" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Ex: amanda@email.com"
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Aniversário (Opcional)</label>
-                  <input 
-                    type="date" 
-                    value={aniversario}
-                    onChange={(e) => setAniversario(e.target.value)}
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                  />
-                </div>
-              </div>
-
-              {/* Ficha técnica */}
-              <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
-                <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5">Ficha e Preferências de Unha</h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <form onSubmit={handleSalvarCliente} className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Formato</label>
-                    <select
-                      value={formato}
-                      onChange={(e) => setFormato(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
-                    >
-                      {formatos.map(f => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome Completo</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      placeholder="Ex: Amanda Santos"
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    />
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={telefone}
+                      onChange={(e) => setTelefone(e.target.value)}
+                      placeholder="Ex: (11) 99999-9999"
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Email (Opcional)</label>
+                    <input 
+                      type="email" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Ex: amanda@email.com"
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Aniversário (Opcional)</label>
+                    <input 
+                      type="date" 
+                      value={aniversario}
+                      onChange={(e) => setAniversario(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    />
+                  </div>
+                </div>
+
+                {/* Ficha técnica */}
+                <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                  <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5">Ficha e Preferências de Unha</h4>
                   
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Tamanho</label>
-                    <select
-                      value={tamanho}
-                      onChange={(e) => setTamanho(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
-                    >
-                      <option value="Curto">Curto</option>
-                      <option value="Médio">Médio</option>
-                      <option value="Longo">Longo</option>
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Formato</label>
+                      <select
+                        value={formato}
+                        onChange={(e) => setFormato(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                      >
+                        {formatos.map(f => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Tamanho</label>
+                      <select
+                        value={tamanho}
+                        onChange={(e) => setTamanho(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                      >
+                        <option value="Curto">Curto</option>
+                        <option value="Médio">Médio</option>
+                        <option value="Longo">Longo</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Técnica</label>
+                      <select
+                        value={tecnica}
+                        onChange={(e) => setTecnica(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                      >
+                        {tecnicas.map(t => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Técnica</label>
-                    <select
-                      value={tecnica}
-                      onChange={(e) => setTecnica(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
-                    >
-                      {tecnicas.map(t => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Cores Preferidas</label>
+                      <input 
+                        type="text" 
+                        value={cores}
+                        onChange={(e) => setCores(e.target.value)}
+                        placeholder="Ex: Tons pastéis, Vermelho..."
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Estilo (Opcional)</label>
+                      <input 
+                        type="text" 
+                        value={estilo}
+                        onChange={(e) => setEstilo(e.target.value)}
+                        placeholder="Ex: Minimalista / Delicado..."
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Cores Preferidas</label>
-                    <input 
-                      type="text" 
-                      value={cores}
-                      onChange={(e) => setCores(e.target.value)}
-                      placeholder="Ex: Tons pastéis, Vermelho..."
-                      className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Estilo (Opcional)</label>
-                    <input 
-                      type="text" 
-                      value={estilo}
-                      onChange={(e) => setEstilo(e.target.value)}
-                      placeholder="Ex: Minimalista / Delicado..."
-                      className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Restrições / Alergias</label>
+                  <input 
+                    type="text" 
+                    value={alergias}
+                    onChange={(e) => setAlergias(e.target.value)}
+                    placeholder="Ex: Alergia a esmaltes comuns contendo tolueno..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
+                  />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Restrições / Alergias</label>
-                <input 
-                  type="text" 
-                  value={alergias}
-                  onChange={(e) => setAlergias(e.target.value)}
-                  placeholder="Ex: Alergia a esmaltes comuns contendo tolueno..."
-                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Observações Internas</label>
-                <textarea 
-                  rows={2}
-                  value={observacoes}
-                  onChange={(e) => setObservacoes(e.target.value)}
-                  placeholder="Instruções específicas para o atendimento..."
-                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6] resize-none"
-                />
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Observações Internas</label>
+                  <textarea 
+                    rows={2}
+                    value={observacoes}
+                    onChange={(e) => setObservacoes(e.target.value)}
+                    placeholder="Instruções específicas para o atendimento..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6] resize-none"
+                  />
+                </div>
               </div>
 
               {/* Footer */}
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
                 <button
                   type="button"
                   onClick={() => setNovoClienteModal(false)}

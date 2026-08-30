@@ -204,28 +204,32 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF6F0] flex flex-col items-center justify-between pb-12 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-[#FFF5F7] via-[#FFEBEF] to-[#FAD0DC] flex flex-col items-center justify-between pb-12 font-sans relative overflow-hidden">
       
+      {/* Decorative ambient glowing circles */}
+      <div className="absolute top-[-10%] left-[-10%] w-72 h-72 rounded-full bg-[#FFD1DC] opacity-40 blur-3xl pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 rounded-full bg-[#E57399] opacity-20 blur-3xl pointer-events-none" />
+
       {/* Botão de Atalho Administrativo no Topo */}
-      <div className="w-full bg-[#8C6D58] text-white px-4 py-2 flex justify-between items-center text-xs">
-        <span className="flex items-center gap-1">
-          <Heart size={12} className="fill-white" />
-          <span>Agendamento de Clientes</span>
+      <div className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-4 py-2.5 flex justify-between items-center text-xs relative z-20 shadow-sm">
+        <span className="flex items-center gap-1.5 font-semibold">
+          <Heart size={12} className="fill-white animate-pulse" />
+          <span>Agendamento Online · Sheila Santos</span>
         </span>
         <button
           onClick={() => setIsAdmin(true)}
-          className="bg-white text-[#8C6D58] px-3 py-1 rounded-md font-bold hover:bg-[#FAF9F6] transition-colors"
+          className="bg-white text-[#C71585] px-3 py-1 rounded-lg font-bold hover:bg-[#FFF0F4] transition-colors shadow-sm"
         >
-          Voltar ao Painel Admin
+          Painel Administrativo
         </button>
       </div>
 
       {/* Conteúdo Principal do Fluxo */}
-      <main className="w-full max-w-md bg-white border border-[#EFECE6] rounded-3xl p-6 shadow-md mt-6 mx-4">
+      <main className="w-full max-w-md bg-white/95 backdrop-blur-sm border border-[#FAD0DC]/50 rounded-3xl p-6 shadow-xl mt-6 mx-4 relative z-10">
         
         {/* Header da Marca (Updated container background to match the black logo) */}
-        <div className="text-center mb-6 border-b border-[#FAF9F6] pb-4">
-          <div className="w-16 h-16 rounded-full bg-[#1A1A1A] border border-[#E8DEC9] mx-auto flex items-center justify-center mb-3 overflow-hidden">
+        <div className="text-center mb-6 border-b border-[#FFF0F4] pb-4">
+          <div className="w-20 h-20 rounded-full bg-[#1A1A1A] border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-md">
             <img 
               src="./logo.png" 
               alt="Logo Sheila" 
@@ -235,25 +239,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 const parent = e.currentTarget.parentElement;
                 if (parent) {
                   const span = document.createElement('span');
-                  span.className = 'text-xl font-serif text-[#8C6D58] font-extrabold';
+                  span.className = 'text-2xl font-serif text-[#DB7093] font-extrabold';
                   span.innerText = 'S';
                   parent.appendChild(span);
                 }
               }}
             />
           </div>
-          <h2 className="font-serif font-bold text-xl text-[#5A4535]">{configSalao.nome}</h2>
-          <p className="text-xs text-[#8C7A6B] mt-0.5">{configSalao.endereco}</p>
+          <h2 className="font-serif font-extrabold text-2xl text-[#5A3F45] tracking-wide">{configSalao.nome}</h2>
+          <p className="text-xs text-[#A88690] mt-1 font-medium">{configSalao.endereco}</p>
         </div>
 
         {/* STEP 1: SELEÇÃO DE SERVIÇOS */}
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div>
-              <h3 className="font-serif font-bold text-base text-[#5A4535]">Selecione os Serviços</h3>
-              <p className="text-xs text-[#8C7A6B] mt-0.5">Escolha os procedimentos que deseja realizar</p>
+              <h3 className="font-serif font-bold text-base text-[#5A3F45]">Selecione os Serviços</h3>
+              <p className="text-xs text-[#A88690] mt-0.5">Escolha os procedimentos que deseja realizar</p>
             </div>
-
+ 
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
               {servsDisponiveis.map(s => {
                 const checked = servicosSelecionados.includes(s.id);
@@ -262,8 +266,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                     key={s.id}
                     className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
                       checked 
-                        ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
-                        : 'bg-white border-[#EFECE6] hover:bg-[#FAF9F6] text-[#5A4535]'
+                        ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
+                        : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -277,11 +281,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                             setServicosSelecionados(prev => prev.filter(id => id !== s.id));
                           }
                         }}
-                        className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                        className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
                       />
                       <div>
                         <span className="font-semibold text-xs block">{s.nome}</span>
-                        <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
+                        <span className="text-[10px] text-[#A88690]">{s.duracao_minutos} min</span>
                       </div>
                     </div>
                     <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
@@ -289,25 +293,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 );
               })}
             </div>
-
+ 
             {/* Sumário */}
             {servicosSelecionados.length > 0 && (
-              <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs text-[#5A4535] space-y-1">
+              <div className="bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-xs text-[#5A3F45] space-y-1">
                 <div className="flex justify-between">
                   <span>Duração Total:</span>
                   <span className="font-bold">{duracaoTotal} minutos</span>
                 </div>
-                <div className="flex justify-between text-sm pt-1 border-t border-[#EFECE6]">
+                <div className="flex justify-between text-sm pt-1 border-t border-[#FAD0DC]/30">
                   <span className="font-bold">Valor Total:</span>
-                  <span className="font-extrabold text-[#8C6D58]">{formatarMoeda(precoTotal)}</span>
+                  <span className="font-extrabold text-[#C71585]">{formatarMoeda(precoTotal)}</span>
                 </div>
               </div>
             )}
-
+ 
             <button
               onClick={() => setStep(2)}
               disabled={servicosSelecionados.length === 0}
-              className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
               <span>Avançar para Data & Horário</span>
               <ChevronRight size={14} />
@@ -323,16 +327,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 <ChevronLeft size={16} />
               </button>
               <div>
-                <h3 className="font-serif font-bold text-base text-[#5A4535]">Escolha a Data & Horário</h3>
-                <p className="text-xs text-[#8C7A6B] mt-0.5">Selecione o dia e horário que melhor atendem você</p>
+                <h3 className="font-serif font-bold text-base text-[#5A3F45]">Escolha a Data & Horário</h3>
+                <p className="text-xs text-[#A88690] mt-0.5">Selecione o dia e horário que melhor atendem você</p>
               </div>
             </div>
 
             {/* Input de Data */}
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Selecione a Data</label>
-              <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6]">
-                <CalendarIcon size={14} className="text-[#8C6D58]" />
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Selecione a Data</label>
+              <div className="flex items-center gap-2 p-2.5 border border-[#FAD0DC]/50 rounded-xl bg-[#FFF5F7]/50">
+                <CalendarIcon size={14} className="text-[#DB7093]" />
                 <input 
                   type="date" 
                   min="2026-08-29"
@@ -341,23 +345,23 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                     setDataSelecionada(e.target.value);
                     setHorarioSelecionado('');
                   }}
-                  className="text-xs font-bold text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  className="text-xs font-bold text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
             </div>
 
             {/* Grid de Horários Livres */}
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-2">Horários Disponíveis</label>
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-2">Horários Disponíveis</label>
               {horariosDisponiveis.length === 0 ? (
                 <div className="space-y-4">
-                  <p className="text-xs text-[#D37F64] bg-[#F6ECE8] p-3 rounded-xl border border-[#F3ECE0] text-center font-medium">
+                  <p className="text-xs text-[#C71585] bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-center font-medium">
                     Sem horários livres nesta data para os serviços escolhidos.
                   </p>
                   <button
                     type="button"
                     onClick={() => setStep(5)}
-                    className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                    className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <Users size={14} />
                     <span>Entrar na Lista de Espera</span>
@@ -374,8 +378,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                         onClick={() => setHorarioSelecionado(slot)}
                         className={`py-2 rounded-xl text-xs font-bold transition-all ${
                           selected 
-                            ? 'bg-[#8C6D58] text-white shadow-sm' 
-                            : 'bg-white border border-[#EFECE6] hover:bg-[#FAF9F6] text-[#5A4535]'
+                            ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white shadow-sm' 
+                            : 'bg-white border border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
                         }`}
                       >
                         {slot}
@@ -391,7 +395,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 <button
                   onClick={() => setStep(3)}
                   disabled={!horarioSelecionado}
-                  className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                  className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                 >
                   <span>Avançar para Identificação</span>
                   <ChevronRight size={14} />
@@ -400,7 +404,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 <button
                   type="button"
                   onClick={() => setStep(5)}
-                  className="w-full bg-white border border-dashed border-[#8C6D58] text-[#8C6D58] hover:bg-[#FAF6F0] py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                  className="w-full bg-white border border-dashed border-[#DB7093] text-[#C71585] hover:bg-[#FFF0F4]/30 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                 >
                   <Users size={13} />
                   <span>Não encontrou seu horário? Entrar na lista de espera</span>
@@ -413,52 +417,52 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
         {/* STEP 3: IDENTIFICAÇÃO DO CLIENTE */}
         {step === 3 && (
           <form onSubmit={handleFinalizarAgendamento} className="space-y-4 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 border-b border-[#EFECE6] pb-3 mb-2">
-              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]">
+            <div className="flex items-center gap-2 border-b border-[#FAD0DC]/50 pb-3 mb-2">
+              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
                 <ChevronLeft size={16} />
               </button>
               <div>
-                <h3 className="font-serif font-bold text-base text-[#5A4535]">Seus Dados</h3>
-                <p className="text-xs text-[#8C7A6B] mt-0.5">Preencha com suas informações de contato</p>
+                <h3 className="font-serif font-bold text-base text-[#5A3F45]">Seus Dados</h3>
+                <p className="text-xs text-[#A88690] mt-0.5">Preencha com suas informações de contato</p>
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Seu Nome Completo</label>
-              <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl">
-                <User size={14} className="text-[#8C6D58]" />
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Seu Nome Completo</label>
+              <div className="flex items-center gap-2 p-2.5 border border-[#FAD0DC]/50 rounded-xl bg-white">
+                <User size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: Amanda Santos..."
                   value={nome} onChange={(e) => setNome(e.target.value)}
-                  className="text-xs text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp de Contato</label>
-              <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl">
-                <Phone size={14} className="text-[#8C6D58]" />
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">WhatsApp de Contato</label>
+              <div className="flex items-center gap-2 p-2.5 border border-[#FAD0DC]/50 rounded-xl bg-white">
+                <Phone size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: (35) 99999-9999"
                   value={telefone} onChange={(e) => setTelefone(e.target.value)}
-                  className="text-xs text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Alguma Observação? (Opcional)</label>
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Alguma Observação? (Opcional)</label>
               <textarea 
                 rows={2} placeholder="Se tiver preferências de cores, formatos ou alergias..."
                 value={observacoes} onChange={(e) => setObservacoes(e.target.value)}
-                className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] resize-none"
+                className="w-full border border-[#FAD0DC]/50 rounded-xl p-2.5 text-xs text-[#5A3F45] focus:outline-none focus:border-[#DB7093] resize-none"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
               <span>Concluir Agendamento</span>
               <Check size={14} />
@@ -468,36 +472,36 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
 
         {/* STEP 4: CONFIRMAÇÃO DO AGENDAMENTO */}
         {step === 4 && (
-          <div className="space-y-5 animate-in fade-in duration-200 text-[#5A4535]">
+          <div className="space-y-5 animate-in fade-in duration-200 text-[#5A3F45]">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center mx-auto">
                 <Check size={24} />
               </div>
-              <h3 className="font-serif font-bold text-lg">Agendamento Pré-Reservado!</h3>
-              <p className="text-xs text-[#8C7A6B]">
+              <h3 className="font-serif font-bold text-lg text-[#5A3F45]">Agendamento Pré-Reservado!</h3>
+              <p className="text-xs text-[#A88690]">
                 Olá, {nome}! Seu horário está garantido. Siga as orientações Pix abaixo para confirmá-lo.
               </p>
             </div>
 
             {/* Ficha Resumo */}
-            <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4 text-xs space-y-2">
+            <div className="bg-[#FFF5F7]/30 border border-[#FAD0DC]/50 rounded-2xl p-4 text-xs space-y-2">
               <div className="flex justify-between">
-                <span className="text-[#8C7A6B]">Código da Reserva:</span>
+                <span className="text-[#A88690]">Código da Reserva:</span>
                 <span className="font-bold">{codigoReserva}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#8C7A6B]">Data & Horário:</span>
+                <span className="text-[#A88690]">Data & Horário:</span>
                 <span className="font-bold">{formatarDataLocal(dataSelecionada)} às {horarioSelecionado}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#8C7A6B]">Procedimento(s):</span>
+                <span className="text-[#A88690]">Procedimento(s):</span>
                 <span className="font-bold text-right max-w-[180px] truncate">
                   {servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).join(' + ')}
                 </span>
               </div>
-              <div className="flex justify-between pt-2 border-t border-[#EFECE6] text-sm">
+              <div className="flex justify-between pt-2 border-t border-[#FAD0DC]/50 text-sm">
                 <span className="font-bold">Total do Atendimento:</span>
-                <span className="font-extrabold text-[#8C6D58]">{formatarMoeda(valorTotal)}</span>
+                <span className="font-extrabold text-[#C71585]">{formatarMoeda(valorTotal)}</span>
               </div>
             </div>
 
@@ -515,12 +519,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
 
                 <div className="flex items-center justify-between bg-white border border-[#FFEBAA] rounded-xl px-3 py-2">
                   <div className="overflow-hidden pr-2">
-                    <p className="text-[9px] font-bold text-[#8C7A6B] uppercase">Chave Pix Copia-e-Cola</p>
+                    <p className="text-[9px] font-bold text-[#A88690] uppercase">Chave Pix Copia-e-Cola</p>
                     <p className="font-semibold truncate text-[11px] mt-0.5">{configSalao.chave_pix}</p>
                   </div>
                   <button
                     onClick={handleCopiarPix}
-                    className="bg-[#FAF9F6] border border-[#EFECE6] text-xs font-bold text-[#8C6D58] px-3 py-1.5 rounded-lg shrink-0 active:bg-gray-100 transition-colors"
+                    className="bg-[#FFF5F7]/30 border border-[#FAD0DC]/50 text-xs font-bold text-[#C71585] px-3 py-1.5 rounded-lg shrink-0 active:bg-gray-100 transition-colors"
                   >
                     {copiado ? 'Copiado!' : 'Copiar'}
                   </button>
@@ -541,7 +545,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 setTelefone('');
                 setObservacoes('');
               }}
-              className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm"
+              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm"
             >
               Fazer outro Agendamento
             </button>
@@ -551,13 +555,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
         {/* STEP 5: FORMULÁRIO DE LISTA DE ESPERA (Waitlist Form) */}
         {step === 5 && (
           <form onSubmit={handleFinalizarListaEspera} className="space-y-4 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 border-b border-[#EFECE6] pb-3 mb-2">
-              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]">
+            <div className="flex items-center gap-2 border-b border-[#FAD0DC]/50 pb-3 mb-2">
+              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
                 <ChevronLeft size={16} />
               </button>
               <div>
-                <h3 className="font-serif font-bold text-base text-[#5A4535]">Entrar na Lista de Espera</h3>
-                <p className="text-xs text-[#8C7A6B] mt-0.5">Avise-nos de sua preferência caso surja alguma vaga</p>
+                <h3 className="font-serif font-bold text-base text-[#5A3F45]">Entrar na Lista de Espera</h3>
+                <p className="text-xs text-[#A88690] mt-0.5">Avise-nos de sua preferência caso surja alguma vaga</p>
               </div>
             </div>
 
@@ -568,35 +572,35 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
             )}
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Seu Nome Completo</label>
-              <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl">
-                <User size={14} className="text-[#8C6D58]" />
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Seu Nome Completo</label>
+              <div className="flex items-center gap-2 p-2.5 border border-[#FAD0DC]/50 rounded-xl bg-white">
+                <User size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: Amanda Santos..."
                   value={nome} onChange={(e) => setNome(e.target.value)}
-                  className="text-xs text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp de Contato</label>
-              <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl">
-                <Phone size={14} className="text-[#8C6D58]" />
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">WhatsApp de Contato</label>
+              <div className="flex items-center gap-2 p-2.5 border border-[#FAD0DC]/50 rounded-xl bg-white">
+                <Phone size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: (35) 99999-9999"
                   value={telefone} onChange={(e) => setTelefone(e.target.value)}
-                  className="text-xs text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Período de Preferência</label>
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Período de Preferência</label>
               <select
                 value={periodoPreferido}
                 onChange={(e: any) => setPeriodoPreferido(e.target.value)}
-                className="w-full border border-[#EFECE6] bg-white rounded-xl p-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                className="w-full border border-[#FAD0DC]/50 bg-white rounded-xl p-2.5 text-xs text-[#5A3F45] focus:outline-none focus:border-[#DB7093]"
               >
                 <option value="qualquer">Qualquer período</option>
                 <option value="manha">Período da Manhã</option>
@@ -605,14 +609,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
               </select>
             </div>
 
-            <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs text-[#8C7A6B]">
+            <div className="bg-[#FFF5F7]/30 p-3 rounded-xl border border-[#FAD0DC]/50 text-xs text-[#A88690]">
               <p>Data pretendida: <strong>{formatarDataLocal(dataSelecionada)}</strong></p>
               <p className="mt-1">Serviço: <strong>{servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).join(', ')}</strong></p>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
               <span>Confirmar na Lista de Espera</span>
               <Check size={14} />
@@ -622,16 +626,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
 
         {/* STEP 6: CONFIRMAÇÃO DA LISTA DE ESPERA (Waitlist Confirmation) */}
         {step === 6 && (
-          <div className="space-y-5 animate-in fade-in duration-200 text-[#5A4535] text-center">
+          <div className="space-y-5 animate-in fade-in duration-200 text-[#5A3F45] text-center">
             <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center mx-auto">
               <Check size={24} />
             </div>
-            <h3 className="font-serif font-bold text-lg">Inscrição Realizada com Sucesso!</h3>
-            <p className="text-xs text-[#8C7A6B] leading-relaxed">
+            <h3 className="font-serif font-bold text-lg text-[#5A3F45]">Inscrição Realizada com Sucesso!</h3>
+            <p className="text-xs text-[#A88690] leading-relaxed">
               Olá, <strong>{nome}</strong>! Você está na lista de espera para o dia <strong>{formatarDataLocal(dataSelecionada)}</strong> no período <strong>{periodoPreferido === 'qualquer' ? 'qualquer' : periodoPreferido}</strong>.
             </p>
             
-            <p className="text-xs text-[#8C7A6B] leading-relaxed">
+            <p className="text-xs text-[#A88690] leading-relaxed">
               Entraremos em contato via WhatsApp caso haja alguma desistência de horário.
             </p>
 
@@ -644,7 +648,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 setTelefone('');
                 setObservacoes('');
               }}
-              className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-sm"
+              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-sm"
             >
               Voltar ao Início
             </button>
@@ -654,9 +658,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
       </main>
 
       {/* Footer */}
-      <footer className="text-center text-[10px] text-[#8C7A6B] mt-6 flex items-center justify-center gap-1">
+      <footer className="text-center text-[10px] text-[#A88690] mt-6 flex items-center justify-center gap-1 relative z-10">
         <span>Sheila Santos Nails Designer © 2026</span>
-        <Heart size={10} className="fill-[#8C7A6B] text-[#8C7A6B]" />
+        <Heart size={10} className="fill-[#DB7093] text-[#DB7093]" />
       </footer>
     </div>
   );

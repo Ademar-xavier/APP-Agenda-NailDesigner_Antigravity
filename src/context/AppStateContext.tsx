@@ -587,7 +587,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const obterServicosDeAgendamento = (agendamentoId: string): Servico[] => {
     const ids = itensAgendamento[agendamentoId] || [];
-    return servicos.filter(s => ids.includes(s.id));
+    const directServs = servicos.filter(s => ids.includes(s.id));
+    const expandedServs: Servico[] = [];
+    directServs.forEach(s => {
+      expandedServs.push(s);
+      if (s.is_pacote && s.servicos_pacote) {
+        s.servicos_pacote.forEach(subId => {
+          const subServ = servicos.find(sub => sub.id === subId);
+          if (subServ && !expandedServs.some(item => item.id === subId)) {
+            expandedServs.push(subServ);
+          }
+        });
+      }
+    });
+    return expandedServs;
   };
 
   // --- Ações de Agendamento ---
@@ -769,31 +782,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const ultimoAgend = agendsCliente[0];
       const servs = obterServicosDeAgendamento(ultimoAgend.id);
       
-      const servManutencao = servs.find(s => s.intervalo_manutencao_dias > 0);
-      if (!servManutencao) return;
+      const servsManutencao = servs.filter(s => s.intervalo_manutencao_dias > 0);
+      if (servsManutencao.length === 0) return;
 
-      const dataUltimoAtendimento = new Date(ultimoAgend.inicio);
-      const dataSugerida = new Date(dataUltimoAtendimento.getTime() + servManutencao.intervalo_manutencao_dias * 24 * 60 * 60 * 1000);
-      
-      const temAgendamentoFuturo = agendamentos.some(a => 
-        a.cliente_id === cliente.id && 
-        new Date(a.inicio).getTime() > dataUltimoAtendimento.getTime() && 
-        (a.status === 'confirmado' || a.status === 'pendente')
-      );
-
-      if (!temAgendamentoFuturo) {
-        const diffTempo = hoje.getTime() - dataSugerida.getTime();
-        const diasAtraso = Math.floor(diffTempo / (1000 * 60 * 60 * 24));
+      servsManutencao.forEach(serv => {
+        const dataUltimoAtendimento = new Date(ultimoAgend.inicio);
+        const dataSugerida = new Date(dataUltimoAtendimento.getTime() + serv.intervalo_manutencao_dias * 24 * 60 * 60 * 1000);
         
-        if (diasAtraso >= -3) {
-          recomendacoes.push({
-            cliente,
-            servico: servManutencao,
-            dataSugerida: dataSugerida.toISOString().split('T')[0],
-            diasAtraso: diasAtraso > 0 ? diasAtraso : 0
-          });
+        const temAgendamentoFuturo = agendamentos.some(a => 
+          a.cliente_id === cliente.id && 
+          new Date(a.inicio).getTime() > dataUltimoAtendimento.getTime() && 
+          (a.status === 'confirmado' || a.status === 'pendente')
+        );
+
+        if (!temAgendamentoFuturo) {
+          const diffTempo = hoje.getTime() - dataSugerida.getTime();
+          const diasAtraso = Math.floor(diffTempo / (1000 * 60 * 60 * 24));
+          
+          if (diasAtraso >= -3) {
+            recomendacoes.push({
+              cliente,
+              servico: serv,
+              dataSugerida: dataSugerida.toISOString().split('T')[0],
+              diasAtraso: diasAtraso > 0 ? diasAtraso : 0
+            });
+          }
         }
-      }
+      });
     });
 
     return recomendacoes;

@@ -34,6 +34,98 @@ export const Confirmacoes: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
 
+  // Lote disparo states
+  const [loteItens, setLoteItens] = useState<{
+    id: string;
+    agendamento: Agendamento;
+    tipo: 'confirmacao' | 'lembrete';
+    clienteNome: string;
+    clienteTelefone: string;
+    mensagem: string;
+  }[]>([]);
+  const [loteModalOpen, setLoteModalOpen] = useState(false);
+  const [loteIndex, setLoteIndex] = useState(0);
+
+  const handleIniciarDisparosLote = () => {
+    const dataLimite = new Date(hoje);
+    dataLimite.setDate(dataLimite.getDate() + 7);
+    const dataLimiteStr = dataLimite.toISOString().split('T')[0] + 'T23:59:59';
+    
+    const filtrados = agendamentos.filter(a => {
+      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      return a.inicio >= hoje && a.inicio <= dataLimiteStr && (a.status === 'pendente' || a.status === 'confirmado');
+    });
+
+    const itens = filtrados.map(a => {
+      const client = clientes.find(c => c.id === a.cliente_id);
+      const tipo = a.status === 'pendente' ? 'confirmacao' : 'lembrete';
+      const clientName = client?.nome || 'Cliente';
+      const clientPhone = client?.telefone || '';
+      
+      const horaStr = a.inicio.split('T')[1].substring(0, 5);
+      const servs = obterServicosDeAgendamento(a.id);
+      const servText = servs.map(s => s.nome).join(' + ');
+
+      let msg = '';
+      if (tipo === 'confirmacao') {
+        msg = configSalao.templates_whatsapp.confirmacao
+          .replace('{cliente}', clientName)
+          .replace('{servico}', servText)
+          .replace('{profissional}', 'Sheila')
+          .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
+          .replace('{hora}', horaStr)
+          .replace('{sinal}', String(a.valor_sinal))
+          .replace('{chave_pix}', configSalao.chave_pix)
+          .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
+      } else {
+        msg = configSalao.templates_whatsapp.lembrete
+          .replace('{cliente}', clientName)
+          .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
+          .replace('{hora}', horaStr)
+          .replace('{servico}', servText)
+          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+      }
+
+      return {
+        id: a.id,
+        agendamento: a,
+        tipo: tipo as 'confirmacao' | 'lembrete',
+        clienteNome: clientName,
+        clienteTelefone: clientPhone,
+        mensagem: msg
+      };
+    });
+
+    if (itens.length === 0) {
+      alert('Nenhum agendamento pendente de confirmação ou lembrete para os próximos 7 dias.');
+      return;
+    }
+
+    setLoteItens(itens);
+    setLoteIndex(0);
+    setLoteModalOpen(true);
+  };
+
+  const handleEnviarLoteItem = (idx: number) => {
+    const item = loteItens[idx];
+    if (!item) return;
+
+    const fone = item.clienteTelefone.replace(/\D/g, '');
+    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(item.mensagem)}`;
+    window.open(url, '_blank');
+
+    if (idx < loteItens.length - 1) {
+      setLoteIndex(idx + 1);
+    } else {
+      alert('Todos os disparos em lote da semana foram concluídos!');
+      setLoteModalOpen(false);
+    }
+  };
+
+  const handleUpdateMensagemItem = (idx: number, novaMsg: string) => {
+    setLoteItens(prev => prev.map((item, i) => i === idx ? { ...item, mensagem: novaMsg } : item));
+  };
+
   // States para confirmar vaga da Lista de Espera
   const [confirmarVagaItem, setConfirmarVagaItem] = useState<ListaEspera | null>(null);
   const [vagaData, setVagaData] = useState('');
@@ -175,9 +267,18 @@ export const Confirmacoes: React.FC = () => {
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
-      <div className="border-b border-[#EFECE6] pb-4 mb-4">
-        <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Confirmações e lista de espera</h2>
-        <p className="text-xs text-[#8C7A6B]">Gerencie confirmações de agendamentos e contatos da lista de espera</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-4">
+        <div>
+          <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Confirmações e lista de espera</h2>
+          <p className="text-xs text-[#8C7A6B]">Gerencie confirmações de agendamentos e contatos da lista de espera</p>
+        </div>
+        <button
+          onClick={handleIniciarDisparosLote}
+          className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all shrink-0"
+        >
+          <Send size={16} />
+          <span>Disparo em Lote da Semana</span>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -515,6 +616,142 @@ export const Confirmacoes: React.FC = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* --- MODAL WIZARD DISPARO EM LOTE --- */}
+      {loteModalOpen && loteItens.length > 0 && (() => {
+        const item = loteItens[loteIndex];
+        const dateFormatted = new Date(item.agendamento.inicio).toLocaleDateString('pt-BR');
+        const hourStr = item.agendamento.inicio.split('T')[1].substring(0, 5);
+        
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+              
+              {/* Header */}
+              <div className="flex justify-between items-center border-b border-[#EFECE6] p-6 pb-3">
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535]">Envio Assistido em Lote</h3>
+                  <p className="text-xs text-[#8C7A6B] mt-0.5">Dispare lembretes e confirmações sequenciais da semana</p>
+                </div>
+                <button 
+                  onClick={() => setLoteModalOpen(false)}
+                  className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Progress & Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
+                {/* Progress Bar */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs font-bold text-[#8C7A6B]">
+                    <span>Progresso dos Disparos</span>
+                    <span>{loteIndex + 1} de {loteItens.length} ({Math.round(((loteIndex + 1) / loteItens.length) * 100)}%)</span>
+                  </div>
+                  <div className="w-full bg-[#EFECE6] h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-[#8C6D58] h-full transition-all duration-300"
+                      style={{ width: `${((loteIndex + 1) / loteItens.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Card do Cliente Atual */}
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] p-4 rounded-xl space-y-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <span className={`inline-block text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md mb-1.5 ${
+                        item.tipo === 'confirmacao' ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]' : 'bg-[#EBF7EE] text-[#2B7A4B] border border-[#C2EAD0]'
+                      }`}>
+                        {item.tipo === 'confirmacao' ? 'Confirmação de Horário' : 'Lembrete de Agendamento'}
+                      </span>
+                      <h4 className="font-bold text-sm text-[#5A4535]">{item.clienteNome}</h4>
+                      <p className="text-xs text-[#8C7A6B] mt-0.5">WhatsApp: {item.clienteTelefone}</p>
+                    </div>
+                    <div className="text-right text-xs text-[#8C7A6B]">
+                      <span className="font-bold text-[#5A4535] block">{dateFormatted}</span>
+                      <span>às {hourStr}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mensagem Preview / Editor */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Mensagem que será enviada</label>
+                  <textarea
+                    rows={6}
+                    value={item.mensagem}
+                    onChange={(e) => handleUpdateMensagemItem(loteIndex, e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl p-3 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6] resize-none"
+                  />
+                  <p className="text-[9px] text-[#8C7A6B]">Você pode editar o text acima antes de disparar para este cliente específico.</p>
+                </div>
+
+                {/* Lista Completa Horizontal / Badges para navegação rápida */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Lista da Semana</label>
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                    {loteItens.map((li, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setLoteIndex(idx)}
+                        className={`px-3 py-1.5 rounded-lg border text-[10px] font-bold whitespace-nowrap transition-all ${
+                          idx === loteIndex
+                            ? 'bg-[#8C6D58] border-[#8C6D58] text-white shadow-sm'
+                            : 'bg-white border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                        }`}
+                      >
+                        {idx + 1}. {li.clienteNome}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (loteIndex > 0) setLoteIndex(loteIndex - 1);
+                  }}
+                  disabled={loteIndex === 0}
+                  className="px-4 py-2.5 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6] disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (loteIndex < loteItens.length - 1) {
+                        setLoteIndex(loteIndex + 1);
+                      } else {
+                        setLoteModalOpen(false);
+                      }
+                    }}
+                    className="px-4 py-2.5 border border-transparent text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-xl"
+                  >
+                    Pular
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleEnviarLoteItem(loteIndex)}
+                    className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                  >
+                    <Send size={14} />
+                    <span>Enviar e Avançar</span>
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
         );

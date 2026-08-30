@@ -39,6 +39,8 @@ export interface Servico {
   custo_estimado?: number;
   ativo: boolean;
   materiais_utilizados?: { material_id: string; quantidade: number }[];
+  is_pacote?: boolean;
+  servicos_pacote?: string[];
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';

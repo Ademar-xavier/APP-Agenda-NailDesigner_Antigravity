@@ -379,9 +379,9 @@ export const Agenda: React.FC<AgendaProps> = ({
 
       {/* --- MODAL NOVO AGENDAMENTO --- */}
       {localNewAgendamentoOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">Novo Agendamento Manual</h3>
                 <p className="text-xs text-[#8C7A6B] mt-0.5">Reserve um horário na agenda do salão</p>
@@ -394,216 +394,218 @@ export const Agenda: React.FC<AgendaProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCriarAgendamento} className="space-y-4">
-              {errorAgendamento && (
-                <div className="p-3 bg-[#FDF2F2] border border-[#FDE2E2] rounded-xl text-xs text-[#C81E1E] flex items-center gap-2">
-                  <AlertTriangle size={14} />
-                  <span>{errorAgendamento}</span>
-                </div>
-              )}
+            <form onSubmit={handleCriarAgendamento} className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
+                {errorAgendamento && (
+                  <div className="p-3 bg-[#FDF2F2] border border-[#FDE2E2] rounded-xl text-xs text-[#C81E1E] flex items-center gap-2">
+                    <AlertTriangle size={14} />
+                    <span>{errorAgendamento}</span>
+                  </div>
+                )}
 
-              {/* Toggle Bloqueio Pessoal */}
-              <div className="flex justify-between items-center bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6]">
-                <div>
-                  <h4 className="text-xs font-bold text-[#5A4535]">Bloqueio de Horário Pessoal</h4>
-                  <p className="text-[10px] text-[#8C7A6B] mt-0.5">Bloquear tempo para almoço, reuniões, etc.</p>
-                </div>
-                <input 
-                  type="checkbox" 
-                  checked={isBloqueio}
-                  onChange={(e) => setIsBloqueio(e.target.checked)}
-                  className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
-                />
-              </div>
-
-              {!isBloqueio ? (
-                <>
-                  {/* Seleção do Profissional */}
+                {/* Toggle Bloqueio Pessoal */}
+                <div className="flex justify-between items-center bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6]">
                   <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Profissional do Atendimento</label>
+                    <h4 className="text-xs font-bold text-[#5A4535]">Bloqueio de Horário Pessoal</h4>
+                    <p className="text-[10px] text-[#8C7A6B] mt-0.5">Bloquear tempo para almoço, reuniões, etc.</p>
+                  </div>
+                  <input 
+                    type="checkbox" 
+                    checked={isBloqueio}
+                    onChange={(e) => setIsBloqueio(e.target.checked)}
+                    className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                  />
+                </div>
+
+                {!isBloqueio ? (
+                  <>
+                    {/* Seleção do Profissional */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Profissional do Atendimento</label>
+                      <select
+                        value={profissionalId}
+                        onChange={(e) => setProfissionalId(e.target.value)}
+                        disabled={currentUser?.perfil === 'profissional'}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58] disabled:opacity-75"
+                      >
+                        {equipe
+                          .filter(u => u.ativo)
+                          .map(u => (
+                            <option key={u.id} value={u.id}>{u.nome} ({u.perfil === 'admin' ? 'Administradora' : 'Profissional'})</option>
+                          ))}
+                      </select>
+                    </div>
+
+                    {/* Escolha Cliente */}
+                    <div className="space-y-2">
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-1.5 text-xs text-[#5A4535] cursor-pointer">
+                          <input 
+                            type="radio" 
+                            checked={clienteExistente} 
+                            onChange={() => setClienteExistente(true)}
+                            className="text-[#8C6D58] focus:ring-[#8C6D58]"
+                          />
+                          <span>Cliente Cadastrada</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-xs text-[#5A4535] cursor-pointer">
+                          <input 
+                            type="radio" 
+                            checked={!clienteExistente} 
+                            onChange={() => setClienteExistente(false)}
+                            className="text-[#8C6D58] focus:ring-[#8C6D58]"
+                          />
+                          <span>Nova Cliente</span>
+                        </label>
+                      </div>
+
+                      {clienteExistente ? (
+                        <div>
+                          <select
+                            value={clienteId}
+                            onChange={(e) => setClienteId(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                          >
+                            <option value="">-- Selecione a Cliente --</option>
+                            {clientes.map(c => (
+                              <option key={c.id} value={c.id}>{c.nome} ({c.telefone})</option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Nome Completo</label>
+                            <input 
+                              type="text" 
+                              value={novoClienteNome}
+                              onChange={(e) => setNovoClienteNome(e.target.value)}
+                              placeholder="Ex: Amanda Santos"
+                              className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp</label>
+                            <input 
+                              type="text" 
+                              value={novoClienteFone}
+                              onChange={(e) => setNovoClienteFone(e.target.value)}
+                              placeholder="(35) 99999-9999"
+                              className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Serviços */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-2">Serviços Selecionados</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-[#EFECE6] p-3 rounded-xl bg-[#FAF9F6]">
+                        {servicos.filter(s => s.ativo).map(s => {
+                          const selecionado = servicosSelecionados.includes(s.id);
+                          return (
+                            <label 
+                              key={s.id} 
+                              className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                selecionado 
+                                  ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
+                                  : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="checkbox"
+                                  checked={selecionado}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setServicosSelecionados(prev => [...prev, s.id]);
+                                    } else {
+                                      setServicosSelecionados(prev => prev.filter(id => id !== s.id));
+                                    }
+                                  }}
+                                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                />
+                                <div>
+                                  <span className="font-semibold block">{s.nome}</span>
+                                  <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
+                                </div>
+                              </div>
+                              <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Cobrar Sinal Toggle */}
+                    <div className="flex items-center gap-2 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6]">
+                      <input 
+                        type="checkbox" 
+                        id="cobrar_sinal_agend" 
+                        checked={cobrarSinal} 
+                        onChange={(e) => setCobrarSinal(e.target.checked)}
+                        className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
+                      />
+                      <label htmlFor="cobrar_sinal_agend" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
+                        Cobrar sinal para este agendamento
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Título/Motivo do Bloqueio</label>
+                    <input 
+                      type="text" 
+                      value={obsAgendamento}
+                      onChange={(e) => setObsAgendamento(e.target.value)}
+                      placeholder="Ex: Almoço / Manutenção da Cadeira..."
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                )}
+
+                {/* Data & Hora */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data</label>
+                    <input 
+                      type="date" 
+                      value={dataSelecionada}
+                      onChange={(e) => setDataSelecionada(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Horário de Início</label>
                     <select
-                      value={profissionalId}
-                      onChange={(e) => setProfissionalId(e.target.value)}
-                      disabled={currentUser?.perfil === 'profissional'}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58] disabled:opacity-75"
+                      value={horaInicio}
+                      onChange={(e) => setHoraInicio(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
                     >
-                      {equipe
-                        .filter(u => u.ativo)
-                        .map(u => (
-                          <option key={u.id} value={u.id}>{u.nome} ({u.perfil === 'admin' ? 'Administradora' : 'Profissional'})</option>
-                        ))}
+                      {horasExpediente.map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
                     </select>
                   </div>
+                </div>
 
-                  {/* Escolha Cliente */}
-                  <div className="space-y-2">
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-1.5 text-xs text-[#5A4535] cursor-pointer">
-                        <input 
-                          type="radio" 
-                          checked={clienteExistente} 
-                          onChange={() => setClienteExistente(true)}
-                          className="text-[#8C6D58] focus:ring-[#8C6D58]"
-                        />
-                        <span>Cliente Cadastrada</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 text-xs text-[#5A4535] cursor-pointer">
-                        <input 
-                          type="radio" 
-                          checked={!clienteExistente} 
-                          onChange={() => setClienteExistente(false)}
-                          className="text-[#8C6D58] focus:ring-[#8C6D58]"
-                        />
-                        <span>Nova Cliente</span>
-                      </label>
-                    </div>
-
-                    {clienteExistente ? (
-                      <div>
-                        <select
-                          value={clienteId}
-                          onChange={(e) => setClienteId(e.target.value)}
-                          className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
-                        >
-                          <option value="">-- Selecione a Cliente --</option>
-                          {clientes.map(c => (
-                            <option key={c.id} value={c.id}>{c.nome} ({c.telefone})</option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">
-                        <div>
-                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Nome Completo</label>
-                          <input 
-                            type="text" 
-                            value={novoClienteNome}
-                            onChange={(e) => setNovoClienteNome(e.target.value)}
-                            placeholder="Ex: Amanda Santos"
-                            className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">WhatsApp</label>
-                          <input 
-                            type="text" 
-                            value={novoClienteFone}
-                            onChange={(e) => setNovoClienteFone(e.target.value)}
-                            placeholder="(35) 99999-9999"
-                            className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Serviços */}
+                {!isBloqueio && (
                   <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-2">Serviços Selecionados</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-[#EFECE6] p-3 rounded-xl bg-[#FAF9F6]">
-                      {servicos.filter(s => s.ativo).map(s => {
-                        const selecionado = servicosSelecionados.includes(s.id);
-                        return (
-                          <label 
-                            key={s.id} 
-                            className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                              selecionado 
-                                ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
-                                : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="checkbox"
-                                checked={selecionado}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setServicosSelecionados(prev => [...prev, s.id]);
-                                  } else {
-                                    setServicosSelecionados(prev => prev.filter(id => id !== s.id));
-                                  }
-                                }}
-                                className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
-                              />
-                              <div>
-                                <span className="font-semibold block">{s.nome}</span>
-                                <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
-                              </div>
-                            </div>
-                            <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Cobrar Sinal Toggle */}
-                  <div className="flex items-center gap-2 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6]">
-                    <input 
-                      type="checkbox" 
-                      id="cobrar_sinal_agend" 
-                      checked={cobrarSinal} 
-                      onChange={(e) => setCobrarSinal(e.target.checked)}
-                      className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Observações do Agendamento</label>
+                    <textarea 
+                      rows={2}
+                      value={obsAgendamento}
+                      onChange={(e) => setObsAgendamento(e.target.value)}
+                      placeholder="Algum detalhe relevante..."
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] resize-none"
                     />
-                    <label htmlFor="cobrar_sinal_agend" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
-                      Cobrar sinal para este agendamento
-                    </label>
                   </div>
-                </>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Título/Motivo do Bloqueio</label>
-                  <input 
-                    type="text" 
-                    value={obsAgendamento}
-                    onChange={(e) => setObsAgendamento(e.target.value)}
-                    placeholder="Ex: Almoço / Manutenção da Cadeira..."
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
-                  />
-                </div>
-              )}
-
-              {/* Data & Hora */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data</label>
-                  <input 
-                    type="date" 
-                    value={dataSelecionada}
-                    onChange={(e) => setDataSelecionada(e.target.value)}
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Horário de Início</label>
-                  <select
-                    value={horaInicio}
-                    onChange={(e) => setHoraInicio(e.target.value)}
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                  >
-                    {horasExpediente.map(h => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
-                  </select>
-                </div>
+                )}
               </div>
 
-              {!isBloqueio && (
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Observações do Agendamento</label>
-                  <textarea 
-                    rows={2}
-                    value={obsAgendamento}
-                    onChange={(e) => setObsAgendamento(e.target.value)}
-                    placeholder="Algum detalhe relevante..."
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] resize-none"
-                  />
-                </div>
-              )}
-
               {/* Botões Footer */}
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
                 <button
                   type="button"
                   onClick={handleCloseLocalModal}

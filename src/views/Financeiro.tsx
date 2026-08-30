@@ -429,9 +429,9 @@ export const Financeiro: React.FC = () => {
 
       {/* --- MODAL REGISTRAR DESPESA --- */}
       {despesaModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200 my-8">
-            <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-sm w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <h3 className="font-serif font-bold text-lg text-[#5A4535]">Registrar Despesa</h3>
               <button 
                 onClick={() => setDespesaModal(false)}
@@ -441,70 +441,72 @@ export const Financeiro: React.FC = () => {
               </button>
             </div>
             
-            <form onSubmit={handleSalvarDespesa} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Descrição / Produto</label>
-                <input 
-                  type="text" required value={descricao} onChange={(e) => setDescricao(e.target.value)}
-                  placeholder="Ex: Cabine UV LED / Aluguel da mesa..."
-                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-3">
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
-                    <select
-                      value={categoria} onChange={(e) => {
-                        setCategoria(e.target.value);
-                        if (e.target.value === 'nova') {
-                          setShowNovaCat(true);
-                        } else {
-                          setShowNovaCat(false);
-                        }
-                      }}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                    >
-                      {categoriasDespesa.map(c => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                      <option value="nova">+ Nova Categoria</option>
-                    </select>
-                  </div>
+            <form onSubmit={handleSalvarDespesa} className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Descrição / Produto</label>
+                  <input 
+                    type="text" required value={descricao} onChange={(e) => setDescricao(e.target.value)}
+                    placeholder="Ex: Cabine UV LED / Aluguel da mesa..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                  />
                 </div>
 
-                {showNovaCat && (
-                  <div className="animate-in slide-in-from-top-2 duration-200">
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Nova Categoria</label>
-                    <input 
-                      type="text" required placeholder="Ex: Combustível, Faxina..."
-                      value={novaCatNome} onChange={(e) => setNovaCatNome(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
-                    />
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
+                      <select
+                        value={categoria} onChange={(e) => {
+                          setCategoria(e.target.value);
+                          if (e.target.value === 'nova') {
+                            setShowNovaCat(true);
+                          } else {
+                            setShowNovaCat(false);
+                          }
+                        }}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      >
+                        {categoriasDespesa.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                        <option value="nova">+ Nova Categoria</option>
+                      </select>
+                    </div>
                   </div>
-                )}
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Valor Gasto (R$)</label>
-                    <input 
-                      type="number" required min={0.01} step="0.01"
-                      value={valorDespesa || ''} onChange={(e) => setValorDespesa(Number(e.target.value))}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data do Gasto</label>
-                    <input 
-                      type="date" required value={dataDespesa} onChange={(e) => setDataDespesa(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                    />
+                  {showNovaCat && (
+                    <div className="animate-in slide-in-from-top-2 duration-200">
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Nova Categoria</label>
+                      <input 
+                        type="text" required placeholder="Ex: Combustível, Faxina..."
+                        value={novaCatNome} onChange={(e) => setNovaCatNome(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Valor Gasto (R$)</label>
+                      <input 
+                        type="number" required min={0.01} step="0.01"
+                        value={valorDespesa || ''} onChange={(e) => setValorDespesa(Number(e.target.value))}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data do Gasto</label>
+                      <input 
+                        type="date" required value={dataDespesa} onChange={(e) => setDataDespesa(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
                 <button
                   type="button" onClick={() => setDespesaModal(false)}
                   className="px-4 py-2.5 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"

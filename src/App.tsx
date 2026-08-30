@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -11,6 +11,7 @@ import { PublicBooking } from './public-views/PublicBooking';
 import { Login } from './views/Login';
 import { Confirmacoes } from './views/Confirmacoes';
 import { Materiais } from './views/Materiais';
+import { Cadastros } from './views/Cadastros';
 
 function AppContent() {
   const { currentUser } = useAppState();
@@ -18,6 +19,15 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
   
+  // Efeito para scrollar para o topo ao trocar de aba
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+    const scrollContainers = document.querySelectorAll('.overflow-y-auto');
+    scrollContainers.forEach(container => {
+      container.scrollTop = 0;
+    });
+  }, [currentView]);
+
   // Controle global de abertura do modal de novo agendamento
   const [isNewAgendamentoModalOpen, setIsNewAgendamentoModalOpen] = useState<boolean>(false);
 
@@ -56,6 +66,8 @@ function AppContent() {
         return <Confirmacoes />;
       case 'servicos':
         return <Servicos />;
+      case 'cadastros':
+        return <Cadastros />;
       case 'materiais':
         return <Materiais />;
       case 'financeiro':

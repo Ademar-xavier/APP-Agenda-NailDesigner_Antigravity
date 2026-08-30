@@ -10,7 +10,8 @@ import {
   Check, 
   X,
   RefreshCw,
-  Package
+  Package,
+  Sparkles
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
@@ -43,6 +44,26 @@ export const Servicos: React.FC = () => {
   // Lista de materiais vinculados ao serviço
   const [materiaisSelecionados, setMateriaisSelecionados] = useState<{ material_id: string; quantidade: number }[]>([]);
 
+  // Pacotes/Combos
+  const [isPacote, setIsPacote] = useState(false);
+  const [servicosPacote, setServicosPacote] = useState<string[]>([]);
+
+  // Duração somada dos sub-serviços do pacote
+  const duracaoPacoteSomada = useMemo(() => {
+    return servicosPacote.reduce((acc, id) => {
+      const s = servicos.find(item => item.id === id);
+      return acc + (s?.duracao_minutos || 0);
+    }, 0);
+  }, [servicosPacote, servicos]);
+
+  // Preço sugerido (soma) dos sub-serviços do pacote
+  const precoPacoteSugerido = useMemo(() => {
+    return servicosPacote.reduce((acc, id) => {
+      const s = servicos.find(item => item.id === id);
+      return acc + (s?.preco || 0);
+    }, 0);
+  }, [servicosPacote, servicos]);
+
   // Custo Estimado Calculado
   const custoCalculado = useMemo(() => {
     return materiaisSelecionados.reduce((acc, item) => {
@@ -70,6 +91,8 @@ export const Servicos: React.FC = () => {
     setSinalValor(0);
     setIntervaloManutencaoDias(20);
     setMateriaisSelecionados([]);
+    setIsPacote(false);
+    setServicosPacote([]);
     setModalOpen(true);
   };
 
@@ -91,6 +114,8 @@ export const Servicos: React.FC = () => {
     setSinalValor(serv.sinal_valor);
     setIntervaloManutencaoDias(serv.intervalo_manutencao_dias);
     setMateriaisSelecionados(serv.materiais_utilizados || []);
+    setIsPacote(serv.is_pacote || false);
+    setServicosPacote(serv.servicos_pacote || []);
     setModalOpen(true);
   };
 
@@ -111,13 +136,15 @@ export const Servicos: React.FC = () => {
     const dados = {
       nome,
       categoria: catFinal,
-      duracao_minutos: duracaoMinutos,
+      duracao_minutos: isPacote ? duracaoPacoteSomada : duracaoMinutos,
       preco,
       sinal_tipo: sinalTipo,
       sinal_valor: sinalTipo === 'nenhum' ? 0 : sinalValor,
-      intervalo_manutencao_dias: intervaloManutencaoDias,
-      custo_estimado: custoCalculado,
-      materiais_utilizados: materiaisSelecionados
+      intervalo_manutencao_dias: isPacote ? 0 : intervaloManutencaoDias,
+      custo_estimado: isPacote ? 0 : custoCalculado,
+      materiais_utilizados: isPacote ? [] : materiaisSelecionados,
+      is_pacote: isPacote,
+      servicos_pacote: isPacote ? servicosPacote : []
     };
 
     if (servicoEdicao) {
@@ -161,12 +188,17 @@ export const Servicos: React.FC = () => {
                     <Scissors size={18} />
                   </div>
                   <div className="text-right">
-                    <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5">
+                    <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5 flex items-center justify-end gap-1">
+                      {s.is_pacote && (
+                        <span className="bg-[#8C6D58] text-white text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md">
+                          Combo
+                        </span>
+                      )}
                       {s.categoria}
                     </span>
                     <span className="text-base font-extrabold text-[#5A4535]">{formatarMoeda(s.preco)}</span>
                     
-                    {s.custo_estimado !== undefined && s.custo_estimado > 0 && (
+                    {!s.is_pacote && s.custo_estimado !== undefined && s.custo_estimado > 0 && (
                       <div className="text-[10px] mt-1 font-semibold flex items-center justify-end gap-1">
                         <span className="text-[#8C7A6B]">Insumos: {formatarMoeda(s.custo_estimado)}</span>
                         <span className="bg-green-50 border border-green-200 text-green-700 px-1.5 py-0.5 rounded text-[8px] font-bold">
@@ -193,7 +225,7 @@ export const Servicos: React.FC = () => {
                         </span>
                       </div>
                     )}
-                    {s.intervalo_manutencao_dias > 0 && (
+                    {!s.is_pacote && s.intervalo_manutencao_dias > 0 && (
                       <div className="flex items-center gap-1.5">
                         <RefreshCw size={13} className="text-[#D37F64]" />
                         <span>
@@ -201,10 +233,29 @@ export const Servicos: React.FC = () => {
                         </span>
                       </div>
                     )}
-                    {s.materiais_utilizados && s.materiais_utilizados.length > 0 && (
+                    {!s.is_pacote && s.materiais_utilizados && s.materiais_utilizados.length > 0 && (
                       <div className="flex items-center gap-1.5">
                         <Package size={13} className="text-[#8C7A6B]" />
                         <span>Insumos Vinculados: <strong>{s.materiais_utilizados.length} itens</strong></span>
+                      </div>
+                    )}
+                    {s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0 && (
+                      <div className="flex items-start gap-1.5 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] text-[11px] text-[#5A4535]">
+                        <Sparkles size={12} className="text-[#8C6D58] mt-0.5 shrink-0" />
+                        <div className="w-full">
+                          <span className="font-bold block mb-1">Serviços inclusos:</span>
+                          <div className="space-y-1 w-full">
+                            {s.servicos_pacote.map(subId => {
+                              const sub = servicos.find(item => item.id === subId);
+                              return sub ? (
+                                <div key={subId} className="flex justify-between w-full text-[10px] text-[#8C7A6B]">
+                                  <span>• {sub.nome}</span>
+                                  <span className="font-semibold text-[#5A4535] shrink-0">{sub.duracao_minutos} min</span>
+                                </div>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -236,9 +287,9 @@ export const Servicos: React.FC = () => {
 
       {/* --- MODAL ADICIONAR / EDITAR SERVIÇO --- */}
       {modalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] flex flex-col shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-start border-b border-[#EFECE6] p-6 pb-3">
               <div>
                 <h3 className="font-serif font-bold text-lg text-[#5A4535]">
                   {servicoEdicao ? 'Editar Serviço' : 'Novo Serviço'}
@@ -253,20 +304,23 @@ export const Servicos: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSalvar} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome do Serviço</label>
-                <input 
-                  type="text" 
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Ex: Alongamento em Acrigel..."
-                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                />
-              </div>
+            <form onSubmit={handleSalvar} className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
+                
+                {/* Nome do Serviço */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome do Serviço</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    placeholder="Ex: Alongamento em Acrigel..."
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                  />
+                </div>
 
-              <div className="grid grid-cols-2 gap-3">
+                {/* Categoria */}
                 <div>
                   <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
                   <select
@@ -287,158 +341,256 @@ export const Servicos: React.FC = () => {
                     <option value="nova">+ Nova Categoria</option>
                   </select>
                 </div>
+
+                {showCustomCategoria && (
+                  <div className="animate-in slide-in-from-top-2 duration-200">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Categoria Customizada</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={customCategoria}
+                      onChange={(e) => setCustomCategoria(e.target.value)}
+                      placeholder="Ex: Cílios, Sobrancelha, Depilação..."
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    />
+                  </div>
+                )}
+
+                {/* Preço */}
                 <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Duração (Minutos)</label>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Preço Cobrado do Cliente (R$)</label>
                   <input 
                     type="number" 
                     required
-                    min={10}
-                    value={duracaoMinutos}
-                    onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                    min={0}
+                    value={preco}
+                    onChange={(e) => setPreco(Number(e.target.value))}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   />
                 </div>
-              </div>
 
-              {showCustomCategoria && (
-                <div className="animate-in slide-in-from-top-2 duration-200">
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Categoria Customizada</label>
+                {/* Pacote Toggle */}
+                <div className="flex items-center gap-2 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs">
                   <input 
-                    type="text" 
-                    required
-                    value={customCategoria}
-                    onChange={(e) => setCustomCategoria(e.target.value)}
-                    placeholder="Ex: Cílios, Sobrancelha, Depilação..."
-                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                    type="checkbox" 
+                    id="toggle-pacote"
+                    checked={isPacote}
+                    onChange={(e) => {
+                      setIsPacote(e.target.checked);
+                      if (e.target.checked) {
+                        setMateriaisSelecionados([]);
+                      } else {
+                        setServicosPacote([]);
+                      }
+                    }}
+                    className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
                   />
+                  <label htmlFor="toggle-pacote" className="font-bold text-[#5A4535] cursor-pointer select-none">
+                    Este serviço é um Pacote / Combo de outros serviços?
+                  </label>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Preço Cobrado do Cliente (R$)</label>
-                <input 
-                  type="number" 
-                  required
-                  min={0}
-                  value={preco}
-                  onChange={(e) => setPreco(Number(e.target.value))}
-                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
-                />
-              </div>
-
-              {/* Materiais/Insumos Utilizados */}
-              <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
-                <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5 flex items-center gap-1.5">
-                  <Package size={14} className="text-[#8C6D58]" />
-                  <span>Insumos e Quantidades</span>
-                </h4>
-                
-                {materiais.length === 0 ? (
-                  <p className="text-[10px] text-[#8C7A6B] italic">
-                    Nenhum insumo cadastrado na base de dados. Cadastre insumos na aba "Materiais" primeiro.
-                  </p>
-                ) : (
-                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {materiais.map(mat => {
-                      const vinculo = materiaisSelecionados.find(ms => ms.material_id === mat.id);
-                      const checked = !!vinculo;
-                      
-                      return (
-                        <div key={mat.id} className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-[#EFECE6] text-xs">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input 
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setMateriaisSelecionados(prev => [...prev, { material_id: mat.id, quantidade: 1 }]);
-                                } else {
-                                  setMateriaisSelecionados(prev => prev.filter(item => item.material_id !== mat.id));
-                                }
-                              }}
-                              className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
-                            />
-                            <div>
-                              <span className="font-semibold block text-[#5A4535]">{mat.nome}</span>
-                              <span className="text-[9px] text-[#8C7A6B]">{mat.marca} · {formatarMoeda(mat.custo_por_uso)}/uso</span>
+                {/* Condicional: Se for Pacote */}
+                {isPacote ? (
+                  <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                    <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5 flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-[#8C6D58]" />
+                      <span>Serviços Inclusos no Pacote</span>
+                    </h4>
+                    
+                    {servicos.filter(s => !s.is_pacote && s.id !== servicoEdicao?.id).length === 0 ? (
+                      <p className="text-[10px] text-[#8C7A6B] italic">Nenhum serviço individual cadastrado para compor o pacote.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {servicos.filter(s => !s.is_pacote && s.id !== servicoEdicao?.id).map(s => {
+                          const checked = servicosPacote.includes(s.id);
+                          return (
+                            <div key={s.id} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-[#EFECE6] text-xs">
+                              <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input 
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setServicosPacote(prev => [...prev, s.id]);
+                                    } else {
+                                      setServicosPacote(prev => prev.filter(id => id !== s.id));
+                                    }
+                                  }}
+                                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                />
+                                <div>
+                                  <span className="font-semibold block text-[#5A4535]">{s.nome}</span>
+                                  <span className="text-[9px] text-[#8C7A6B]">
+                                    Duração: {s.duracao_minutos} min · Retorno em: {s.intervalo_manutencao_dias > 0 ? `${s.intervalo_manutencao_dias} dias` : 'Sem retorno'}
+                                  </span>
+                                </div>
+                              </label>
+                              <span className="font-bold text-[#8C6D58]">{formatarMoeda(s.preco)}</span>
                             </div>
-                          </label>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                          {checked && vinculo && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[9px] text-[#8C7A6B]">Qtd:</span>
-                              <input 
-                                type="number"
-                                min={1}
-                                value={vinculo.quantidade}
-                                onChange={(e) => {
-                                  const val = Math.max(1, Number(e.target.value));
-                                  setMateriaisSelecionados(prev => prev.map(item => 
-                                    item.material_id === mat.id ? { ...item, quantidade: val } : item
-                                  ));
-                                }}
-                                className="w-12 border border-[#EFECE6] rounded-md px-1.5 py-0.5 text-center text-xs text-[#5A4535]"
-                              />
-                            </div>
+                    {/* Detalhes de Duração / Preço sugerido do pacote */}
+                    <div className="pt-2.5 border-t border-[#EFECE6] text-xs space-y-1">
+                      <div className="flex justify-between text-[#8C7A6B]">
+                        <span>Duração Total Calculada:</span>
+                        <span className="font-bold text-[#5A4535]">{duracaoPacoteSomada} minutos</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[#8C7A6B]">
+                        <span>Preço Sugerido (Soma):</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[#5A4535]">{formatarMoeda(precoPacoteSugerido)}</span>
+                          {precoPacoteSugerido > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPreco(precoPacoteSugerido)}
+                              className="text-[9px] bg-[#8C6D58] hover:bg-[#725743] text-white px-2 py-0.5 rounded"
+                            >
+                              Usar Sugerido
+                            </button>
                           )}
                         </div>
-                      );
-                    })}
+                      </div>
+                    </div>
                   </div>
-                )}
-                
-                {/* Totalizador de Custo */}
-                <div className="flex justify-between items-center pt-2.5 border-t border-[#EFECE6] text-xs font-bold">
-                  <span className="text-[#8C7A6B]">Custo Estimado Insumos:</span>
-                  <span className="text-[#8C6D58]">{formatarMoeda(custoCalculado)}</span>
-                </div>
-              </div>
-
-              <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
-                <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1">Regras de Negócio</h4>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Sinal Exigido</label>
-                    <select
-                      value={sinalTipo}
-                      onChange={(e) => setSinalTipo(e.target.value as Servico['sinal_tipo'])}
-                      className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white focus:outline-none"
-                    >
-                      <option value="nenhum">Nenhum</option>
-                      <option value="fixo">Valor Fixo</option>
-                      <option value="porcentagem">Porcentagem</option>
-                    </select>
-                  </div>
-                  {sinalTipo !== 'nenhum' && (
+                ) : (
+                  <>
+                    {/* Duração para serviços individuais */}
                     <div>
-                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Valor do Sinal</label>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Duração (Minutos)</label>
+                      <input 
+                        type="number" 
+                        required
+                        min={10}
+                        value={duracaoMinutos}
+                        onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
+                      />
+                    </div>
+
+                    {/* Materiais/Insumos Utilizados */}
+                    <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                      <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1.5 flex items-center gap-1.5">
+                        <Package size={14} className="text-[#8C6D58]" />
+                        <span>Insumos e Quantidades</span>
+                      </h4>
+                      
+                      {materiais.length === 0 ? (
+                        <p className="text-[10px] text-[#8C7A6B] italic">
+                          Nenhum insumo cadastrado na base de dados. Cadastre insumos na aba "Materiais" primeiro.
+                        </p>
+                      ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                          {materiais.map(mat => {
+                            const vinculo = materiaisSelecionados.find(ms => ms.material_id === mat.id);
+                            const checked = !!vinculo;
+                            
+                            return (
+                              <div key={mat.id} className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-[#EFECE6] text-xs">
+                                <label className="flex items-center gap-2 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setMateriaisSelecionados(prev => [...prev, { material_id: mat.id, quantidade: 1 }]);
+                                      } else {
+                                        setMateriaisSelecionados(prev => prev.filter(item => item.material_id !== mat.id));
+                                      }
+                                    }}
+                                    className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                  />
+                                  <div>
+                                    <span className="font-semibold block text-[#5A4535]">{mat.nome}</span>
+                                    <span className="text-[9px] text-[#8C7A6B]">{mat.marca} · {formatarMoeda(mat.custo_por_uso)}/uso</span>
+                                  </div>
+                                </label>
+
+                                {checked && vinculo && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[9px] text-[#8C7A6B]">Qtd:</span>
+                                    <input 
+                                      type="number"
+                                      min={1}
+                                      value={vinculo.quantidade}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, Number(e.target.value));
+                                        setMateriaisSelecionados(prev => prev.map(item => 
+                                          item.material_id === mat.id ? { ...item, quantidade: val } : item
+                                        ));
+                                      }}
+                                      className="w-12 border border-[#EFECE6] rounded-md px-1.5 py-0.5 text-center text-xs text-[#5A4535]"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {/* Totalizador de Custo */}
+                      <div className="flex justify-between items-center pt-2.5 border-t border-[#EFECE6] text-xs font-bold">
+                        <span className="text-[#8C7A6B]">Custo Estimado Insumos:</span>
+                        <span className="text-[#8C6D58]">{formatarMoeda(custoCalculado)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Regras de Negócio (Sinal & Manutenção) */}
+                <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                  <h4 className="font-serif font-bold text-xs text-[#5A4535] border-b border-[#EFECE6] pb-1">Regras de Negócio</h4>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Sinal Exigido</label>
+                      <select
+                        value={sinalTipo}
+                        onChange={(e) => setSinalTipo(e.target.value as Servico['sinal_tipo'])}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white focus:outline-none"
+                      >
+                        <option value="nenhum">Nenhum</option>
+                        <option value="fixo">Valor Fixo</option>
+                        <option value="porcentagem">Porcentagem</option>
+                      </select>
+                    </div>
+                    {sinalTipo !== 'nenhum' && (
+                      <div>
+                        <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Valor do Sinal</label>
+                        <input 
+                          type="number"
+                          min={0}
+                          value={sinalValor}
+                          onChange={(e) => setSinalValor(Number(e.target.value))}
+                          className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {!isPacote && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Intervalo de Manutenção (Dias)</label>
                       <input 
                         type="number"
                         min={0}
-                        value={sinalValor}
-                        onChange={(e) => setSinalValor(Number(e.target.value))}
+                        value={intervaloManutencaoDias}
+                        onChange={(e) => setIntervaloManutencaoDias(Number(e.target.value))}
                         className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
                       />
+                      <p className="text-[9px] text-[#8C7A6B] mt-0.5">Informe "0" se este serviço não exigir manutenção recorrente.</p>
                     </div>
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Intervalo de Manutenção (Dias)</label>
-                  <input 
-                    type="number"
-                    min={0}
-                    value={intervaloManutencaoDias}
-                    onChange={(e) => setIntervaloManutencaoDias(Number(e.target.value))}
-                    className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
-                  />
-                  <p className="text-[9px] text-[#8C7A6B] mt-0.5">Informe "0" se este serviço não exigir manutenção recorrente.</p>
-                </div>
               </div>
 
-              {/* Footer */}
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+              {/* Fixed Footer */}
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
