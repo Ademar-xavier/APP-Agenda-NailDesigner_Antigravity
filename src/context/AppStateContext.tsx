@@ -246,6 +246,16 @@ const itensAgendamentoMock: { [agendamentoId: string]: string[] } = {
 };
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const limparFocoAtivo = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      try {
+        document.activeElement.blur();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
   const [clientes, setClientes] = useState<Cliente[]>(() => {
     try {
       const saved = localStorage.getItem('nail_clientes');
@@ -484,6 +494,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteCliente = (id: string) => {
+    limparFocoAtivo();
     setClientes(prev => prev.filter(c => c.id !== id));
   };
 
@@ -502,6 +513,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteServico = (id: string) => {
+    limparFocoAtivo();
     setServicos(prev => prev.map(s => s.id === id ? { ...s, ativo: false } : s));
   };
 
@@ -519,6 +531,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteDespesa = (id: string) => {
+    limparFocoAtivo();
     setDespesas(prev => prev.filter(d => d.id !== id));
   };
 
@@ -529,6 +542,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteCategoriaDespesa = (nome: string) => {
+    limparFocoAtivo();
     setCategoriasDespesa(prev => prev.filter(c => c !== nome));
   };
 
@@ -540,6 +554,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteTecnica = (nome: string) => {
+    limparFocoAtivo();
     setTecnicas(prev => prev.filter(t => t !== nome));
   };
 
@@ -551,6 +566,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteFormato = (nome: string) => {
+    limparFocoAtivo();
     setFormatos(prev => prev.filter(f => f !== nome));
   };
 
@@ -562,6 +578,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteCategoriaServico = (nome: string) => {
+    limparFocoAtivo();
     setCategoriasServico(prev => prev.filter(c => c !== nome));
   };
 
@@ -591,6 +608,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteMaterial = (id: string) => {
+    limparFocoAtivo();
     setMateriais(prev => prev.filter(m => m.id !== id));
   };
 
@@ -716,6 +734,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deleteAgendamento = (id: string) => {
+    limparFocoAtivo();
     setAgendamentos(prev => prev.filter(a => a.id !== id));
   };
 
