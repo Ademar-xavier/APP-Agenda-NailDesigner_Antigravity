@@ -60,6 +60,53 @@ function AppContent() {
     };
   }, []);
 
+  // Efeito para acordar o cursor (caret) no Android WebView
+  useEffect(() => {
+    const wakeUpCaret = () => {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.style.position = 'fixed';
+      input.style.top = '-100px';
+      input.style.left = '-100px';
+      input.style.opacity = '0';
+      input.style.height = '0';
+      input.style.width = '0';
+      document.body.appendChild(input);
+      
+      setTimeout(() => {
+        try {
+          input.focus();
+          setTimeout(() => {
+            input.blur();
+            if (document.body.contains(input)) {
+              document.body.removeChild(input);
+            }
+            window.focus();
+          }, 50);
+        } catch (e) {
+          console.error(e);
+        }
+      }, 100);
+    };
+
+    // Acorda ao inicializar
+    wakeUpCaret();
+    
+    // Acorda no primeiro toque do usuário para garantir ativação
+    const handleFirstTouch = () => {
+      wakeUpCaret();
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+    window.addEventListener('touchstart', handleFirstTouch);
+    window.addEventListener('click', handleFirstTouch);
+    
+    return () => {
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+  }, []);
+
   // Controle global de abertura do modal de novo agendamento
   const [isNewAgendamentoModalOpen, setIsNewAgendamentoModalOpen] = useState<boolean>(false);
 

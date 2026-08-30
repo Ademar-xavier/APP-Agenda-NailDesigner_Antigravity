@@ -246,42 +246,73 @@ const itensAgendamentoMock: { [agendamentoId: string]: string[] } = {
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [clientes, setClientes] = useState<Cliente[]>(() => {
-    const saved = localStorage.getItem('nail_clientes');
-    const seeded = localStorage.getItem('nail_app_seeded');
-    return (seeded === 'true' && saved) ? JSON.parse(saved) : clientesIniciais;
+    try {
+      const saved = localStorage.getItem('nail_clientes');
+      return saved ? JSON.parse(saved) : clientesIniciais;
+    } catch (e) {
+      console.error(e);
+      return clientesIniciais;
+    }
   });
   
   const [servicos, setServicos] = useState<Servico[]>(() => {
-    const saved = localStorage.getItem('nail_servicos');
-    const seeded = localStorage.getItem('nail_app_seeded');
-    return (seeded === 'true' && saved) ? JSON.parse(saved) : servicosIniciais;
+    try {
+      const saved = localStorage.getItem('nail_servicos');
+      return saved ? JSON.parse(saved) : servicosIniciais;
+    } catch (e) {
+      console.error(e);
+      return servicosIniciais;
+    }
   });
 
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(() => {
-    const saved = localStorage.getItem('nail_agendamentos');
-    const seeded = localStorage.getItem('nail_app_seeded');
-    return (seeded === 'true' && saved) ? JSON.parse(saved) : agendamentosIniciais;
+    try {
+      const saved = localStorage.getItem('nail_agendamentos');
+      return saved ? JSON.parse(saved) : agendamentosIniciais;
+    } catch (e) {
+      console.error(e);
+      return agendamentosIniciais;
+    }
   });
 
   const [pagamentos, setPagamentos] = useState<Pagamento[]>(() => {
-    const saved = localStorage.getItem('nail_pagamentos');
-    return saved ? JSON.parse(saved) : pagamentosIniciais;
+    try {
+      const saved = localStorage.getItem('nail_pagamentos');
+      return saved ? JSON.parse(saved) : pagamentosIniciais;
+    } catch (e) {
+      console.error(e);
+      return pagamentosIniciais;
+    }
   });
 
   const [listaEspera, setListaEspera] = useState<ListaEspera[]>(() => {
-    const saved = localStorage.getItem('nail_lista_espera');
-    return saved ? JSON.parse(saved) : listaEsperaInicial;
+    try {
+      const saved = localStorage.getItem('nail_lista_espera');
+      return saved ? JSON.parse(saved) : listaEsperaInicial;
+    } catch (e) {
+      console.error(e);
+      return listaEsperaInicial;
+    }
   });
 
   const [configSalao, setConfigSalao] = useState<ConfigSalao>(() => {
-    const saved = localStorage.getItem('nail_config_salao');
-    return saved ? JSON.parse(saved) : configSalaoInicial;
+    try {
+      const saved = localStorage.getItem('nail_config_salao');
+      return saved ? JSON.parse(saved) : configSalaoInicial;
+    } catch (e) {
+      console.error(e);
+      return configSalaoInicial;
+    }
   });
 
   const [itensAgendamento, setItensAgendamento] = useState<{ [key: string]: string[] }>(() => {
-    const saved = localStorage.getItem('nail_itens_agendamento');
-    const seeded = localStorage.getItem('nail_app_seeded');
-    return (seeded === 'true' && saved) ? JSON.parse(saved) : itensAgendamentoMock;
+    try {
+      const saved = localStorage.getItem('nail_itens_agendamento');
+      return saved ? JSON.parse(saved) : itensAgendamentoMock;
+    } catch (e) {
+      console.error(e);
+      return itensAgendamentoMock;
+    }
   });
 
   // Estado de Equipe e Autenticação
