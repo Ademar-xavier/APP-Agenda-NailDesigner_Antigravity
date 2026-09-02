@@ -17,6 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { AlicateIcon } from './AlicateIcon';
 
 interface SidebarProps {
   currentView: string;
@@ -39,7 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'agenda', name: 'Agenda', icon: Calendar },
     { id: 'clientes', name: 'Clientes', icon: Users, adminOnly: true },
     { id: 'confirmacoes', name: 'Confirmações', icon: CheckCircle, adminOnly: true },
-    { id: 'servicos', name: 'Serviços', icon: Scissors, adminOnly: true },
+    { id: 'servicos', name: 'Serviços', icon: AlicateIcon, adminOnly: true },
     { id: 'cadastros', name: 'Cadastros', icon: ClipboardList, adminOnly: true },
     { id: 'materiais', name: 'Materiais', icon: Package, adminOnly: true },
     { id: 'financeiro', name: 'Financeiro', icon: DollarSign, adminOnly: true },

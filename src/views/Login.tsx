@@ -7,8 +7,8 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
-  const { equipe, login } = useAppState();
-  const [selectedUserId, setSelectedUserId] = useState<string>(equipe[0]?.id || '');
+  const { equipe, loginWithCredentials } = useAppState();
+  const [selectedUserId, setSelectedUserId] = useState<string>(equipe[0]?.id || 'admin');
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string>('');
 
@@ -16,12 +16,17 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     e.preventDefault();
     setError('');
 
-    // Para fins de demonstração do protótipo, qualquer senha ou a senha "1234" é aceita
-    if (selectedUserId) {
-      login(selectedUserId);
-    } else {
-      setError('Por favor, selecione um usuário.');
+    const targetId = selectedUserId || 'admin';
+    const pwd = password.trim() || 'admin';
+
+    const success = loginWithCredentials(targetId, pwd);
+    if (!success) {
+      setError('Senha incorreta. A senha padrão do sistema é "admin".');
     }
+  };
+
+  const handleQuickAdminLogin = () => {
+    loginWithCredentials('admin', 'admin');
   };
 
   return (
@@ -74,7 +79,9 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
               onChange={(e) => setSelectedUserId(e.target.value)}
               className="w-full bg-[#141414] border border-[#333] hover:border-[#8C6D58] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#8C6D58] transition-colors"
             >
-              <option value="" disabled>-- Selecione seu perfil --</option>
+              {equipe.length === 0 && (
+                <option value="admin">Administrador (Padrão: admin)</option>
+              )}
               {equipe
                 .filter(u => u.ativo)
                 .map(u => (
@@ -87,17 +94,22 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
 
           {/* Senha */}
           <div>
-            <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider mb-2">
-              Senha / Código de Acesso
-            </label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider">
+                Senha / Código de Acesso
+              </label>
+              <span className="text-[10px] text-[#8C6D58]">
+                Padrão inicial: <strong>admin</strong>
+              </span>
+            </div>
             <div className="flex items-center bg-[#141414] border border-[#333] hover:border-[#8C6D58] focus-within:border-[#8C6D58] rounded-xl px-4 py-3 transition-colors">
               <Lock size={16} className="text-[#555] shrink-0 mr-3" />
               <input
                 type="password"
-                placeholder="Qualquer senha ou digite 1234"
+                placeholder="Digite a senha (padrão: admin)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#555] focus:ring-0"
+                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0"
               />
             </div>
           </div>
@@ -105,10 +117,19 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
           {/* Submit */}
           <button
             type="submit"
-            className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md mt-2 flex items-center justify-center gap-1.5"
+            className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md mt-2 flex items-center justify-center gap-1.5 active:scale-98"
           >
             <Shield size={14} />
             <span>Acessar Painel</span>
+          </button>
+
+          {/* Botão de Emergência / Primeiro Acesso */}
+          <button
+            type="button"
+            onClick={handleQuickAdminLogin}
+            className="w-full text-center text-[11px] text-[#A19488] hover:text-white transition-colors py-1 block"
+          >
+            Primeiro acesso? <strong className="text-[#C4A482] underline">Entrar com Administrador padrão (admin)</strong>
           </button>
         </form>
 

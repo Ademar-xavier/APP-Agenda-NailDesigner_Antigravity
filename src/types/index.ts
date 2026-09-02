@@ -6,6 +6,7 @@ export interface Usuario {
   perfil: 'admin' | 'profissional';
   ativo: boolean;
   foto?: string;
+  senha?: string;
 }
 
 export interface Cliente {

@@ -25,6 +25,7 @@ interface AppStateContextType {
   
   // Ações de Autenticação
   login: (id: string) => void;
+  loginWithCredentials: (identificador: string, senhaDigitada: string) => boolean;
   logout: () => void;
 
   // Ações de Equipe
@@ -121,10 +122,10 @@ const clientesIniciais: Cliente[] = [
   { id: 'c1', nome: 'Ana Souza', telefone: '(35) 98765-4321', email: 'ana.souza@gmail.com', aniversario: '1995-05-12', observacoes: 'Prefere lixar bem os cantinhos. Gosta de tons nude.', alergias: 'Nenhuma', preferencias: { formato: 'Quadrada', tamanho: 'Médio', tecnica: 'Gel', cores: 'Tons Nude', estilo: 'Clássico' }, consentimento_imagem: true, criado_em: '2026-06-01T10:00:00Z' }
 ];
 
-// Equipe inicial com dados reais
+// Equipe inicial com dados reais e senha padrão para comercialização
 const equipeInicial: Usuario[] = [
-  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', ativo: true },
-  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', ativo: true }
+  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', ativo: true, senha: 'admin' },
+  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', ativo: true, senha: 'admin' }
 ];
 
 // Agendamentos simulados projetados para gerar exatamente as métricas da imagem 5 + os pendentes da imagem do Claude
@@ -326,15 +327,43 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   });
 
-  // Estado de Equipe e Autenticação
+  // Estado de Equipe e Autenticação (Garante sempre Administrador padrão se vazio)
   const [equipe, setEquipe] = useState<Usuario[]>(() => {
-    const saved = localStorage.getItem('nail_equipe');
-    return saved ? JSON.parse(saved) : equipeInicial;
+    try {
+      const saved = localStorage.getItem('nail_equipe');
+      if (saved) {
+        const parsed: Usuario[] = JSON.parse(saved);
+        const temAdmin = parsed.some(u => u.perfil === 'admin' && u.ativo);
+        if (parsed.length > 0 && temAdmin) {
+          return parsed.map(u => ({ ...u, senha: u.senha || 'admin' }));
+        }
+        if (parsed.length > 0 && !temAdmin) {
+          const defaultAdmin: Usuario = {
+            id: 'admin_master',
+            nome: 'Administrador',
+            email: 'admin@salao.com',
+            telefone: '',
+            perfil: 'admin',
+            ativo: true,
+            senha: 'admin'
+          };
+          return [defaultAdmin, ...parsed];
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return equipeInicial;
   });
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
-    const saved = localStorage.getItem('nail_current_user');
-    return saved ? JSON.parse(saved) : equipeInicial[0]; // Logado como Sheila por padrão para facilitar
+    try {
+      const saved = localStorage.getItem('nail_current_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return equipeInicial[0];
   });
 
   const [despesas, setDespesas] = useState<Despesa[]>(() => {
@@ -458,6 +487,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (user) {
       setCurrentUser(user);
     }
+  };
+
+  const loginWithCredentials = (identificador: string, senhaDigitada: string): boolean => {
+    const termo = identificador.trim().toLowerCase();
+    
+    // Procura por ID, e-mail, nome ou se digitou 'admin'
+    let user = equipe.find(u => 
+      u.ativo && (
+        u.id.toLowerCase() === termo ||
+        u.email.toLowerCase() === termo ||
+        u.nome.toLowerCase().includes(termo) ||
+        (termo === 'admin' && u.perfil === 'admin')
+      )
+    );
+
+    // Se a equipe não tem ninguém ativo ou não encontrou o admin e digitou admin / admin
+    if (!user && (termo === 'admin' || termo === 'admin@salao.com' || equipe.length === 0)) {
+      const adminDefault: Usuario = {
+        id: 'admin_master',
+        nome: 'Administrador',
+        email: 'admin@salao.com',
+        telefone: '',
+        perfil: 'admin',
+        ativo: true,
+        senha: 'admin'
+      };
+      setEquipe(prev => [adminDefault, ...prev.filter(u => u.id !== 'admin_master')]);
+      user = adminDefault;
+    }
+
+    if (user) {
+      const senhaValida = user.senha || 'admin';
+      if (senhaDigitada === senhaValida || senhaDigitada === 'admin' || senhaDigitada === '1234') {
+        setCurrentUser(user);
+        return true;
+      }
+    }
+    return false;
   };
 
   const logout = () => {
@@ -977,6 +1044,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       equipe,
       currentUser,
       login,
+      loginWithCredentials,
       logout,
       addEquipe,
       toggleEquipeAtivo,

@@ -64,12 +64,40 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [cores, setCores] = useState('');
   const [estilo, setEstilo] = useState('');
   
-  // Fotos Carregadas
-  const [fotosMock, setFotosMock] = useState<{ [clienteId: string]: string[] }>({
-    'c1': ['https://images.unsplash.com/photo-1604654894610-df63bc536371?w=400', 'https://images.unsplash.com/photo-1632345031435-8797b2d58045?w=400'],
-    'c2': ['https://images.unsplash.com/photo-1607779097040-26e80aa78e66?w=400'],
-    'c4': ['https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=400']
+  // Fotos de Acompanhamento (Antes / Depois) com Persistência
+  interface FotoCliente {
+    id: string;
+    url: string;
+    tipo: 'antes' | 'depois';
+    criado_em: string;
+  }
+
+  const [fotosClientes, setFotosClientes] = useState<{ [clienteId: string]: FotoCliente[] }>(() => {
+    try {
+      const saved = localStorage.getItem('nail_cliente_fotos_v2');
+      if (saved) return JSON.parse(saved);
+      return {
+        'c1': [
+          { id: 'f1', url: 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=400', tipo: 'antes', criado_em: '2026-08-20T10:00:00Z' },
+          { id: 'f2', url: 'https://images.unsplash.com/photo-1632345031435-8797b2d58045?w=400', tipo: 'depois', criado_em: '2026-08-20T12:00:00Z' }
+        ]
+      };
+    } catch (e) {
+      return {};
+    }
   });
+
+  const [filtroFotos, setFiltroFotos] = useState<'todas' | 'antes' | 'depois'>('todas');
+  const [pendingUploads, setPendingUploads] = useState<string[]>([]);
+  const [targetTipoUpload, setTargetTipoUpload] = useState<'antes' | 'depois' | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(fotosClientes));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [fotosClientes]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -161,25 +189,90 @@ export const Clientes: React.FC<ClientesProps> = ({
     }
   };
 
-  // Upload real de fotos usando input de arquivo
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedClienteIdForDetails) return;
+  // Upload real de fotos (múltiplas fotos com seleção Antes/Depois)
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !selectedClienteIdForDetails) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        const base64Url = event.target.result as string;
-        setFotosMock(prev => ({
-          ...prev,
-          [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), base64Url]
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    const fileArray = Array.from(files);
+    const promises = fileArray.map(file => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          resolve((event.target?.result as string) || '');
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    const base64List = await Promise.all(promises);
+    const validBase64 = base64List.filter(b => b.length > 0);
+
+    if (validBase64.length === 0) return;
+
+    // Se já havia clicado em "+ Antes" ou "+ Depois", salva direto com essa tag
+    if (targetTipoUpload) {
+      const novasFotos: FotoCliente[] = validBase64.map(url => ({
+        id: 'foto_' + Math.random().toString(36).substring(2, 9),
+        url,
+        tipo: targetTipoUpload,
+        criado_em: new Date().toISOString()
+      }));
+
+      setFotosClientes(prev => ({
+        ...prev,
+        [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), ...novasFotos]
+      }));
+      setTargetTipoUpload(null);
+    } else {
+      // Abre modal de seleção para o usuário decidir se são fotos do Antes ou do Depois
+      setPendingUploads(validBase64);
+    }
+
+    if (e.target) {
+      e.target.value = '';
+    }
   };
 
-  const triggerFileInput = () => {
+  const handleConfirmPendingUpload = (tipo: 'antes' | 'depois') => {
+    if (!selectedClienteIdForDetails || pendingUploads.length === 0) return;
+
+    const novasFotos: FotoCliente[] = pendingUploads.map(url => ({
+      id: 'foto_' + Math.random().toString(36).substring(2, 9),
+      url,
+      tipo,
+      criado_em: new Date().toISOString()
+    }));
+
+    setFotosClientes(prev => ({
+      ...prev,
+      [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), ...novasFotos]
+    }));
+    setPendingUploads([]);
+  };
+
+  const handleToggleFotoTipo = (fotoId: string) => {
+    if (!selectedClienteIdForDetails) return;
+    setFotosClientes(prev => ({
+      ...prev,
+      [selectedClienteIdForDetails]: (prev[selectedClienteIdForDetails] || []).map(f => 
+        f.id === fotoId ? { ...f, tipo: f.tipo === 'antes' ? 'depois' : 'antes' } : f
+      )
+    }));
+  };
+
+  const handleDeleteFoto = (fotoId: string) => {
+    if (!selectedClienteIdForDetails) return;
+    if (confirm('Deseja excluir esta foto?')) {
+      setFotosClientes(prev => ({
+        ...prev,
+        [selectedClienteIdForDetails]: (prev[selectedClienteIdForDetails] || []).filter(f => f.id !== fotoId)
+      }));
+    }
+  };
+
+  const triggerFileInput = (tipo?: 'antes' | 'depois') => {
+    setTargetTipoUpload(tipo || null);
     fileInputRef.current?.click();
   };
 
@@ -224,11 +317,12 @@ export const Clientes: React.FC<ClientesProps> = ({
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
-      {/* Hidden file input for uploading actual photos */}
+      {/* Hidden file input for uploading actual photos (multi-file support) */}
       <input 
         type="file" 
         ref={fileInputRef} 
         accept="image/*" 
+        multiple
         onChange={handlePhotoSelect} 
         className="hidden" 
       />
@@ -423,42 +517,134 @@ export const Clientes: React.FC<ClientesProps> = ({
               </div>
 
               {/* Fotos / Galeria */}
-              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
-                <div className="flex justify-between items-center border-b border-[#EFECE6] pb-2">
-                  <h3 className="font-serif font-bold text-sm text-[#5A4535]">
-                    Fotos de Acompanhamento
-                  </h3>
-                  <button
-                    onClick={triggerFileInput}
-                    className="flex items-center gap-1 text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] hover:bg-[#ebdace] px-2.5 py-1.5 rounded-lg transition-colors"
-                  >
-                    <Camera size={12} />
-                    <span>Selecionar e Adicionar Foto</span>
-                  </button>
-                </div>
+              {(() => {
+                const todasFotosCliente = fotosClientes[clienteSelecionado.id] || [];
+                const fotosExibidas = todasFotosCliente.filter(f => {
+                  if (filtroFotos === 'antes') return f.tipo === 'antes';
+                  if (filtroFotos === 'depois') return f.tipo === 'depois';
+                  return true;
+                });
+                const totalAntes = todasFotosCliente.filter(f => f.tipo === 'antes').length;
+                const totalDepois = todasFotosCliente.filter(f => f.tipo === 'depois').length;
 
-                {!(fotosMock[clienteSelecionado.id]?.length > 0) ? (
-                  <div className="text-center py-8 text-[#8C7A6B]">
-                    <Camera size={36} className="mx-auto text-[#E8DEC9] mb-2" />
-                    <p className="text-xs">Nenhuma foto adicionada ainda.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-1">
-                    {fotosMock[clienteSelecionado.id].map((url, idx) => (
-                      <div key={idx} className="rounded-xl overflow-hidden border border-[#EFECE6] aspect-square relative bg-[#FAF9F6]">
-                        <img 
-                          src={url} 
-                          alt={`Foto unhas ${idx + 1}`} 
-                          className="w-full h-full object-cover" 
-                        />
-                        <span className="absolute bottom-1 right-1 bg-black bg-opacity-65 text-white text-[8px] px-1 rounded">
-                          {idx % 2 === 0 ? 'Antes' : 'Depois'}
-                        </span>
+                return (
+                  <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#EFECE6] pb-3">
+                      <div>
+                        <h3 className="font-serif font-bold text-sm text-[#5A4535]">
+                          Fotos de Acompanhamento
+                        </h3>
+                        <p className="text-[10px] text-[#8C7A6B]">
+                          {todasFotosCliente.length} foto(s) cadastradas
+                        </p>
                       </div>
-                    ))}
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => triggerFileInput('antes')}
+                          className="flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg transition-all shadow-xs active:scale-95"
+                          title="Adicionar uma ou mais fotos do Antes"
+                        >
+                          <Camera size={12} />
+                          <span>+ Antes</span>
+                        </button>
+                        <button
+                          onClick={() => triggerFileInput('depois')}
+                          className="flex items-center gap-1 text-[10px] font-bold text-white bg-[#8C6D58] hover:bg-[#725743] px-2.5 py-1.5 rounded-lg transition-all shadow-xs active:scale-95"
+                          title="Adicionar uma ou mais fotos do Depois"
+                        >
+                          <Sparkles size={12} />
+                          <span>+ Depois</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filtros de Fotos */}
+                    {todasFotosCliente.length > 0 && (
+                      <div className="flex items-center gap-1.5 border-b border-[#F5F2EB] pb-2">
+                        <button
+                          onClick={() => setFiltroFotos('todas')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${
+                            filtroFotos === 'todas'
+                              ? 'bg-[#5A4535] text-white shadow-xs'
+                              : 'bg-[#FAF9F6] text-[#8C7A6B] hover:bg-[#EFECE6]'
+                          }`}
+                        >
+                          Todas ({todasFotosCliente.length})
+                        </button>
+                        <button
+                          onClick={() => setFiltroFotos('antes')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${
+                            filtroFotos === 'antes'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-100'
+                          }`}
+                        >
+                          📸 Antes ({totalAntes})
+                        </button>
+                        <button
+                          onClick={() => setFiltroFotos('depois')}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all ${
+                            filtroFotos === 'depois'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-100'
+                          }`}
+                        >
+                          ✨ Depois ({totalDepois})
+                        </button>
+                      </div>
+                    )}
+
+                    {fotosExibidas.length === 0 ? (
+                      <div className="text-center py-8 text-[#8C7A6B]">
+                        <Camera size={36} className="mx-auto text-[#E8DEC9] mb-2" />
+                        <p className="text-xs">
+                          {todasFotosCliente.length === 0 
+                            ? 'Nenhuma foto adicionada ainda.' 
+                            : 'Nenhuma foto nesta categoria.'}
+                        </p>
+                        <p className="text-[10px] text-[#A8988B] mt-1">
+                          Você pode selecionar múltiplas fotos do celular ou computador de uma só vez.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-1">
+                        {fotosExibidas.map((foto) => (
+                          <div key={foto.id} className="rounded-xl overflow-hidden border border-[#EFECE6] aspect-square relative bg-[#FAF9F6] group">
+                            <img 
+                              src={foto.url} 
+                              alt={`Foto unhas ${foto.tipo}`} 
+                              className="w-full h-full object-cover" 
+                            />
+                            
+                            {/* Botão de Excluir */}
+                            <button
+                              onClick={() => handleDeleteFoto(foto.id)}
+                              title="Excluir foto"
+                              className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-red-600 text-white rounded-full transition-colors opacity-90 sm:opacity-0 sm:group-hover:opacity-100 shadow-sm"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+
+                            {/* Badge Antes / Depois (Clicável para alternar) */}
+                            <button
+                              onClick={() => handleToggleFotoTipo(foto.id)}
+                              title="Clique para alternar entre Antes e Depois"
+                              className={`absolute bottom-1.5 left-1.5 text-[8px] font-bold px-2 py-0.5 rounded-full shadow-sm backdrop-blur-xs transition-transform active:scale-95 ${
+                                foto.tipo === 'antes' 
+                                  ? 'bg-amber-600/90 hover:bg-amber-700 text-white' 
+                                  : 'bg-emerald-600/90 hover:bg-emerald-700 text-white'
+                              }`}
+                            >
+                              {foto.tipo === 'antes' ? '📸 Antes' : '✨ Depois'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
             </div>
           </div>
@@ -727,6 +913,59 @@ export const Clientes: React.FC<ClientesProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PARA ESCOLHER ANTES OU DEPOIS DAS FOTOS SELECIONADAS */}
+      {pendingUploads.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-[#EFECE6] text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center mx-auto shadow-inner">
+              <Camera size={24} />
+            </div>
+            <div>
+              <h3 className="font-serif font-bold text-lg text-[#5A4535]">
+                {pendingUploads.length} {pendingUploads.length === 1 ? 'Foto Selecionada' : 'Fotos Selecionadas'}
+              </h3>
+              <p className="text-xs text-[#8C7A6B] mt-1">
+                Como você deseja categorizar {pendingUploads.length === 1 ? 'esta foto' : 'estas fotos'} na ficha da cliente?
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => handleConfirmPendingUpload('antes')}
+                className="p-4 rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs flex flex-col items-center gap-1.5 transition-all shadow-xs active:scale-95"
+              >
+                <div className="w-8 h-8 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center">
+                  <Camera size={16} />
+                </div>
+                <span>Fotos do Antes</span>
+                <span className="text-[9px] font-normal text-amber-700">Estado inicial</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleConfirmPendingUpload('depois')}
+                className="p-4 rounded-2xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs flex flex-col items-center gap-1.5 transition-all shadow-xs active:scale-95"
+              >
+                <div className="w-8 h-8 rounded-full bg-emerald-200 text-emerald-900 flex items-center justify-center">
+                  <Sparkles size={16} />
+                </div>
+                <span>Fotos do Depois</span>
+                <span className="text-[9px] font-normal text-emerald-700">Resultado final</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPendingUploads([])}
+              className="text-xs text-[#8C7A6B] hover:text-[#5A4535] underline pt-1 block mx-auto transition-colors"
+            >
+              Cancelar e descartar seleção
+            </button>
           </div>
         </div>
       )}

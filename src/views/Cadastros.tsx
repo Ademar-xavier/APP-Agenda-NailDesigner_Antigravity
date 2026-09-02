@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { 
   Sparkles, 
   Bookmark, 
-  Scissors, 
   DollarSign, 
   Plus, 
   Trash2, 
   AlertTriangle 
 } from 'lucide-react';
+import { AlicateIcon } from '../components/AlicateIcon';
 import { useAppState } from '../context/AppStateContext';
 
 type TabCadastros = 'tecnicas' | 'formatos' | 'cat_servicos' | 'cat_despesas';
@@ -117,7 +117,7 @@ export const Cadastros: React.FC = () => {
         {[
           { id: 'tecnicas', label: 'Técnicas de Unha', icon: Sparkles },
           { id: 'formatos', label: 'Formatos de Unha', icon: Bookmark },
-          { id: 'cat_servicos', label: 'Categorias de Serviços', icon: Scissors },
+          { id: 'cat_servicos', label: 'Categorias de Serviços', icon: AlicateIcon },
           { id: 'cat_despesas', label: 'Categorias de Despesas', icon: DollarSign }
         ].map((tab) => {
           const Icon = tab.icon;

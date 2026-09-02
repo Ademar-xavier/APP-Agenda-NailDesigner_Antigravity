@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
+import { AlicateIcon } from '../components/AlicateIcon';
 
 export const Servicos: React.FC = () => {
   const { 
@@ -201,7 +202,7 @@ export const Servicos: React.FC = () => {
               <div>
                 <div className="flex justify-between items-start gap-2">
                   <div className="p-2.5 bg-[#F6ECE8] text-[#8C6D58] rounded-xl h-fit">
-                    <Scissors size={18} />
+                    <AlicateIcon size={18} />
                   </div>
                   <div className="text-right">
                     <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5 flex items-center justify-end gap-1">

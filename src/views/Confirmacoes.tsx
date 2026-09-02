@@ -513,14 +513,6 @@ export const Confirmacoes: React.FC = () => {
                         <Send size={12} />
                         <span>Definir horário e agendar</span>
                       </button>
-                      <button
-                        onClick={() => handleRemoverListaEspera(w)}
-                        className="flex items-center gap-1 px-2.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl text-xs font-bold transition-all"
-                        title="Remover da lista de espera"
-                      >
-                        <XCircle size={13} />
-                        <span>Remover</span>
-                      </button>
                     </div>
                   </div>
                 );
