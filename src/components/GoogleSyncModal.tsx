@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
   Calendar, 
@@ -7,136 +7,157 @@ import {
   AlertCircle, 
   UserCheck, 
   UserPlus, 
-  Globe,
-  Tag,
-  Search,
-  CheckSquare,
-  Square
+  Globe, 
+  Tag, 
+  Search, 
+  Upload, 
+  Trash2, 
+  ShieldCheck, 
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
+import { 
+  EventoGoogleReal, 
+  obterGoogleClientId, 
+  salvarGoogleClientId, 
+  buscarEventosReaisGoogleApi, 
+  parseIcsCalendar 
+} from '../services/googleCalendar';
 
 interface GoogleSyncModalProps {
   onClose: () => void;
 }
 
-interface EventoGoogle {
-  id: string;
-  clienteNome: string;
-  clienteTelefone: string;
-  servicoNome: string;
-  servicoId: string;
-  inicio: string; // YYYY-MM-DDTHH:MM:ss
-  periodo: string;
-  tituloOriginal: string;
-}
-
 export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => {
   const { 
     clientes, 
-    servicos, 
     googleConnected, 
     googleUserEmail, 
     conectarGoogleAgenda, 
-    desconectarGoogleAgenda,
-    sincronizarGoogleAgenda 
+    desconectarGoogleAgenda, 
+    sincronizarGoogleAgenda,
+    limparAgendamentosSimuladosGoogle
   } = useAppState();
 
-  const [simulandoLogin, setSimulandoLogin] = useState(false);
+  const [carregando, setCarregando] = useState(false);
   const [syncDone, setSyncDone] = useState(false);
+  const [erroMsg, setErroMsg] = useState('');
   const [busca, setBusca] = useState('');
   const [filtroMes, setFiltroMes] = useState('todos');
 
-  // Gerador completo de eventos do dia 27/08 até 31/12/2026
-  // Sincroniza TODOS os clientes cadastrados com horários e datas corretos (segunda a sábado)
-  const eventosGoogleAteFimDe2026 = useMemo((): EventoGoogle[] => {
-    const eventos: EventoGoogle[] = [];
-    const dataInicial = new Date('2026-08-27T09:00:00');
-    const dataLimite = new Date('2026-12-31T23:59:59');
-    
-    // Lista completa com todas as clientes (os 10 iniciais do App + as do print)
-    const nomesClientes = [
-      { nome: 'Ana Souza', fone: '(35) 98765-4321', servId: 's2', servNome: 'Esmaltação em gel', sufixo: 'esmaltação gel' },
-      { nome: 'Beatriz Silva', fone: '(35) 97654-3210', servId: 's3', servNome: 'Manutenção de alongamento', sufixo: 'manutenção' },
-      { nome: 'Carla Santos', fone: '(35) 96543-2109', servId: 's4', servNome: 'Combo mão + pé', sufixo: 'pé e mão' },
-      { nome: 'Diana Pereira', fone: '(35) 95432-1098', servId: 's1', servNome: 'Alongamento em fibra', sufixo: 'alongamento' },
-      { nome: 'Elisa Lima', fone: '(35) 94321-0987', servId: 's2', servNome: 'Esmaltação em gel', sufixo: 'gel' },
-      { nome: 'Ana Beatriz Souza', fone: '(35) 98877-6655', servId: 's2', servNome: 'Esmaltação em gel', sufixo: 'gel' },
-      { nome: 'Elaine Cristina', fone: '11991234005', servId: 's9', servNome: 'Manicure tradicional', sufixo: '' },
-      { nome: 'Juliana Castro', fone: '11988887777', servId: 's2', servNome: 'Esmaltação em gel', sufixo: 'gel' },
-      { nome: 'Fernanda Lima', fone: '11977776666', servId: 's1', servNome: 'Alongamento em fibra', sufixo: 'alongamento' },
-      { nome: 'Camille Duarte', fone: '11966665555', servId: 's2', servNome: 'Esmaltação em gel', sufixo: 'gel' },
-      { nome: 'Cris', fone: '(35) 99712-4455', servId: 's9', servNome: 'Manicure simples', sufixo: '' },
-      { nome: 'Olinda', fone: '(35) 98877-0099', servId: 's9', servNome: 'Manicure simples', sufixo: '' },
-      { nome: 'Luiza', fone: '(35) 99122-8877', servId: 's9', servNome: 'Manicure simples', sufixo: '' },
-      { nome: 'Geni', fone: '(35) 99788-3322', servId: 's9', servNome: 'Manicure simples', sufixo: '' }
-    ];
+  // Modo de integração: 'oauth' (Google Cloud Oficial) ou 'arquivo' (.ics exportado)
+  const [modoAba, setModoAba] = useState<'oauth' | 'arquivo'>('oauth');
 
-    let idCounter = 1;
-    let dataAtual = new Date(dataInicial);
+  // Google Client ID
+  const [clientId, setClientId] = useState(obterGoogleClientId());
+  const [salvandoClientId, setSalvandoClientId] = useState(false);
 
-    while (dataAtual <= dataLimite) {
-      const diaSemana = dataAtual.getDay();
-      
-      // Atendimento de Segunda a Sábado (Pula Domingos)
-      if (diaSemana !== 0) {
-        const dataStr = dataAtual.toISOString().split('T')[0];
-        
-        // Distribuição de horários realistas por dia
-        const horariosDoDia = [
-          { hora: '09:00', periodo: 'manhã' },
-          { hora: '10:30', periodo: 'manhã' },
-          { hora: '13:30', periodo: 'tarde' },
-          { hora: '15:30', periodo: 'tarde' }
-        ];
+  // Lista de eventos reais carregados
+  const [eventosReais, setEventosReais] = useState<EventoGoogleReal[]>([]);
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
 
-        // Usando o dia do ano para ciclar e espalhar os clientes de forma realista
-        const diffTime = Math.abs(dataAtual.getTime() - dataInicial.getTime());
-        const diaDoAno = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-        horariosDoDia.forEach((slot, index) => {
-          const clienteIdx = (diaDoAno * 4 + index) % nomesClientes.length;
-          const cli = nomesClientes[clienteIdx];
-          
-          // Formato das anotações reais
-          const titulo = cli.sufixo ? `${cli.nome} ${cli.sufixo}` : cli.nome;
-
-          eventos.push({
-            id: `g_gen_${idCounter++}`,
-            clienteNome: cli.nome,
-            clienteTelefone: cli.fone,
-            servicoNome: cli.servNome,
-            servicoId: cli.servId,
-            inicio: `${dataStr}T${slot.hora}:00`,
-            periodo: slot.periodo,
-            tituloOriginal: titulo
-          });
-        });
-      }
-      dataAtual.setDate(dataAtual.getDate() + 1);
+  // Carrega a biblioteca Google Identity Services (GIS)
+  useEffect(() => {
+    if (!document.getElementById('google-gsi-client')) {
+      const script = document.createElement('script');
+      script.id = 'google-gsi-client';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
     }
-    return eventos;
   }, []);
 
-  // Iniciar todos selecionados
-  const [selectedEventIds, setSelectedEventIds] = useState<string[]>(() => 
-    eventosGoogleAteFimDe2026.map(e => e.id)
-  );
+  const handleSalvarClientId = (e: React.FormEvent) => {
+    e.preventDefault();
+    salvarGoogleClientId(clientId);
+    setSalvandoClientId(true);
+    setTimeout(() => setSalvandoClientId(false), 1500);
+  };
 
-  const handleConectarSimulado = () => {
-    setSimulandoLogin(true);
-    setTimeout(() => {
-      conectarGoogleAgenda('sheilaalicelara18@gmail.com');
-      setSimulandoLogin(false);
-    }, 2000);
+  // Conexão Oficial OAuth 2.0 com Google Cloud
+  const handleConectarGoogleOficial = () => {
+    setErroMsg('');
+    const idAtual = clientId.trim() || obterGoogleClientId();
+
+    if (!idAtual) {
+      setErroMsg('Por favor, informe o seu Google Client ID para autenticar com a Google Calendar API em modo de produção.');
+      return;
+    }
+
+    const google = (window as any).google;
+    if (!google?.accounts?.oauth2) {
+      setErroMsg('A biblioteca de autenticação do Google ainda está carregando. Aguarde 3 segundos e tente novamente.');
+      return;
+    }
+
+    try {
+      setCarregando(true);
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: idAtual,
+        scope: 'https://www.googleapis.com/auth/calendar.readonly',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            setCarregando(false);
+            setErroMsg(`Erro de autorização do Google: ${tokenResponse.error_description || tokenResponse.error}`);
+            return;
+          }
+
+          try {
+            const eventos = await buscarEventosReaisGoogleApi(tokenResponse.access_token);
+            setEventosReais(eventos);
+            setSelectedEventIds(eventos.map(e => e.id));
+            conectarGoogleAgenda('sheilaalicelara18@gmail.com');
+            setCarregando(false);
+          } catch (err: any) {
+            setCarregando(false);
+            setErroMsg(err.message || 'Falha ao buscar compromissos da Google Calendar API.');
+          }
+        }
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (e: any) {
+      setCarregando(false);
+      setErroMsg('Erro ao iniciar login Google: ' + (e.message || String(e)));
+    }
+  };
+
+  // Importação de arquivo .ics oficial do Google Agenda
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setErroMsg('');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const conteudo = event.target?.result as string;
+        const eventos = parseIcsCalendar(conteudo);
+
+        if (eventos.length === 0) {
+          setErroMsg('Nenhum evento válido encontrado no arquivo .ics.');
+          return;
+        }
+
+        setEventosReais(eventos);
+        setSelectedEventIds(eventos.map(e => e.id));
+        conectarGoogleAgenda(file.name);
+      } catch (err: any) {
+        setErroMsg('Falha ao processar arquivo .ics: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleSincronizar = () => {
-    const eventosParaImportar = eventosGoogleAteFimDe2026.filter(ev => selectedEventIds.includes(ev.id));
-    sincronizarGoogleAgenda(eventosParaImportar);
+    const selecionados = eventosReais.filter(ev => selectedEventIds.includes(ev.id));
+    sincronizarGoogleAgenda(selecionados);
     setSyncDone(true);
     setTimeout(() => {
       onClose();
-    }, 2000);
+    }, 1800);
   };
 
   const toggleSelectEvent = (id: string) => {
@@ -147,9 +168,8 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
     }
   };
 
-  // Filtragem dos eventos
   const eventosFiltrados = useMemo(() => {
-    return eventosGoogleAteFimDe2026.filter(ev => {
+    return eventosReais.filter(ev => {
       const matchBusca = ev.clienteNome.toLowerCase().includes(busca.toLowerCase()) || 
                          ev.servicoNome.toLowerCase().includes(busca.toLowerCase()) ||
                          ev.tituloOriginal.toLowerCase().includes(busca.toLowerCase());
@@ -157,10 +177,10 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
       if (!matchBusca) return false;
       if (filtroMes === 'todos') return true;
       
-      const mesEvento = new Date(ev.inicio).getMonth() + 1; // 1-indexed
+      const mesEvento = new Date(ev.inicio).getMonth() + 1;
       return String(mesEvento) === filtroMes;
     });
-  }, [eventosGoogleAteFimDe2026, busca, filtroMes]);
+  }, [eventosReais, busca, filtroMes]);
 
   const handleSelecionarTodosFiltrados = () => {
     const idsFiltrados = eventosFiltrados.map(e => e.id);
@@ -177,7 +197,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
 
   const formatarData = (dateStr: string) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' às ' + dateStr.split('T')[1].substring(0, 5);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' às ' + (dateStr.includes('T') ? dateStr.split('T')[1].substring(0, 5) : '09:00');
   };
 
   return (
@@ -186,13 +206,18 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
         
         {/* Header */}
         <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-[#F6ECE8] text-[#D37F64] rounded-xl">
-              <Globe size={18} />
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-[#F6ECE8] text-[#8C6D58] rounded-xl">
+              <Globe size={20} />
             </div>
             <div>
-              <h3 className="font-serif font-bold text-lg text-[#5A4535]">Sincronização Dupla Google Agenda</h3>
-              <p className="text-xs text-[#8C7A6B]">Sincronizando de 27/08 até 31/12 de 2026</p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-serif font-bold text-lg text-[#5A4535]">Google Agenda (Modo de Produção)</h3>
+                <span className="bg-green-100 text-green-800 text-[9px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border border-green-200">
+                  <ShieldCheck size={10} /> Produção Oficial
+                </span>
+              </div>
+              <p className="text-xs text-[#8C7A6B]">Sincronização 100% real sem dados simulados ou duplicados</p>
             </div>
           </div>
           <button 
@@ -203,69 +228,178 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
           </button>
         </div>
 
-        {simulandoLogin ? (
-          /* Tela de Loading da Autenticação */
+        {/* Botão de Limpeza Preventiva de Testes/Simulações Antigas */}
+        <div className="mb-4 p-3 bg-[#FFF9F6] border border-[#F5DFD5] rounded-2xl flex items-center justify-between gap-3 text-xs">
+          <div className="text-[#5A4535]">
+            <span className="font-bold block text-[#B25E46]">Limpar Agendamentos Antigos de Teste</span>
+            <p className="text-[10px] text-[#8C7A6B]">
+              Se você importou compromissos simulados ou repetidos anteriormente, clique para limpá-los agora.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Deseja remover todos os agendamentos antigos gerados pela simulação?')) {
+                limparAgendamentosSimuladosGoogle();
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-[11px] font-bold shrink-0 transition-colors shadow-2xs"
+          >
+            <Trash2 size={13} />
+            <span>Limpar Testes</span>
+          </button>
+        </div>
+
+        {erroMsg && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-600" />
+            <span>{erroMsg}</span>
+          </div>
+        )}
+
+        {carregando ? (
           <div className="flex flex-col items-center justify-center py-12 space-y-4">
             <RefreshCw size={36} className="text-[#8C6D58] animate-spin" />
-            <h4 className="font-semibold text-sm text-[#5A4535]">Conectando com o Google...</h4>
+            <h4 className="font-semibold text-sm text-[#5A4535]">Acessando Google Calendar API...</h4>
             <p className="text-xs text-[#8C7A6B] text-center max-w-xs">
-              Autenticando conta <span className="font-bold text-[#5A4535]">sheilaalicelara18@gmail.com</span> e baixando agenda completa de 2026.
+              Conectando com a sua conta Google real e baixando compromissos do salão.
             </p>
           </div>
         ) : syncDone ? (
-          /* Tela de Sucesso da Sincronização */
           <div className="flex flex-col items-center justify-center py-12 space-y-4 text-center">
             <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center">
               <Check size={24} />
             </div>
             <h4 className="font-semibold text-sm text-[#5A4535]">Sincronização Concluída!</h4>
             <p className="text-xs text-[#8C7A6B] max-w-xs">
-              Sincronizamos todos os eventos com todos os clientes da base local e suas anotações do Google Agenda com sucesso!
+              Os compromissos reais da sua Google Agenda foram adicionados com sucesso ao sistema sem duplicatas.
             </p>
           </div>
-        ) : !googleConnected ? (
-          /* Tela de Desconectado (Autenticação do Google) */
-          <div className="space-y-6 py-4">
-            <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4 space-y-3 text-xs text-[#5A4535]">
-              <h4 className="font-bold flex items-center gap-1.5 text-[#8C6D58]">
-                <Calendar size={15} />
-                <span>Como funciona a sincronização total?</span>
-              </h4>
-              <p className="leading-relaxed">
-                O app irá escanear sua conta <strong className="text-[#5A4535]">sheilaalicelara18@gmail.com</strong> e sincronizar os compromissos diários de <strong>todas as clientes</strong> (Ana Souza, Beatriz, Carla, Geni, Fernanda, Cris, Olinda, Luiza, etc.) com as datas corretas e horários reais de atendimento.
-              </p>
-            </div>
-
-            <div className="border border-[#EFECE6] p-5 rounded-2xl flex flex-col items-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center font-bold text-lg">
-                G
-              </div>
-              <div className="text-center">
-                <h4 className="font-bold text-xs text-[#5A4535]">Conectar como sheilaalicelara18@gmail.com</h4>
-                <p className="text-[10px] text-[#8C7A6B] mt-0.5">Importar histórico completo e ativar Mão Dupla</p>
-              </div>
+        ) : eventosReais.length === 0 ? (
+          <div className="space-y-4 py-2">
+            {/* Seletor de Modo */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs font-bold">
               <button
                 type="button"
-                onClick={handleConectarSimulado}
-                className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                onClick={() => setModoAba('oauth')}
+                className={`py-2 rounded-lg transition-all ${
+                  modoAba === 'oauth' 
+                    ? 'bg-[#8C6D58] text-white shadow-xs' 
+                    : 'text-[#8C7A6B] hover:text-[#5A4535]'
+                }`}
               >
-                <span>Conectar Google Agenda</span>
+                1. Google Cloud OAuth
+              </button>
+              <button
+                type="button"
+                onClick={() => setModoAba('arquivo')}
+                className={`py-2 rounded-lg transition-all ${
+                  modoAba === 'arquivo' 
+                    ? 'bg-[#8C6D58] text-white shadow-xs' 
+                    : 'text-[#8C7A6B] hover:text-[#5A4535]'
+                }`}
+              >
+                2. Importar Arquivo .ics
               </button>
             </div>
+
+            {modoAba === 'oauth' ? (
+              <div className="space-y-4">
+                <form onSubmit={handleSalvarClientId} className="bg-[#FAF9F6] p-4 rounded-2xl border border-[#EFECE6] space-y-3 text-xs">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="font-bold text-[#5A4535]">Google OAuth Client ID (Produção)</label>
+                      <a 
+                        href="https://console.cloud.google.com/apis/credentials" 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-[10px] text-[#8C6D58] hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        <span>Google API Console</span>
+                        <ExternalLink size={10} />
+                      </a>
+                    </div>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Ex: 123456789-abcdefg.apps.googleusercontent.com"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-white font-mono"
+                      />
+                      <button
+                        type="submit"
+                        className="px-3 py-2 bg-[#8C6D58] text-white rounded-xl text-xs font-bold shrink-0 hover:bg-[#725743] transition-colors"
+                      >
+                        {salvandoClientId ? 'Salvo!' : 'Salvar'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[#8C7A6B] mt-1.5 leading-relaxed">
+                      Origem JavaScript autorizada no Google Cloud: <code className="bg-white px-1 py-0.5 rounded border border-[#EFECE6] font-mono">https://sheilasantos-agenda.netlify.app</code>
+                    </p>
+                  </div>
+                </form>
+
+                <div className="border border-[#EFECE6] p-5 rounded-2xl flex flex-col items-center space-y-3 text-center">
+                  <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center font-bold text-lg">
+                    G
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-[#5A4535]">Conectar Conta do Google em Tempo Real</h4>
+                    <p className="text-[10px] text-[#8C7A6B] mt-0.5">Abre a janela oficial do Google para autorizar leitura da sua agenda</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleConectarGoogleOficial}
+                    className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                  >
+                    <span>Conectar Google Agenda Oficial</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4 text-xs text-[#5A4535] space-y-2">
+                  <span className="font-bold block text-[#8C6D58]">Como exportar sua agenda sem precisar de chaves API:</span>
+                  <ol className="list-decimal list-inside space-y-1 text-[11px] text-[#8C7A6B]">
+                    <li>Abra <strong className="text-[#5A4535]">calendar.google.com</strong> no seu computador;</li>
+                    <li>Clique no ícone de engrenagem ⚙️ no topo &gt; <strong>Configurações</strong>;</li>
+                    <li>No menu esquerdo, clique em <strong>Importar e exportar</strong>;</li>
+                    <li>Clique no botão <strong>Exportar</strong> para baixar o arquivo .zip com seus eventos;</li>
+                    <li>Abra o arquivo .zip e selecione o arquivo <strong>.ics</strong> abaixo.</li>
+                  </ol>
+                </div>
+
+                <label className="border-2 border-dashed border-[#8C6D58]/40 hover:border-[#8C6D58] bg-[#FAF9F6] p-6 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all">
+                  <Upload size={32} className="text-[#8C6D58] mb-2" />
+                  <span className="font-bold text-xs text-[#5A4535]">Clique para carregar seu arquivo .ics</span>
+                  <span className="text-[10px] text-[#8C7A6B] mt-1">Exportação direta da sua Google Agenda oficial</span>
+                  <input 
+                    type="file" 
+                    accept=".ics" 
+                    onChange={handleFileUpload} 
+                    className="hidden" 
+                  />
+                </label>
+              </div>
+            )}
           </div>
         ) : (
-          /* Tela de Conectado & Importação de Eventos */
+          /* Lista de Eventos Reais Carregados */
           <div className="space-y-4 py-2">
             <div className="flex justify-between items-center bg-[#FAF9F6] p-3 rounded-2xl border border-[#EFECE6] text-xs">
               <div>
-                <p className="text-[#8C7A6B]">Conta Conectada:</p>
-                <p className="font-bold text-[#5A4535]">{googleUserEmail}</p>
+                <p className="text-[#8C7A6B]">Eventos Reais Carregados:</p>
+                <p className="font-bold text-[#5A4535]">{eventosReais.length} compromisso(s) encontrados</p>
               </div>
               <button 
-                onClick={desconectarGoogleAgenda}
+                onClick={() => {
+                  setEventosReais([]);
+                  desconectarGoogleAgenda();
+                }}
                 className="text-[10px] text-red-600 hover:underline font-bold"
               >
-                Desconectar
+                Trocar Fonte / Desconectar
               </button>
             </div>
 
@@ -275,7 +409,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                 <Search size={14} className="text-[#8C7A6B]" />
                 <input 
                   type="text"
-                  placeholder="Buscar cliente, anotação ou serviço..."
+                  placeholder="Buscar cliente ou compromisso..."
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   className="bg-transparent text-xs text-[#5A4535] outline-none w-full border-none focus:ring-0"
@@ -302,7 +436,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
             {/* Seleção em lote */}
             <div className="flex justify-between items-center text-xs">
               <span className="text-[#8C7A6B]">
-                Mostrando <strong>{eventosFiltrados.length}</strong> de <strong>{eventosGoogleAteFimDe2026.length}</strong> eventos
+                Exibindo <strong>{eventosFiltrados.length}</strong> de <strong>{eventosReais.length}</strong> eventos
               </span>
               <div className="flex gap-2">
                 <button
@@ -310,7 +444,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                   onClick={handleSelecionarTodosFiltrados}
                   className="text-[10px] text-[#8C6D58] hover:underline font-bold"
                 >
-                  Selecionar Filtro
+                  Selecionar Todos
                 </button>
                 <span className="text-[#EFECE6]">|</span>
                 <button
@@ -318,74 +452,70 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                   onClick={handleDeselecionarTodosFiltrados}
                   className="text-[10px] text-[#8C7A6B] hover:underline font-bold"
                 >
-                  Limpar Filtro
+                  Limpar Seleção
                 </button>
               </div>
             </div>
 
             {/* Listagem */}
-            <div>
-              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                {eventosFiltrados.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-[#8C7A6B] bg-[#FAF9F6] rounded-2xl border border-dashed border-[#EFECE6]">
-                    Nenhum compromisso encontrado para este filtro.
-                  </div>
-                ) : (
-                  eventosFiltrados.map(ev => {
-                    const selected = selectedEventIds.includes(ev.id);
-                    const clienteExiste = clientes.some(c => 
-                      c.nome.toLowerCase() === ev.clienteNome.toLowerCase() || 
-                      c.telefone.replace(/\D/g, '') === ev.clienteTelefone.replace(/\D/g, '')
-                    );
+            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+              {eventosFiltrados.length === 0 ? (
+                <div className="text-center py-8 text-xs text-[#8C7A6B] bg-[#FAF9F6] rounded-2xl border border-dashed border-[#EFECE6]">
+                  Nenhum compromisso encontrado para este filtro.
+                </div>
+              ) : (
+                eventosFiltrados.map(ev => {
+                  const selected = selectedEventIds.includes(ev.id);
+                  const clienteExiste = clientes.some(c => 
+                    c.nome.toLowerCase() === ev.clienteNome.toLowerCase() || 
+                    (ev.clienteTelefone && c.telefone.replace(/\D/g, '').endsWith(ev.clienteTelefone.replace(/\D/g, '').slice(-8)))
+                  );
 
-                    return (
-                      <div 
-                        key={ev.id}
-                        onClick={() => toggleSelectEvent(ev.id)}
-                        className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
-                          selected 
-                            ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
-                            : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input 
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => {}}
-                            className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
-                          />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-xs text-[#5A4535]">{ev.clienteNome}</span>
-                              {clienteExiste ? (
-                                <span className="text-[8px] bg-green-50 border border-green-200 text-green-700 font-bold px-1 py-0.5 rounded flex items-center gap-0.5">
-                                  <UserCheck size={8} />
-                                  <span>Cadastrada</span>
-                                </span>
-                              ) : (
-                                <span className="text-[8px] bg-[#FFF9E6] border border-[#FFECB3] text-[#B78103] font-bold px-1 py-0.5 rounded flex items-center gap-0.5">
-                                  <UserPlus size={8} />
-                                  <span>Novo Cliente</span>
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#8C7A6B]">
-                              <Tag size={10} className="text-[#8C6D58]" />
-                              <span>Anotação: <strong>"{ev.tituloOriginal}"</strong></span>
-                              <span>·</span>
-                              <span>Serviço: <strong>{ev.servicoNome}</strong></span>
-                            </div>
-                            <p className="text-[9px] text-[#A69586] mt-0.5">
-                              {formatarData(ev.inicio)}
-                            </p>
+                  return (
+                    <div 
+                      key={ev.id}
+                      onClick={() => toggleSelectEvent(ev.id)}
+                      className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
+                        selected 
+                          ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
+                          : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => {}}
+                          className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-[#5A4535]">{ev.clienteNome}</span>
+                            {clienteExiste ? (
+                              <span className="text-[8px] bg-green-50 border border-green-200 text-green-700 font-bold px-1 py-0.5 rounded flex items-center gap-0.5">
+                                <UserCheck size={8} />
+                                <span>Cadastrada</span>
+                              </span>
+                            ) : (
+                              <span className="text-[8px] bg-[#FFF9E6] border border-[#FFECB3] text-[#B78103] font-bold px-1 py-0.5 rounded flex items-center gap-0.5">
+                                <UserPlus size={8} />
+                                <span>Novo Cliente</span>
+                              </span>
+                            )}
                           </div>
+                          <div className="flex items-center gap-1.5 mt-1 text-[10px] text-[#8C7A6B]">
+                            <Tag size={10} className="text-[#8C6D58]" />
+                            <span>Compromisso: <strong>"{ev.tituloOriginal}"</strong></span>
+                          </div>
+                          <p className="text-[9px] text-[#A69586] mt-0.5">
+                            {formatarData(ev.inicio)}
+                          </p>
                         </div>
                       </div>
-                    );
-                  })
-                )}
-              </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             <button
@@ -394,7 +524,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
               className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 mt-4"
             >
               <RefreshCw size={14} />
-              <span>Importar {selectedEventIds.length} agendamentos de 2026</span>
+              <span>Importar {selectedEventIds.length} agendamentos reais</span>
             </button>
           </div>
         )}

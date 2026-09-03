@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Package, 
   Plus, 
   Trash2, 
   Edit2, 
   X, 
-  AlertTriangle 
+  AlertTriangle,
+  Search
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Material } from '../types';
@@ -20,6 +21,10 @@ export const Materiais: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [materialEdicao, setMaterialEdicao] = useState<Material | null>(null);
+
+  // Filtros de busca
+  const [buscaNome, setBuscaNome] = useState('');
+  const [filtroMarca, setFiltroMarca] = useState('todas');
 
   // Form Material Fields
   const [nome, setNome] = useState('');
@@ -86,16 +91,41 @@ export const Materiais: React.FC = () => {
     setModalOpen(false);
   };
 
-  const handleExcluirMaterial = (id: string) => {
-    if (confirm('Deseja realmente excluir este material?')) {
+  const handleExcluirMaterial = (id: string) => {    if (confirm('Deseja realmente excluir este material?')) {
       deleteMaterial(id);
     }
   };
 
+  // Lista de marcas distintas ordenadas
+  const marcasDisponiveis = useMemo(() => {
+    const marcasSet = new Set<string>();
+    materiais.forEach(m => {
+      if (m.marca && m.marca.trim()) {
+        marcasSet.add(m.marca.trim());
+      }
+    });
+    return Array.from(marcasSet).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+  }, [materiais]);
+
+  // Materiais ordenados alfabeticamente pelo nome (A a Z) e secundariamente pela marca (A a Z)
+  const materiaisFiltrados = useMemo(() => {
+    return materiais
+      .filter(m => {
+        const matchNome = m.nome.toLowerCase().includes(buscaNome.toLowerCase().trim());
+        const matchMarca = filtroMarca === 'todas' || m.marca.toLowerCase() === filtroMarca.toLowerCase();
+        return matchNome && matchMarca;
+      })
+      .sort((a, b) => {
+        const cmpNome = a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+        if (cmpNome !== 0) return cmpNome;
+        return (a.marca || '').localeCompare(b.marca || '', 'pt-BR', { sensitivity: 'base' });
+      });
+  }, [materiais, buscaNome, filtroMarca]);
+
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-5">
         <div>
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Cadastro de Materiais e Insumos</h2>
           <p className="text-xs text-[#8C7A6B]">Gerencie os insumos do salão, marcas, rendimento e custo estimado por serviço</p>
@@ -109,6 +139,56 @@ export const Materiais: React.FC = () => {
         </button>
       </div>
 
+      {/* Barra de Filtros */}
+      <div className="flex flex-col sm:flex-row items-center gap-3 mb-5 bg-white p-3 rounded-2xl border border-[#EFECE6] shadow-xs">
+        {/* Busca por Nome */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl w-full sm:flex-1">
+          <Search size={14} className="text-[#8C7A6B]" />
+          <input 
+            type="text"
+            placeholder="Buscar por nome do material..."
+            value={buscaNome}
+            onChange={(e) => setBuscaNome(e.target.value)}
+            className="text-xs bg-transparent border-none outline-none focus:ring-0 w-full text-[#5A4535]"
+          />
+          {buscaNome && (
+            <button 
+              onClick={() => setBuscaNome('')}
+              className="text-[#8C7A6B] hover:text-[#5A4535] p-0.5"
+              title="Limpar busca"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Filtro por Marca */}
+        <div className="w-full sm:w-60">
+          <select
+            value={filtroMarca}
+            onChange={(e) => setFiltroMarca(e.target.value)}
+            className="w-full border border-[#EFECE6] bg-[#FAF9F6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+          >
+            <option value="todas">Todas as Marcas ({marcasDisponiveis.length})</option>
+            {marcasDisponiveis.map(marca => (
+              <option key={marca} value={marca}>{marca}</option>
+            ))}
+          </select>
+        </div>
+
+        {(buscaNome || filtroMarca !== 'todas') && (
+          <button
+            onClick={() => {
+              setBuscaNome('');
+              setFiltroMarca('todas');
+            }}
+            className="text-[10px] text-[#8C6D58] hover:underline font-bold whitespace-nowrap px-2"
+          >
+            Limpar Filtros
+          </button>
+        )}
+      </div>
+
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto pr-1 pb-6">
         {materiais.length === 0 ? (
@@ -117,11 +197,17 @@ export const Materiais: React.FC = () => {
             <h4 className="font-semibold text-sm">Nenhum material cadastrado</h4>
             <p className="text-xs mt-1 text-[#C2B7AE]">Adicione produtos para associá-los aos seus serviços e calcular custos reais.</p>
           </div>
+        ) : materiaisFiltrados.length === 0 ? (
+          <div className="text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
+            <Search size={36} className="mx-auto text-[#E8DEC9] mb-3" />
+            <h4 className="font-semibold text-sm">Nenhum material encontrado</h4>
+            <p className="text-xs mt-1 text-[#C2B7AE]">Tente ajustar a busca por nome ou o filtro de marca selecionado.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {materiais.map((mat) => (
+            {materiaisFiltrados.map((mat) => (
               <div 
-                key={mat.id}
+                key={mat.id} 
                 className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col justify-between hover:border-[#8C6D58] transition-all shadow-sm"
               >
                 <div>

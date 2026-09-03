@@ -86,6 +86,7 @@ interface AppStateContextType {
   conectarGoogleAgenda: (email: string) => void;
   desconectarGoogleAgenda: () => void;
   sincronizarGoogleAgenda: (eventos: any[]) => void;
+  limparAgendamentosSimuladosGoogle: () => void;
 
   // Sincronização em Nuvem (Supabase)
   isSyncingCloud: boolean;
@@ -1082,17 +1083,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
     mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
 
-    if (googleConnected) {
-      const cli = clientes.find(c => c.id === agendamento.cliente_id);
-      const servNomes = servs.map(s => s.nome).join(' + ');
-      const isFake = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c10'].includes(agendamento.cliente_id);
-      if (!isFake && novoAgendamento.observacoes !== 'Sincronizado automaticamente da Google Agenda') {
-        setTimeout(() => {
-          alert(`[Google Agenda - Sincronização Dupla] \nO agendamento de ${cli?.nome || 'Bloqueio'} (${servNomes}) foi enviado e sincronizado no Google Agenda de sheilaalicelara18@gmail.com!`);
-        }, 500);
-      }
-    }
-
     return { success: true, agendamento };
   };
 
@@ -1332,17 +1322,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.removeItem('nail_google_last_sync');
   };
 
-  const sincronizarGoogleAgenda = (eventos: any[]) => {
-    eventos.forEach(evento => {
-      // 1. Extrair nome e telefone
-      let clientNome = evento.clienteNome.trim();
-      let clientFone = evento.clienteTelefone ? evento.clienteTelefone.replace(/\D/g, '') : '';
-      let servId = evento.servicoId;
+  const limparAgendamentosSimuladosGoogle = () => {
+    setAgendamentos(prev => {
+      const validos = prev.filter(a => 
+        !a.observacoes?.includes('Sincronizado automaticamente da Google Agenda') &&
+        !a.observacoes?.includes('g_gen_')
+      );
+      const removidos = prev.length - validos.length;
+      localStorage.setItem('nail_agendamentos', JSON.stringify(validos));
+      mostrarNotificacaoGlobal(`🧹 ${removidos} agendamento(s) de simulação/duplicados foram removidos com sucesso!`);
+      return validos;
+    });
+  };
 
-      // Encontrar ou cadastrar cliente
+  const sincronizarGoogleAgenda = (eventos: any[]) => {
+    let importados = 0;
+    eventos.forEach(evento => {
+      let clientNome = (evento.clienteNome || 'Cliente').trim();
+      let clientFone = evento.clienteTelefone ? evento.clienteTelefone.replace(/\D/g, '') : '';
+      let servId = evento.servicoId || 's1';
+
+      // 1. Encontrar ou cadastrar cliente
       let client = clientes.find(c => {
-        if (clientFone) {
-          return c.telefone.replace(/\D/g, '') === clientFone;
+        if (clientFone && clientFone.length >= 8) {
+          return c.telefone.replace(/\D/g, '').endsWith(clientFone.slice(-8));
         }
         return c.nome.toLowerCase() === clientNome.toLowerCase();
       });
@@ -1350,26 +1353,36 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!client) {
         client = addCliente({
           nome: clientNome,
-          telefone: evento.clienteTelefone || '(35) 99999-9999',
+          telefone: evento.clienteTelefone || '',
           consentimento_imagem: false
         });
       }
 
-      // Adicionar agendamento
-      const total = servicos.find(s => s.id === servId)?.preco || 70;
-      addAgendamento({
-        cliente_id: client.id,
-        profissional_id: 'u1', // Padrão: Sheila
-        inicio: evento.inicio,
-        status: 'confirmado',
-        valor_total: total,
-        valor_sinal: 0,
-        observacoes: 'Sincronizado automaticamente da Google Agenda',
-        origem: 'cliente'
-      }, [servId]);
+      // 2. Prevenir duplicações: não insere se já existe agendamento nessa data/hora para o mesmo cliente ou mesmo Google Event ID
+      const jaExiste = agendamentos.some(a => 
+        (a.inicio === evento.inicio && a.cliente_id === client?.id) ||
+        (evento.id && a.observacoes?.includes(evento.id))
+      );
+
+      if (!jaExiste) {
+        const total = servicos.find(s => s.id === servId)?.preco || 70;
+        addAgendamento({
+          cliente_id: client.id,
+          profissional_id: 'u1', // Sheila
+          inicio: evento.inicio,
+          status: 'confirmado',
+          valor_total: total,
+          valor_sinal: 0,
+          observacoes: `[Google Agenda Oficial] ${evento.id ? 'ID:' + evento.id + ' - ' : ''}${evento.tituloOriginal || ''}`,
+          origem: 'cliente'
+        }, [servId]);
+        importados++;
+      }
     });
 
     setGoogleLastSync(new Date().toLocaleString('pt-BR'));
+    localStorage.setItem('nail_google_last_sync', new Date().toLocaleString('pt-BR'));
+    mostrarNotificacaoGlobal(`✅ ${importados} compromisso(s) real(is) importado(s) sem duplicações!`);
   };
 
   return (
@@ -1415,6 +1428,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       conectarGoogleAgenda,
       desconectarGoogleAgenda,
       sincronizarGoogleAgenda,
+      limparAgendamentosSimuladosGoogle,
       isSyncingCloud,
       lastCloudSyncTime,
       sincronizarComNuvem,
