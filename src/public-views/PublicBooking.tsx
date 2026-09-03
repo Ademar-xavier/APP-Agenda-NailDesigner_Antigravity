@@ -29,7 +29,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
     clientes, 
     configSalao,
     obterProximoHorarioLivre,
-    checkConflitoHorario
+    checkConflitoHorario,
+    logout
   } = useAppState();
 
   const [step, setStep] = useState<number>(1);
@@ -224,6 +225,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
         </span>
         <button
           onClick={() => {
+            logout();
             window.location.hash = 'admin';
             setIsAdmin(true);
           }}
