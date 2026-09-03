@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
-import { InstallPwaPrompt } from '../components/InstallPwaPrompt';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -702,9 +701,6 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
         <span>Sheila Santos Nails Designer © 2026</span>
         <Heart size={10} className="fill-[#DB7093] text-[#DB7093]" />
       </footer>
-
-      {/* Prompt de Instalação PWA no Celular */}
-      <InstallPwaPrompt />
     </div>
   );
 };
