@@ -29,7 +29,8 @@ import {
   Sparkles,
   Cloud,
   UploadCloud,
-  ExternalLink
+  ExternalLink,
+  Calendar
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -39,6 +40,12 @@ import {
   salvarConfigMetaWhatsApp, 
   enviarMensagemBotaoMeta 
 } from '../services/metaWhatsApp';
+import { 
+  obterLicencaAtual, 
+  revogarLicenca, 
+  ativarChaveLicenca, 
+  LicencaInfo 
+} from '../services/licencaService';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -59,11 +66,36 @@ export const Configuracoes: React.FC = () => {
     enviarDadosParaNuvem
   } = useAppState();
   
-  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp' | 'licenca'>('geral');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
   const [copiadoLink, setCopiadoLink] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // --- LICENÇA & ASSINATURA STATE ---
+  const [licencaAtual, setLicencaAtual] = useState<LicencaInfo | null>(() => obterLicencaAtual());
+  const [novaChaveInput, setNovaChaveInput] = useState('');
+  const [licencaFeedback, setLicencaFeedback] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
+
+  const handleAtualizarLicenca = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novaChaveInput.trim()) return;
+    const res = ativarChaveLicenca(novaChaveInput, configSalao.nome);
+    setLicencaFeedback(res);
+    if (res.sucesso && res.licenca) {
+      setLicencaAtual(res.licenca);
+      setNovaChaveInput('');
+      triggerSuccess();
+    }
+  };
+
+  const handleRevogarLicenca = () => {
+    if (confirm('Tem certeza que deseja desativar a licença deste aparelho? O aplicativo será bloqueado até que uma nova chave seja inserida.')) {
+      revogarLicenca();
+      setLicencaAtual(null);
+      window.location.reload();
+    }
+  };
 
   const handleCopiarLink = () => {
     const url = 'https://sheilasantos-agenda.netlify.app';
@@ -278,7 +310,8 @@ export const Configuracoes: React.FC = () => {
             { id: 'expediente', label: 'Horários de Trabalho', icon: Clock },
             { id: 'mensagens', label: 'Mensagens WhatsApp', icon: MessageSquare },
             { id: 'equipe', label: 'Equipe & Permissões', icon: Users },
-            { id: 'meta_whatsapp', label: 'Robô WhatsApp Meta', icon: Bot }
+            { id: 'meta_whatsapp', label: 'Robô WhatsApp Meta', icon: Bot },
+            { id: 'licenca', label: 'Licença & Assinatura', icon: Key }
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1054,6 +1087,147 @@ export const Configuracoes: React.FC = () => {
                     Copie os dois valores, cole nos campos acima e clique em <strong>Salvar Credenciais da Meta</strong>!
                   </li>
                 </ol>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: LICENÇA & ASSINATURA */}
+          {activeTab === 'licenca' && (
+            <div className="space-y-6">
+              <div className="border-b border-[#FAF9F6] pb-2 flex items-center justify-between">
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                    <Key size={18} className="text-[#8C6D58]" />
+                    <span>Licença de Uso & Assinatura do Aplicativo</span>
+                  </h3>
+                  <p className="text-xs text-[#8C7A6B] mt-0.5">
+                    Informações sobre a chave de ativação, titularidade e validade deste dispositivo
+                  </p>
+                </div>
+                {licencaAtual?.ativa && (
+                  <span className="text-[10px] font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                    ● Licença Ativa
+                  </span>
+                )}
+              </div>
+
+              {/* Card de Status da Licença Atual */}
+              <div className="bg-gradient-to-br from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-[#8C6D58] flex items-center justify-center text-white shadow-md">
+                      {licencaAtual?.tipo === 'vitalicio' ? <Crown size={22} /> : <Calendar size={22} />}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                        Modalidade Atual
+                      </span>
+                      <h4 className="font-serif font-bold text-lg text-[#5A4535]">
+                        {licencaAtual?.tipo === 'vitalicio' 
+                          ? '👑 Acesso Vitalício (Sem Expiração)' 
+                          : licencaAtual?.tipo === 'mensal'
+                          ? '📅 Assinatura Mensal'
+                          : '⏱️ Período de Avaliação / Degustação'}
+                      </h4>
+                    </div>
+                  </div>
+
+                  <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white border border-[#E5D5C5] text-[#5A4535] shadow-2xs">
+                    {licencaAtual?.chave || 'CHAVE NÃO DEFINIDA'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-[#E8DEC9]/60">
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#E8DEC9]">
+                    <span className="text-[10px] text-[#8C7A6B] font-bold block uppercase">Titular Registrado</span>
+                    <span className="text-xs font-bold text-[#5A4535]">{licencaAtual?.titular || 'Sheila Santos'}</span>
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#E8DEC9]">
+                    <span className="text-[10px] text-[#8C7A6B] font-bold block uppercase">Data de Ativação</span>
+                    <span className="text-xs font-bold text-[#5A4535]">
+                      {licencaAtual?.dataAtivacao ? new Date(licencaAtual.dataAtivacao).toLocaleDateString('pt-BR') : 'Hoje'}
+                    </span>
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#E8DEC9]">
+                    <span className="text-[10px] text-[#8C7A6B] font-bold block uppercase">Validade / Expiração</span>
+                    <span className="text-xs font-bold text-[#5A4535]">
+                      {licencaAtual?.tipo === 'vitalicio' 
+                        ? 'Vitalício (Permanente)' 
+                        : licencaAtual?.diasRestantes !== undefined
+                        ? `${licencaAtual.diasRestantes} dias restantes`
+                        : 'Ativa'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Feedback de Atualização */}
+              {licencaFeedback && (
+                <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  licencaFeedback.sucesso 
+                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
+                    : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                  {licencaFeedback.sucesso ? <Check size={16} /> : <AlertTriangle size={16} />}
+                  <span>{licencaFeedback.mensagem}</span>
+                </div>
+              )}
+
+              {/* Formulário para Atualizar ou Trocar a Chave */}
+              <form onSubmit={handleAtualizarLicenca} className="bg-white border border-[#EFECE6] rounded-2xl p-5 space-y-4">
+                <h4 className="font-serif font-bold text-sm text-[#5A4535]">Atualizar ou Inserir Nova Chave de Licença</h4>
+                <p className="text-xs text-[#8C7A6B]">
+                  Se você comprou uma nova licença vitalícia ou renovou sua mensalidade, digite a nova chave abaixo:
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="text"
+                    required
+                    placeholder="EX: SHEILA-VIP-2026 OU VITA-XXXX-XXXX"
+                    value={novaChaveInput}
+                    onChange={(e) => setNovaChaveInput(e.target.value.toUpperCase())}
+                    className="flex-1 border border-[#EFECE6] rounded-xl px-4 py-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] font-mono uppercase font-bold"
+                  />
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                  >
+                    <Key size={14} />
+                    <span>Aplicar Nova Chave</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Ações Comerciais e Suporte */}
+              <div className="bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl p-5 space-y-4">
+                <h4 className="font-serif font-bold text-sm text-[#5A4535]">Comprar Novas Licenças ou Suporte</h4>
+                <p className="text-xs text-[#6D4C3D] leading-relaxed">
+                  Para adquirir licenças adicionais para outros aparelhos da sua equipe, renovar planos mensais ou transferir titularidade, fale diretamente com o suporte comercial.
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const msg = encodeURIComponent('Olá! Gostaria de falar sobre renovação e compra de licenças do App Agenda Nail Designer.');
+                      window.open(`https://wa.me/5535997141856?text=${msg}`, '_blank');
+                    }}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-[#25D366] hover:bg-[#20BA5C] text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Send size={14} />
+                    <span>Falar com Suporte de Licenças no WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRevogarLicenca}
+                    className="w-full sm:w-auto px-4 py-2.5 border border-red-200 hover:bg-red-50 text-red-600 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 size={13} />
+                    <span>Desativar Licença deste Aparelho</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

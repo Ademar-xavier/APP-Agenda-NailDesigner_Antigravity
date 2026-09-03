@@ -158,9 +158,10 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
           <button
             onClick={onEntrarAdmin}
-            className="w-full py-3.5 px-6 bg-[#26221F] hover:bg-[#332D28] border border-[#3D352F] text-white rounded-2xl font-semibold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-98"
+            className="w-full py-3.5 px-6 bg-[#26221F] hover:bg-[#332D28] border border-[#3D352F] text-[#E8CDB5] hover:text-white rounded-2xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 active:scale-98"
           >
-            <span>Já sou cadastrada / Entrar no Painel</span>
+            <Key size={15} className="text-[#8C6D58]" />
+            <span>Ativar Chave de Licença / Entrar</span>
             <ArrowRight size={14} />
           </button>
         </div>
