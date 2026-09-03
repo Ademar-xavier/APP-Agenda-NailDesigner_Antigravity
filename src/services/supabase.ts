@@ -223,6 +223,7 @@ export const salvarConfiguracoesSupabase = async (dados: {
   formatos?: string[];
   categoriasServico?: string[];
   categoriasDespesa?: string[];
+  equipe?: any[];
 }) => {
   try {
     const { error } = await supabase.from('configuracoes').upsert({
@@ -232,6 +233,7 @@ export const salvarConfiguracoesSupabase = async (dados: {
       formatos: dados.formatos,
       categorias_servico: dados.categoriasServico,
       categorias_despesa: dados.categoriasDespesa,
+      equipe: dados.equipe,
       atualizado_em: new Date().toISOString()
     });
     if (error && error.code !== 'PGRST205') console.error('Erro ao salvar configuracoes no Supabase:', error);

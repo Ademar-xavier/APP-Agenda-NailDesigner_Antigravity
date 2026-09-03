@@ -493,11 +493,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_servicos', JSON.stringify(dados.servicos)); } catch (e) {}
       }
 
-      // 5. Usuários / Equipe da Nuvem
-      if (dados.usuarios && dados.usuarios.length > 0) {
-        const usuariosComSenha = dados.usuarios.map((u: any) => ({
+      // 5. Usuários / Equipe da Nuvem (com serviços habilitados)
+      const listaEquipeNuvem = (dados.configuracoes?.equipe && dados.configuracoes.equipe.length > 0)
+        ? dados.configuracoes.equipe
+        : dados.usuarios;
+
+      if (listaEquipeNuvem && listaEquipeNuvem.length > 0) {
+        const usuariosComSenha = listaEquipeNuvem.map((u: any) => ({
           ...u,
-          senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin')
+          senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
+          servicos_habilitados: u.servicos_habilitados || []
         }));
         setEquipe(usuariosComSenha);
         try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
@@ -606,8 +611,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         tecnicas,
         formatos,
         categoriasServico,
-        categoriasDespesa
+        categoriasDespesa,
+        equipe
       });
+
+      for (const u of equipe) {
+        try {
+          await supabase.from('usuarios').upsert(u);
+        } catch (e) {}
+      }
 
       for (const a of agendamentos) {
         const sIds = itensAgendamento[a.id] || [];
@@ -753,29 +765,36 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...membro,
       id: 'u_' + gerarId(),
       ativo: true,
-      senha: membro.senha || (membro.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin')
+      senha: membro.senha || (membro.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
+      servicos_habilitados: membro.servicos_habilitados || []
     };
-    setEquipe(prev => [...prev, novo]);
+    const nextEquipe = [...equipe, novo];
+    setEquipe(nextEquipe);
     try {
       supabase.from('usuarios').upsert(novo).then();
+      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
     } catch (e) {
       console.error('Erro ao salvar usuario no Supabase:', e);
     }
   };
 
   const updateEquipe = (id: string, updated: Partial<Usuario>) => {
-    setEquipe(prev => prev.map(u => u.id === id ? { ...u, ...updated } : u));
+    const nextEquipe = equipe.map(u => u.id === id ? { ...u, ...updated } : u);
+    setEquipe(nextEquipe);
     try {
       supabase.from('usuarios').update(updated).eq('id', id).then();
+      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
     } catch (e) {
       console.error('Erro ao atualizar usuario no Supabase:', e);
     }
   };
 
   const deleteEquipe = (id: string) => {
-    setEquipe(prev => prev.filter(u => u.id !== id));
+    const nextEquipe = equipe.filter(u => u.id !== id);
+    setEquipe(nextEquipe);
     try {
       supabase.from('usuarios').delete().eq('id', id).then();
+      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
     } catch (e) {
       console.error('Erro ao deletar usuario no Supabase:', e);
     }
