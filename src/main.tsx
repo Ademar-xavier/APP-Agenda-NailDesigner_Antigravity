@@ -4,9 +4,11 @@ import App from './App.tsx'
 import './index.css'
 
 // Registro do Service Worker para PWA (Instalação no celular)
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      reg.update();
+    }).catch((err) => {
       console.log('SW registration failed: ', err);
     });
   });

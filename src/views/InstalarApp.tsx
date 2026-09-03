@@ -13,7 +13,7 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
   useEffect(() => {
     // Se já está instalado, não deve ficar na tela de instalação: vai direto para o Login!
-    const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+    const isRunningStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator as any).standalone;
     if (isRunningStandalone) {
       setIsInstalled(true);
       onEntrarAdmin();
