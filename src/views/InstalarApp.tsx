@@ -98,7 +98,7 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
         'Como instalar no seu celular Android:\n\n' +
         '1. Toque nos 3 pontinhos (⋮) do Google Chrome no topo direito.\n' +
         '2. Toque em "Instalar aplicativo" ou "Adicionar à tela inicial".\n' +
-        '3. O ícone oficial da Sheila Santos será fixado na sua tela inicial!'
+        '3. O ícone oficial da Agenda Nails Designer será fixado na sua tela inicial!'
       );
       return;
     }
@@ -145,7 +145,7 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
       'Instalação no Windows:\n\n' +
       'Para instalar o aplicativo no seu computador Windows:\n' +
       '1. No Google Chrome ou Edge, clique no ícone de computador que aparece no lado direito da barra de endereços.\n' +
-      '2. Ou clique nos 3 pontinhos do navegador ➔ "Instalar aplicativo Sheila Santos".\n' +
+      '2. Ou clique nos 3 pontinhos do navegador ➔ "Instalar aplicativo Agenda Nails Designer".\n' +
       '3. Um ícone exclusivo na Área de Trabalho será criado com abertura ultrarrápida!'
     );
   };
@@ -188,11 +188,11 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
       {/* Header */}
       <header className="max-w-md mx-auto w-full flex items-center justify-between py-4 border-b border-[#2D2825]">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8C6D58] to-[#604938] flex items-center justify-center shadow-md">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8C6D58] via-[#A8866F] to-[#453427] flex items-center justify-center shadow-md border border-[#C5A880]/30">
             <Sparkles size={18} className="text-[#F5E6D8]" />
           </div>
           <div>
-            <span className="font-serif font-bold text-sm tracking-wide block text-white">Sheila Santos</span>
+            <span className="font-serif font-bold text-sm tracking-wide block text-white">Agenda Nails Designer</span>
             <span className="text-[10px] text-[#A69485] block uppercase tracking-wider font-semibold">Instalação do Aplicativo</span>
           </div>
         </div>
@@ -205,16 +205,22 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
       {/* Main Container */}
       <main className="max-w-md mx-auto w-full my-auto py-6 space-y-5">
-        {/* App Icon Card */}
+        {/* App Icon Card - Logo Padrão Comercial */}
         <div className="text-center space-y-2.5">
           <div className="relative inline-block">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-b from-[#8C6D58] to-[#453427] p-1.5 shadow-2xl border border-[#A3826B]/40 mx-auto flex items-center justify-center">
-              <img 
-                src="/logo.png" 
-                alt="Logo Sheila Santos" 
-                className="w-full h-full object-contain rounded-2xl drop-shadow-md"
-                onError={(e: any) => { e.target.style.display = 'none'; }}
-              />
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-br from-[#8C6D58] via-[#604938] to-[#2E2018] p-3 shadow-2xl border-2 border-[#C5A880]/50 mx-auto flex flex-col items-center justify-center relative overflow-hidden group">
+              {/* Efeito Glow Dourado de Fundo */}
+              <div className="absolute inset-0 bg-radial from-[#C5A880]/20 to-transparent pointer-events-none"></div>
+              
+              <div className="relative z-10 flex flex-col items-center justify-center">
+                <Sparkles size={28} className="text-[#F5E6D8] drop-shadow-md mb-0.5" />
+                <span className="font-serif font-bold text-[11px] tracking-widest text-[#E8CDB5] uppercase scale-90">
+                  NAILS
+                </span>
+                <span className="text-[8px] tracking-widest text-[#C5A880] uppercase font-semibold">
+                  PRO
+                </span>
+              </div>
             </div>
             <div className="absolute -bottom-1.5 -right-1.5 bg-emerald-500 text-white p-1 rounded-full shadow-lg border-2 border-[#141312]">
               <ShieldCheck size={14} />
@@ -223,10 +229,10 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
           <div className="space-y-1">
             <h1 className="font-serif text-xl sm:text-2xl font-bold text-white tracking-tight">
-              Instale o App no seu Aparelho
+              Agenda Nails Designer
             </h1>
             <p className="text-xs text-[#B8A89A] max-w-xs mx-auto leading-relaxed">
-              Disponível para Celular Android, iPhone e Computadores Windows.
+              Painel completo de gestão, agenda de clientes e controle financeiro para Nail Designers.
             </p>
           </div>
 
@@ -359,7 +365,7 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
       {/* Footer */}
       <footer className="text-center text-[10px] text-[#73655A] py-3 border-t border-[#2D2825]">
-        <span>Sheila Santos Nails Designer • Sistema Comercial de Gestão</span>
+        <span>Agenda Nails Designer • Sistema Comercial de Gestão</span>
       </footer>
 
       {/* MODAL DE BLOQUEIO DE PLATAFORMA INCOMPATÍVEL */}

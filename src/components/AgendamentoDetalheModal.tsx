@@ -93,6 +93,19 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const servText = servs.map(s => s.nome).join(' + ');
     const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
 
+    const formatarDiaRelativo = (dataInicioStr: string): string => {
+      const hojeStr = new Date().toLocaleDateString('en-CA');
+      const dataApenas = dataInicioStr.split('T')[0];
+      if (dataApenas === hojeStr) return 'hoje';
+      const dHoje = new Date(hojeStr + 'T00:00:00');
+      const dAgend = new Date(dataApenas + 'T00:00:00');
+      const diffDias = Math.round((dAgend.getTime() - dHoje.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDias === 1) return 'amanhã';
+      if (diffDias === -1) return 'ontem';
+      return `no dia ${dataApenas.split('-').reverse().join('/')}`;
+    };
+    const diaRelativo = formatarDiaRelativo(agendamento.inicio);
+
     // Se a Meta Cloud API estiver ativa, oferece envio oficial com botões clicáveis
     const metaConfig = obterConfigMetaWhatsApp();
     if (metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken) {
@@ -105,7 +118,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       if (usarMeta) {
         const textoCorpo = tipo === 'confirmacao'
           ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo:`
-          : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} amanhã (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
+          : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} ${diaRelativo} (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
 
         const res = await enviarMensagemBotaoMeta({
           destinatario: fone,
@@ -135,6 +148,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
     } else {
       msg = configSalao.templates_whatsapp.lembrete
+        .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
+        .replace(/\bamanhã\b/gi, diaRelativo)
+        .replace('{dia_relativo}', diaRelativo)
         .replace('{cliente}', cliente.nome)
         .replace('{data}', dataFormatada)
         .replace('{hora}', horaStr)

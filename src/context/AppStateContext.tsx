@@ -155,84 +155,10 @@ const equipeInicial: Usuario[] = [
   { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', ativo: true, senha: 'admin' }
 ];
 
-// Agendamentos simulados projetados para gerar exatamente as métricas da imagem 5 + os pendentes da imagem do Claude
-const dataBase = '2026-08-29';
-const agendamentosIniciais: Agendamento[] = [
-  // CONCLUÍDOS (Receita Realizada de R$ 885,00)
-  // 1. Alongamento em fibra (2x) = R$ 320,00
-  { id: 'a1', cliente_id: 'c1', profissional_id: 'u1', inicio: '2026-08-19T09:00:00', fim: '2026-08-19T11:00:00', status: 'concluido', valor_total: 160, valor_sinal: 30, origem: 'admin', criado_em: '2026-08-15T10:00:00Z' },
-  { id: 'a2', cliente_id: 'c4', profissional_id: 'u1', inicio: '2026-08-21T14:00:00', fim: '2026-08-21T16:00:00', status: 'concluido', valor_total: 160, valor_sinal: 30, origem: 'admin', criado_em: '2026-08-18T10:00:00Z' },
-  
-  // 2. Esmaltação em gel (3x) = R$ 210,00
-  { id: 'a3', cliente_id: 'c2', profissional_id: 'u1', inicio: '2026-08-20T10:00:00', fim: '2026-08-20T11:00:00', status: 'concluido', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-18T10:00:00Z' },
-  { id: 'a4', cliente_id: 'c5', profissional_id: 'u1', inicio: '2026-08-23T15:00:00', fim: '2026-08-23T16:00:00', status: 'concluido', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-21T10:00:00Z' },
-  { id: 'a5', cliente_id: 'c1', profissional_id: 'u2', inicio: '2026-08-26T11:00:00', fim: '2026-08-26T12:00:00', status: 'concluido', valor_total: 70, valor_sinal: 15, origem: 'admin', criado_em: '2026-08-24T10:00:00Z' },
-  
-  // 3. Manutenção de alongamento (1x) = R$ 110,00
-  { id: 'a6', cliente_id: 'c2', profissional_id: 'u1', inicio: '2026-08-24T09:00:00', fim: '2026-08-24T10:30:00', status: 'concluido', valor_total: 110, valor_sinal: 20, origem: 'admin', criado_em: '2026-08-22T10:00:00Z' },
-  
-  // 4. Combo mão + pé (1x) = R$ 95,00
-  { id: 'a7', cliente_id: 'c3', profissional_id: 'u2', inicio: '2026-08-27T16:00:00', fim: '2026-08-27T17:30:00', status: 'concluido', valor_total: 95, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-25T10:00:00Z' },
-  
-  // 5. Pedicure spa (1x) = R$ 55,00
-  { id: 'a8', cliente_id: 'c3', profissional_id: 'u1', inicio: '2026-08-28T10:00:00', fim: '2026-08-28T11:00:00', status: 'concluido', valor_total: 55, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-26T10:00:00Z' },
-  
-  // 6. Nail art / decoração (2x) = R$ 50,00
-  { id: 'a9', cliente_id: 'c5', profissional_id: 'u1', inicio: '2026-08-29T09:00:00', fim: '2026-08-29T09:30:00', status: 'concluido', valor_total: 25, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-27T10:00:00Z' },
-  { id: 'a10', cliente_id: 'c1', profissional_id: 'u1', inicio: '2026-08-29T10:00:00', fim: '2026-08-29T10:30:00', status: 'concluido', valor_total: 25, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-27T11:00:00Z' },
-
-  // PREVISTOS (Receita Prevista de R$ 460,00)
-  // 1. Manutenção de alongamento (1x) = R$ 110,00
-  { id: 'a11', cliente_id: 'c2', profissional_id: 'u1', inicio: '2026-08-31T14:00:00', fim: '2026-08-31T15:30:00', status: 'confirmado', valor_total: 110, valor_sinal: 20, origem: 'cliente', criado_em: '2026-08-28T10:00:00Z' },
-  // 2. Alongamento em fibra (1x) = R$ 160,00
-  { id: 'a12', cliente_id: 'c4', profissional_id: 'u1', inicio: '2026-08-31T09:00:00', fim: '2026-08-31T11:00:00', status: 'confirmado', valor_total: 160, valor_sinal: 30, origem: 'admin', criado_em: '2026-08-29T10:00:00Z' },
-  // 3. Esmaltação em gel (1x) = R$ 70,00 (O pendente da Ana Beatriz Souza)
-  { id: 'a13', cliente_id: 'c6', profissional_id: 'u2', inicio: '2026-08-29T14:00:00', fim: '2026-08-29T15:00:00', status: 'pendente', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-29T10:00:00Z' },
-  // 4. Blindagem de Unha (1x) = R$ 90,00
-  { id: 'a14', cliente_id: 'c5', profissional_id: 'u1', inicio: '2026-08-31T16:00:00', fim: '2026-08-31T17:00:00', status: 'confirmado', valor_total: 90, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-29T11:00:00Z' },
-  // 5. Nail art / decoração (1x) = R$ 30,00 (Para somar R$ 460 total: 110+160+70+90+30 = 460!)
-  { id: 'a15', cliente_id: 'c1', profissional_id: 'u1', inicio: '2026-08-31T11:30:00', fim: '2026-08-31T12:00:00', status: 'confirmado', valor_total: 30, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-29T12:00:00Z' },
-
-  // NOVOS AGENDAMENTOS PENDENTES (A Confirmar da Imagem do Claude)
-  { id: 'a_elaine', cliente_id: 'c7', profissional_id: 'u1', inicio: '2026-08-29T17:00:00', fim: '2026-08-29T17:45:00', status: 'pendente', valor_total: 45, valor_sinal: 10, origem: 'cliente', criado_em: '2026-08-28T10:00:00Z' },
-  { id: 'a_juliana', cliente_id: 'c8', profissional_id: 'u1', inicio: '2026-08-30T17:00:00', fim: '2026-08-30T18:00:00', status: 'pendente', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-28T11:00:00Z' },
-  { id: 'a_fernanda', cliente_id: 'c9', profissional_id: 'u1', inicio: '2026-08-31T11:00:00', fim: '2026-08-31T12:00:00', status: 'pendente', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-28T12:00:00Z' },
-  { id: 'a_camille', cliente_id: 'c10', profissional_id: 'u1', inicio: '2026-09-03T10:00:00', fim: '2026-09-03T11:00:00', status: 'pendente', valor_total: 70, valor_sinal: 15, origem: 'cliente', criado_em: '2026-08-28T13:00:00Z' },
-
-  // CANCELADOS (Receita Cancelada de R$ 70,00)
-  // Esmaltação em gel cancelada = R$ 70,00
-  { id: 'a16', cliente_id: 'c2', profissional_id: 'u1', inicio: '2026-08-25T14:00:00', fim: '2026-08-25T15:00:00', status: 'cancelado', valor_total: 70, valor_sinal: 15, origem: 'cliente', motivo_cancelamento: 'Trabalho extra', cancelado_por: 'cliente', criado_em: '2026-08-23T10:00:00Z' },
-
-  // PERDIDO/FALTA (Receita Perdida de R$ 45,00)
-  // Sinal perdido por falta de Esmaltação em gel = R$ 45,00 (Ou um serviço de R$ 45,00 em falta)
-  { id: 'a17', cliente_id: 'c5', profissional_id: 'u1', inicio: '2026-08-28T16:00:00', fim: '2026-08-28T17:00:00', status: 'falta', valor_total: 45, valor_sinal: 0, origem: 'admin', criado_em: '2026-08-27T10:00:00Z' }
-];
-
-const pagamentosIniciais: Pagamento[] = [
-  // Concluídos (Realizados) - R$ 885,00
-  { id: 'p1', agendamento_id: 'a1', tipo: 'pix', valor: 160, status: 'pago', data_pagamento: '2026-08-19T11:00:00' },
-  { id: 'p2', agendamento_id: 'a2', tipo: 'pix', valor: 160, status: 'pago', data_pagamento: '2026-08-21T16:00:00' },
-  { id: 'p3', agendamento_id: 'a3', tipo: 'pix', valor: 70, status: 'pago', data_pagamento: '2026-08-20T11:00:00' },
-  { id: 'p4', agendamento_id: 'a4', tipo: 'pix', valor: 70, status: 'pago', data_pagamento: '2026-08-23T16:00:00' },
-  { id: 'p5', agendamento_id: 'a5', tipo: 'cartao_credito', valor: 70, status: 'pago', data_pagamento: '2026-08-26T12:00:00' },
-  { id: 'p6', agendamento_id: 'a6', tipo: 'pix', valor: 110, status: 'pago', data_pagamento: '2026-08-24T10:30:00' },
-  { id: 'p7', agendamento_id: 'a7', tipo: 'dinheiro', valor: 95, status: 'pago', data_pagamento: '2026-08-27T17:30:00' },
-  { id: 'p8', agendamento_id: 'a8', tipo: 'cartao_debito', valor: 55, status: 'pago', data_pagamento: '2026-08-28T11:00:00' },
-  { id: 'p9', agendamento_id: 'a9', tipo: 'pix', valor: 25, status: 'pago', data_pagamento: '2026-08-29T09:30:00' },
-  { id: 'p10', agendamento_id: 'a10', tipo: 'pix', valor: 25, status: 'pago', data_pagamento: '2026-08-29T10:30:00' },
-
-  // Sinal Pago dos Futuros
-  { id: 'p11', agendamento_id: 'a11', tipo: 'pix', valor: 20, status: 'sinal pago', data_pagamento: '2026-08-28T10:00:00' },
-  { id: 'p12', agendamento_id: 'a12', tipo: 'pix', valor: 30, status: 'sinal pago', data_pagamento: '2026-08-29T10:00:00' },
-  
-  // Pendentes
-  { id: 'p13', agendamento_id: 'a13', tipo: 'pix', valor: 70, status: 'pendente', data_pagamento: '2026-08-29T14:00:00' }
-];
-
-const listaEsperaInicial: ListaEspera[] = [
-  { id: 'w1', cliente_id: 'c3', servico_id: 's4', data_preferida: '2026-08-31', periodo_preferido: 'tarde', status: 'aguardando', criado_em: '2026-08-28T15:00:00Z' },
-  { id: 'w2', cliente_id: 'c2', servico_id: 's2', data_preferida: '2026-08-30', periodo_preferido: 'manha', status: 'aguardando', criado_em: '2026-08-28T16:00:00Z' }
-];
+// Agendamentos, pagamentos e lista de espera iniciam vazios (alimentados pelo banco de dados da nuvem)
+const agendamentosIniciais: Agendamento[] = [];
+const pagamentosIniciais: Pagamento[] = [];
+const listaEsperaInicial: ListaEspera[] = [];
 
 const configSalaoInicial: ConfigSalao = {
   nome: 'Sheila Santos Nails Designer',
@@ -259,7 +185,7 @@ const configSalaoInicial: ConfigSalao = {
   },
   templates_whatsapp: {
     confirmacao: 'Olá, {cliente}! Seu agendamento para {servico} com {profissional} no dia {data} às {hora} foi recebido. Para confirmar, efetue o pagamento do sinal de R$ {sinal} na chave Pix {chave_pix} e envie o comprovante aqui. Resumo: {link_reserva}',
-    lembrete: 'Olá, {cliente}! Passando para lembrar do seu atendimento amanhã ({data}) às {hora} ({servico}). Responda: \n1 - Para Confirmar \n2 - Para Cancelar ou Remarcar (limite de {limite_horas}h de antecedência). Te espero!',
+    lembrete: 'Olá, {cliente}! Passando para lembrar do seu atendimento {dia_relativo} ({data}) às {hora} ({servico}). Responda: \n1 - Para Confirmar \n2 - Para Cancelar ou Remarcar (limite de {limite_horas}h de antecedência). Te espero!',
     retorno_manutencao: 'Olá, {cliente}! Faz {dias_visita} dias desde o seu último {servico}. Está na hora de fazer sua manutenção para manter suas unhas lindas e saudáveis! Agende pelo link: {link_agendamento}',
     lista_espera: 'Olá, {cliente}! Um horário que você desejava ficou vago para o dia {data} no período {periodo}. Gostaria de agendar? Responda rápido para garantir!'
   }
@@ -307,7 +233,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>(() => {
     try {
       const saved = localStorage.getItem('nail_agendamentos');
-      return saved ? JSON.parse(saved) : agendamentosIniciais;
+      if (saved) {
+        const parsed: Agendamento[] = JSON.parse(saved);
+        return parsed.filter(a => !/^a\d+$/.test(a.id) || !a.inicio.startsWith('2026-08'));
+      }
+      return agendamentosIniciais;
     } catch (e) {
       console.error(e);
       return agendamentosIniciais;
@@ -317,7 +247,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [pagamentos, setPagamentos] = useState<Pagamento[]>(() => {
     try {
       const saved = localStorage.getItem('nail_pagamentos');
-      return saved ? JSON.parse(saved) : pagamentosIniciais;
+      if (saved) {
+        const parsed: Pagamento[] = JSON.parse(saved);
+        return parsed.filter(p => !/^p\d+$/.test(p.id) || !p.data_pagamento.startsWith('2026-08'));
+      }
+      return pagamentosIniciais;
     } catch (e) {
       console.error(e);
       return pagamentosIniciais;
@@ -327,7 +261,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [listaEspera, setListaEspera] = useState<ListaEspera[]>(() => {
     try {
       const saved = localStorage.getItem('nail_lista_espera');
-      return saved ? JSON.parse(saved) : listaEsperaInicial;
+      if (saved) {
+        const parsed: ListaEspera[] = JSON.parse(saved);
+        return parsed.filter(l => !/^w\d+$/.test(l.id) || !l.data_preferida.startsWith('2026-08'));
+      }
+      return listaEsperaInicial;
     } catch (e) {
       console.error(e);
       return listaEsperaInicial;
@@ -1215,7 +1153,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // --- Lógica de Manutenção Sugerida ---
   const obterRecomendacoesManutencao = () => {
-    const hoje = new Date(dataBase);
+    const hoje = new Date();
     const recomendacoes: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }[] = [];
 
     clientes.forEach(cliente => {

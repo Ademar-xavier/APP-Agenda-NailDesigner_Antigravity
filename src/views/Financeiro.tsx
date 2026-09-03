@@ -97,52 +97,61 @@ export const Financeiro: React.FC = () => {
     }
   };
 
-  // --- FILTROS DE PERÍODO (Agosto 2026) ---
-  const agendamentosAgosto = agendamentos.filter(a => a.inicio.startsWith('2026-08'));
-  const pagamentosAgosto = pagamentos.filter(p => p.data_pagamento.startsWith('2026-08'));
-  
-  // 1. Receitas Realizadas (KPI Box 1)
-  const receitasRealizadas = pagamentosAgosto
-    .filter(p => p.status === 'pago' || p.status === 'sinal pago')
-    .reduce((acc, p) => acc + p.valor, 0);
+  // --- FILTROS DE PERÍODO (Mês Atual em Tempo Real) ---
+  const mesAtualStr = new Date().toLocaleDateString('en-CA').slice(0, 7);
+  const agendamentosMes = agendamentos.filter(a => a.inicio.startsWith(mesAtualStr));
+  const concluidosMes = agendamentosMes.filter(a => a.status === 'concluido');
 
-  // 2. Faturamento Previsto (KPI Box 2)
-  const faturamentoPrevisto = agendamentosAgosto
+  // 1. Receitas Realizadas (KPI Box 1 - Atendimentos Concluídos)
+  const receitasRealizadas = concluidosMes.reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+
+  // 2. Faturamento Previsto (KPI Box 2 - Confirmados + Pendentes)
+  const faturamentoPrevisto = agendamentosMes
     .filter(a => a.status === 'confirmado' || a.status === 'pendente')
-    .reduce((acc, a) => acc + a.valor_total, 0);
+    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
 
-  // 3. Despesas Totais de Agosto (KPI Box 3)
-  const totalDespesasAgosto = despesas
-    .filter(d => d.data.startsWith('2026-08'))
-    .reduce((acc, d) => acc + d.valor, 0);
+  // 3. Despesas Totais do Mês (KPI Box 3)
+  const totalDespesasMes = despesas
+    .filter(d => d.data.startsWith(mesAtualStr))
+    .reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
 
   // 4. Lucro Líquido (KPI Box 4)
-  const lucroLiquido = receitasRealizadas - totalDespesasAgosto;
+  const lucroLiquido = receitasRealizadas - totalDespesasMes;
 
   // 5. Ticket Médio (KPI Box 5)
-  const concluidosAgosto = agendamentosAgosto.filter(a => a.status === 'concluido');
-  const ticketMedio = concluidosAgosto.length > 0 ? (receitasRealizadas / concluidosAgosto.length) : 0;
+  const ticketMedio = concluidosMes.length > 0 ? (receitasRealizadas / concluidosMes.length) : 0;
 
-  // 6. Ocupação (KPI Box 6)
-  const taxaOcupacao = 8;
+  // 6. Ocupação Real (KPI Box 6)
+  const totalMinutosAgendados = agendamentosMes
+    .filter(a => a.status !== 'cancelado' && a.status !== 'falta' && a.status !== 'bloqueado')
+    .reduce((acc, a) => {
+      const diffMs = new Date(a.fim).getTime() - new Date(a.inicio).getTime();
+      return acc + Math.floor(diffMs / (60 * 1000));
+    }, 0);
+  const expedienteMinutosMes = 22 * 540; // ~22 dias úteis de 9 horas
+  const taxaOcupacao = Math.min(100, Math.round((totalMinutosAgendados / expedienteMinutosMes) * 100));
 
-  // --- GRAFICO: Faturamento realizado por dia ---
-  const faturamentoPorDia = Array.from({ length: 31 }, (_, i) => {
+  // --- GRAFICO: Faturamento realizado por dia no mês atual ---
+  const anoNum = Number(mesAtualStr.split('-')[0]);
+  const mesNum = Number(mesAtualStr.split('-')[1]);
+  const diasNoMes = new Date(anoNum, mesNum, 0).getDate();
+
+  const faturamentoPorDia = Array.from({ length: diasNoMes }, (_, i) => {
     const dia = String(i + 1).padStart(2, '0');
-    const dataDiaStr = `2026-08-${dia}`;
-    const valorDia = pagamentosAgosto
-      .filter(p => p.data_pagamento.startsWith(dataDiaStr) && (p.status === 'pago' || p.status === 'sinal pago'))
-      .reduce((acc, p) => acc + p.valor, 0);
+    const dataDiaStr = `${mesAtualStr}-${dia}`;
+    const valorDia = concluidosMes
+      .filter(a => a.inicio.startsWith(dataDiaStr))
+      .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
     return { dia, valor: valorDia };
   });
 
   const maxValorDia = Math.max(...faturamentoPorDia.map(d => d.valor), 1);
 
   // --- TAXAS DO PERÍODO ---
-  const totalAgends = agendamentosAgosto.length || 1;
-  const confCount = agendamentosAgosto.filter(a => a.status === 'confirmado' || a.status === 'concluido').length;
-  const faltaCount = agendamentosAgosto.filter(a => a.status === 'falta').length;
-  const cancCount = agendamentosAgosto.filter(a => a.status === 'cancelado').length;
+  const totalAgends = agendamentosMes.length || 1;
+  const confCount = agendamentosMes.filter(a => a.status === 'confirmado' || a.status === 'concluido').length;
+  const faltaCount = agendamentosMes.filter(a => a.status === 'falta').length;
+  const cancCount = agendamentosMes.filter(a => a.status === 'cancelado').length;
 
   const taxaConfirmacao = Math.round((confCount / totalAgends) * 100);
   const taxaFalta = Math.round((faltaCount / totalAgends) * 100);
@@ -151,7 +160,7 @@ export const Financeiro: React.FC = () => {
   // --- SERVIÇOS MAIS RENTÁVEIS ---
   const faturamentoPorServicoMap: { [key: string]: { nome: string; quantidade: number; total: number } } = {};
   
-  concluidosAgosto.forEach(a => {
+  concluidosMes.forEach(a => {
     const servs = obterServicosDeAgendamento(a.id);
     servs.forEach(s => {
       if (!faturamentoPorServicoMap[s.id]) {
@@ -166,7 +175,8 @@ export const Financeiro: React.FC = () => {
     .sort((a, b) => b.total - a.total);
 
   // --- PAGAMENTOS PENDENTES ---
-  const pagamentosPendentes = pagamentosAgosto.filter(p => p.status === 'pendente');
+  const pagamentosPendentes = pagamentos.filter((p: any) => p.status === 'pendente' && p.data_pagamento?.startsWith(mesAtualStr));
+  const nomeMesAtual = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
@@ -190,8 +200,8 @@ export const Financeiro: React.FC = () => {
         <button className="p-1 text-[#8C7A6B] hover:text-[#5A4535]">
           <ChevronLeft size={18} />
         </button>
-        <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-xl shadow-sm">
-          Agosto De 2026
+        <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-xl shadow-sm capitalize">
+          {nomeMesAtual}
         </span>
         <button className="p-1 text-[#8C7A6B] hover:text-[#5A4535]">
           <ChevronRight size={18} />
@@ -220,7 +230,7 @@ export const Financeiro: React.FC = () => {
         <div className="bg-white p-3.5 rounded-xl border border-[#EFECE6] shadow-sm flex flex-col justify-between">
           <div>
             <span className="text-[9px] font-bold text-[#8C7A6B] uppercase tracking-wider block">Total Despesas</span>
-            <h3 className="text-sm font-extrabold text-[#C81E1E] mt-1.5">{formatarMoeda(totalDespesasAgosto)}</h3>
+            <h3 className="text-sm font-extrabold text-[#C81E1E] mt-1.5">{formatarMoeda(totalDespesasMes)}</h3>
           </div>
         </div>
 
@@ -369,7 +379,7 @@ export const Financeiro: React.FC = () => {
           {/* TAB 1: PENDENTES */}
           {financeTab === 'pendentes' && (
             <>
-              {pagamentosPendentes.map((p) => {
+              {pagamentosPendentes.map((p: any) => {
                 const agend = agendamentos.find(a => a.id === p.agendamento_id);
                 const client = clientes.find(c => c.id === agend?.cliente_id);
                 
