@@ -9,7 +9,8 @@ import {
   Plus,
   MessageCircle,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
@@ -33,7 +34,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     configSalao,
     updateAgendamentoStatus,
     obterServicosDeAgendamento,
-    currentUser
+    currentUser,
+    listaEspera,
+    servicos
   } = useAppState();
 
   const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
@@ -122,6 +125,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const aguardandoConfirmacao = atendimentosHoje.filter(a => a.status === 'pendente');
   const recomendacoesManutencao = obterRecomendacoesManutencao().slice(0, 4);
+  const listaEsperaAtiva = useMemo(() => {
+    return (listaEspera || []).filter(item => item.status === 'aguardando');
+  }, [listaEspera]);
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -504,6 +510,67 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* Card Lista de Espera */}
+            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                  <Users size={18} className="text-[#8C6D58]" />
+                  <span>Lista de Espera ({listaEsperaAtiva.length})</span>
+                </h3>
+                <button
+                  onClick={() => setCurrentView('confirmacoes')}
+                  className="text-[11px] font-bold text-[#8C6D58] hover:text-[#725743] hover:underline flex items-center gap-1"
+                >
+                  <span>Ver todos</span>
+                  <ArrowRight size={12} />
+                </button>
+              </div>
+
+              {listaEsperaAtiva.length === 0 ? (
+                <p className="text-xs text-[#8C7A6B] py-3 text-center">Nenhuma cliente na lista de espera no momento.</p>
+              ) : (
+                <div className="space-y-3">
+                  {listaEsperaAtiva.slice(0, 4).map(item => {
+                    const client = clientes.find(c => c.id === item.cliente_id);
+                    const serv = servicos.find(s => s.id === item.servico_id);
+                    return (
+                      <div key={item.id} className="p-3 border border-[#EFECE6] rounded-xl flex items-center justify-between gap-2 bg-[#FAF9F6]">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-xs font-bold text-[#5A4535] truncate">{client?.nome || 'Cliente'}</h4>
+                          <p className="text-[10px] text-[#8C7A6B] mt-0.5 truncate">
+                            {serv?.nome || 'Procedimento'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="inline-block text-[9px] font-semibold text-[#8C6D58] bg-[#F4EBE6] px-1.5 py-0.5 rounded capitalize">
+                              {item.periodo_preferido || 'Qualquer horário'}
+                            </span>
+                            {(item.data_preferida || item.criado_em) && (
+                              <span className="text-[9px] text-[#8C7A6B]">
+                                {new Date((item.data_preferida ? item.data_preferida + 'T12:00:00' : item.criado_em)).toLocaleDateString('pt-BR')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            if (client?.telefone) {
+                              const msg = `Olá, ${client.nome}! Surgiu um horário disponível para seu procedimento (${serv?.nome || 'atendimento'}) na Sheila Santos Nails Designer. Gostaria de agendar?`;
+                              window.open(`https://wa.me/55${client.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                            }
+                          }}
+                          className="p-2 bg-[#E2F5EC] hover:bg-[#c9ebd9] text-[#4FA97A] rounded-full transition-colors shrink-0"
+                          title="Chamar cliente no WhatsApp"
+                        >
+                          <MessageCircle size={16} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
