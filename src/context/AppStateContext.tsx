@@ -143,6 +143,15 @@ interface AppStateContextType {
   modalAlerta: ModalAlertaConfig | null;
   mostrarAlerta: (config: ModalAlertaConfig) => void;
   fecharAlerta: () => void;
+  confirmarAcao: (config: {
+    titulo?: string;
+    mensagem: string;
+    textoConfirmar?: string;
+    textoCancelar?: string;
+    tipo?: 'sucesso' | 'info' | 'aviso' | 'erro';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }) => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -244,6 +253,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const fecharAlerta = () => {
     setModalAlerta(null);
+  };
+
+  const confirmarAcao = (config: {
+    titulo?: string;
+    mensagem: string;
+    textoConfirmar?: string;
+    textoCancelar?: string;
+    tipo?: 'sucesso' | 'info' | 'aviso' | 'erro';
+    onConfirm: () => void;
+    onCancel?: () => void;
+  }) => {
+    setModalAlerta({
+      titulo: config.titulo || 'Confirmar Ação',
+      mensagem: config.mensagem,
+      tipo: config.tipo || 'aviso',
+      textoBotao: config.textoConfirmar || 'Confirmar',
+      textoCancelar: config.textoCancelar || 'Cancelar',
+      isConfirm: true,
+      onConfirm: () => {
+        setModalAlerta(null);
+        config.onConfirm();
+      },
+      onCancel: () => {
+        setModalAlerta(null);
+        if (config.onCancel) config.onCancel();
+      }
+    });
   };
 
   // Intercepta window.alert para garantir uma experiência visual elegante e sem caixas nativas do navegador
@@ -1634,7 +1670,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mostrarNotificacaoGlobal,
       modalAlerta,
       mostrarAlerta,
-      fecharAlerta
+      fecharAlerta,
+      confirmarAcao
     }}>
       {children}
     </AppStateContext.Provider>

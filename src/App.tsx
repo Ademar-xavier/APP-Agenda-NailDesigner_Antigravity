@@ -451,7 +451,7 @@ function AppContent() {
                   }}
                   className="flex-1 py-3 px-4 border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-2xl transition-all"
                 >
-                  Cancelar
+                  {modalAlerta.textoCancelar || 'Cancelar'}
                 </button>
               )}
               <button
@@ -460,9 +460,15 @@ function AppContent() {
                   if (modalAlerta.onConfirm) modalAlerta.onConfirm();
                   fecharAlerta();
                 }}
-                className="flex-1 py-3 px-4 bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:opacity-95 text-white text-xs font-bold rounded-2xl transition-all shadow-md active:scale-[0.98]"
+                className={`flex-1 py-3 px-4 text-white text-xs font-bold rounded-2xl transition-all shadow-md active:scale-[0.98] ${
+                  modalAlerta.tipo === 'erro'
+                    ? 'bg-gradient-to-r from-[#D32F2F] to-[#B71C1C] hover:opacity-95'
+                    : modalAlerta.tipo === 'aviso'
+                    ? 'bg-gradient-to-r from-[#B78103] to-[#8C6D58] hover:opacity-95'
+                    : 'bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:opacity-95'
+                }`}
               >
-                {modalAlerta.textoBotao || 'OK, Entendido'}
+                {modalAlerta.textoBotao || (modalAlerta.isConfirm ? 'Confirmar' : 'OK, Entendido')}
               </button>
             </div>
           </div>

@@ -86,7 +86,8 @@ export const Clientes: React.FC<ClientesProps> = ({
     tecnicas,
     formatos,
     obterServicosDeAgendamento,
-    configSalao
+    configSalao,
+    confirmarAcao
   } = useAppState();
 
   const [busca, setBusca] = useState('');
@@ -255,10 +256,17 @@ export const Clientes: React.FC<ClientesProps> = ({
   }, [novoClienteModal, selectedClienteIdForDetails, setSelectedClienteIdForDetails]);
 
   const handleExcluirCliente = (id: string) => {
-    if (confirm('Tem certeza de que deseja excluir permanentemente o cadastro desta cliente?')) {
-      deleteCliente(id);
-      setSelectedClienteIdForDetails(null);
-    }
+    confirmarAcao({
+      titulo: 'Excluir Cliente',
+      mensagem: 'Tem certeza de que deseja excluir permanentemente o cadastro desta cliente?',
+      tipo: 'erro',
+      textoConfirmar: 'Sim, Excluir',
+      textoCancelar: 'Cancelar',
+      onConfirm: () => {
+        deleteCliente(id);
+        setSelectedClienteIdForDetails(null);
+      }
+    });
   };
 
   // Upload real de fotos (múltiplas fotos com seleção Antes/Depois)
@@ -389,19 +397,26 @@ export const Clientes: React.FC<ClientesProps> = ({
 
   const handleDeleteFoto = (fotoId: string) => {
     if (!selectedClienteIdForDetails) return;
-    if (confirm('Deseja excluir esta foto?')) {
-      deletarFotoClienteSupabase(fotoId);
-      setFotosClientes(prev => {
-        const atualizadas = (prev[selectedClienteIdForDetails] || []).filter(f => f.id !== fotoId);
-        const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
-        try {
-          localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
-        } catch (err) {
-          console.error(err);
-        }
-        return novoObjeto;
-      });
-    }
+    confirmarAcao({
+      titulo: 'Excluir Foto',
+      mensagem: 'Deseja realmente remover esta foto da galeria da cliente?',
+      tipo: 'erro',
+      textoConfirmar: 'Sim, Excluir',
+      textoCancelar: 'Cancelar',
+      onConfirm: () => {
+        deletarFotoClienteSupabase(fotoId);
+        setFotosClientes(prev => {
+          const atualizadas = (prev[selectedClienteIdForDetails] || []).filter(f => f.id !== fotoId);
+          const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
+          try {
+            localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
+          } catch (err) {
+            console.error(err);
+          }
+          return novoObjeto;
+        });
+      }
+    });
   };
 
   const triggerFileInput = (tipo?: 'antes' | 'depois') => {

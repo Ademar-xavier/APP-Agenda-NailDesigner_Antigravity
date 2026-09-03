@@ -26,7 +26,9 @@ export const Servicos: React.FC = () => {
     deleteServico,
     materiais,
     categoriasServico,
-    addCategoriaServico
+    addCategoriaServico,
+    confirmarAcao,
+    mostrarAlerta
   } = useAppState();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -146,7 +148,11 @@ export const Servicos: React.FC = () => {
     let catFinal = categoria;
     if (categoria === 'nova') {
       if (!customCategoria.trim()) {
-        alert('Por favor, digite o nome da categoria customizada.');
+        mostrarAlerta({
+          titulo: 'Campo Obrigatório',
+          mensagem: 'Por favor, digite o nome da categoria customizada.',
+          tipo: 'aviso'
+        });
         return;
       }
       addCategoriaServico(customCategoria.trim());
@@ -380,9 +386,14 @@ export const Servicos: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    if (confirm('Deseja realmente desativar este serviço?')) {
-                      deleteServico(s.id);
-                    }
+                    confirmarAcao({
+                      titulo: 'Desativar Serviço',
+                      mensagem: `Deseja realmente desativar o serviço "${s.nome}"?`,
+                      tipo: 'erro',
+                      textoConfirmar: 'Desativar',
+                      textoCancelar: 'Cancelar',
+                      onConfirm: () => deleteServico(s.id)
+                    });
                   }}
                   className="px-3 bg-red-50 hover:bg-red-100 text-red-600 py-2 rounded-xl text-xs font-semibold transition-all border border-red-100"
                 >

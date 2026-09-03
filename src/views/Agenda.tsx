@@ -296,43 +296,70 @@ export const Agenda: React.FC<AgendaProps> = ({
       return;
     }
 
+    // 1. Validações preliminares de dados
+    if (!isBloqueio) {
+      if (clienteExistente && !clienteId) {
+        setErrorAgendamento('Selecione uma cliente.');
+        return;
+      }
+      if (!clienteExistente && (!novoClienteNome.trim() || !novoClienteFone.trim())) {
+        setErrorAgendamento('Preencha o nome e o telefone da nova cliente.');
+        return;
+      }
+      if (servicosSelecionados.length === 0) {
+        setErrorAgendamento('Selecione pelo menos um serviço.');
+        return;
+      }
+    }
+
+    // 2. Calcular valores e horários para verificar disponibilidade ANTES de cadastrar cliente
+    const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
+    const total = isBloqueio ? 0 : servs.reduce((acc, s) => acc + s.preco, 0);
+    const duracaoTotal = isBloqueio ? 30 : servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
+
+    const dataInicioStr = `${dataSelecionada}T${horaInicio}:00`;
+    const dataInicio = new Date(dataInicioStr);
+    const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
+    const ano = dataFim.getFullYear();
+    const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
+    const dia = String(dataFim.getDate()).padStart(2, '0');
+    const hora = String(dataFim.getHours()).padStart(2, '0');
+    const min = String(dataFim.getMinutes()).padStart(2, '0');
+    const seg = String(dataFim.getSeconds()).padStart(2, '0');
+    const dataFimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+
+    // 3. Avaliar conflito de horário em primeiro lugar (não cadastra cliente se conflitar)
+    if (!isBloqueio && checkConflitoHorario(dataInicioStr, dataFimStr, profissionalId)) {
+      setErrorAgendamento('O horário selecionado conflita com outro agendamento ativo desta profissional. Por favor, escolha outro horário.');
+      return;
+    }
+
+    // 4. Se a disponibilidade foi aprovada, definir o cliente (reutilizando existente por telefone para evitar duplicatas)
     let cId = clienteId;
 
     if (isBloqueio) {
       cId = 'bloqueado';
     } else if (!clienteExistente) {
-      if (!novoClienteNome || !novoClienteFone) {
-        setErrorAgendamento('Preencha os dados da nova cliente.');
-        return;
+      const foneLimpo = novoClienteFone.replace(/\D/g, '');
+      const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === foneLimpo);
+      if (cliExistente) {
+        cId = cliExistente.id;
+      } else {
+        const novoCli = addCliente({
+          nome: novoClienteNome.trim(),
+          telefone: novoClienteFone.trim(),
+          consentimento_imagem: false
+        });
+        cId = novoCli.id;
       }
-      const novoCli = addCliente({
-        nome: novoClienteNome,
-        telefone: novoClienteFone,
-        consentimento_imagem: false
-      });
-      cId = novoCli.id;
-    } else if (!cId) {
-      setErrorAgendamento('Selecione uma cliente.');
-      return;
     }
 
-    if (servicosSelecionados.length === 0 && !isBloqueio) {
-      setErrorAgendamento('Selecione pelo menos um serviço.');
-      return;
-    }
-
-    // Calcular valores
-    const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
-    const total = isBloqueio ? 0 : servs.reduce((acc, s) => acc + s.preco, 0);
-    
     // Sinal total (soma)
     const sinal = (isBloqueio || !cobrarSinal) ? 0 : servs.reduce((acc, s) => {
       if (s.sinal_tipo === 'fixo') return acc + s.sinal_valor;
       if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * s.sinal_valor / 100);
       return acc;
     }, 0);
-
-    const dataInicioStr = `${dataSelecionada}T${horaInicio}:00`;
 
     const res = addAgendamento({
       cliente_id: cId,
