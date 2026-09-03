@@ -26,7 +26,10 @@ import {
   Send,
   Smartphone,
   Copy,
-  Sparkles
+  Sparkles,
+  Cloud,
+  UploadCloud,
+  ExternalLink
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -49,12 +52,47 @@ export const Configuracoes: React.FC = () => {
     googleConnected,
     googleUserEmail,
     googleLastSync,
-    desconectarGoogleAgenda
+    desconectarGoogleAgenda,
+    isSyncingCloud,
+    lastCloudSyncTime,
+    sincronizarComNuvem,
+    enviarDadosParaNuvem
   } = useAppState();
   
   const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp'>('geral');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
+  const [copiadoLink, setCopiadoLink] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const handleCopiarLink = () => {
+    const url = 'https://sheilasantos-agenda.netlify.app';
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiadoLink(true);
+      setTimeout(() => setCopiadoLink(false), 2500);
+      alert('Link copiado com sucesso!\n\n' + url + '\n\nPronto para colar no WhatsApp das clientes ou na Bio do seu Instagram!');
+    }).catch(() => {
+      prompt('Copie o link abaixo para enviar às suas clientes:', url);
+    });
+  };
+
+  const handleVerLinkAgendamento = () => {
+    window.open('https://sheilasantos-agenda.netlify.app', '_blank');
+  };
+
+  const handleSincronizarNuvem = async () => {
+    const res = await sincronizarComNuvem(true);
+    setSyncFeedback(res.sucesso ? 'Sincronizado!' : 'Erro');
+    setTimeout(() => setSyncFeedback(null), 3000);
+    alert(res.mensagem);
+  };
+
+  const handleEnviarDadosNuvem = async () => {
+    if (confirm('Deseja enviar todos os clientes, agendamentos e serviços deste aparelho para o banco de dados na nuvem?')) {
+      const res = await enviarDadosParaNuvem();
+      alert(res.mensagem);
+    }
+  };
 
   // --- META WHATSAPP CONFIG STATE ---
   const [metaConfig, setMetaConfig] = useState(obterConfigMetaWhatsApp());
@@ -265,7 +303,78 @@ export const Configuracoes: React.FC = () => {
           
           {/* TAB 1: GERAL */}
           {activeTab === 'geral' && (
-            <>
+            <div className="space-y-6">
+              {/* CARD DE LINKS DO SALÃO & SINCRONIZAÇÃO EM NUVEM (MOVIDO DO MENU LATERAL) */}
+              <div className="bg-gradient-to-r from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-5 shadow-xs space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E8DEC9]/60 pb-3">
+                  <div>
+                    <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                      <Cloud size={16} className="text-[#8C6D58]" />
+                      <span>Links Oficiais do Salão & Sincronização em Nuvem</span>
+                    </h4>
+                    <p className="text-xs text-[#8C7A6B] mt-0.5">
+                      {lastCloudSyncTime ? `Última sincronização com Supabase: hoje às ${lastCloudSyncTime}` : 'Conexão em tempo real com o banco de dados Supabase'}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 w-fit shrink-0">
+                    ● Nuvem Conectada
+                  </span>
+                </div>
+
+                {/* Os 3 botões movidos do menu lateral */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  {/* 1. Sincronizar com a Nuvem */}
+                  <button
+                    type="button"
+                    onClick={handleSincronizarNuvem}
+                    disabled={isSyncingCloud}
+                    className="flex items-center justify-center gap-2 p-3 bg-white border border-[#E5D5C5] hover:border-[#8C6D58] rounded-xl text-xs font-bold text-[#5A4535] hover:text-[#8C6D58] transition-all shadow-xs active:scale-98"
+                    title="Baixar clientes e agendamentos atualizados da nuvem"
+                  >
+                    <RefreshCw size={14} className={`text-[#8C6D58] ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingCloud ? 'Sincronizando...' : syncFeedback || 'Sincronizar com a Nuvem'}</span>
+                  </button>
+
+                  {/* 2. Copiar Link para Clientes */}
+                  <button
+                    type="button"
+                    onClick={handleCopiarLink}
+                    className="flex items-center justify-center gap-2 p-3 bg-[#F4EBE1] border border-[#E5D5C5] hover:bg-[#EBDDCF] rounded-xl text-xs font-bold text-[#6D4C3D] transition-all shadow-xs active:scale-98"
+                    title="Copiar o link oficial para colar no WhatsApp das clientes ou Instagram"
+                  >
+                    {copiadoLink ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
+                    <span>{copiadoLink ? 'Link Copiado!' : 'Copiar Link p/ Clientes'}</span>
+                  </button>
+
+                  {/* 3. Ver Página de Agendamento */}
+                  <button
+                    type="button"
+                    onClick={handleVerLinkAgendamento}
+                    className="flex items-center justify-center gap-2 p-3 bg-white border border-[#E5D5C5] hover:border-[#8C6D58] rounded-xl text-xs font-semibold text-[#8C6D58] hover:bg-[#FAF9F6] transition-colors shadow-xs"
+                    title="Abrir a página pública que as suas clientes acessam"
+                  >
+                    <ExternalLink size={14} />
+                    <span>Ver Página de Agendamento</span>
+                  </button>
+                </div>
+
+                {/* Opção Adicional: Enviar Dados deste Computador para a Nuvem */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-[#E8DEC9]/40">
+                  <span className="text-[11px] text-[#8C7A6B]">
+                    Precisa transferir os dados deste aparelho para outros dispositivos?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleEnviarDadosNuvem}
+                    disabled={isSyncingCloud}
+                    className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] underline underline-offset-4 flex items-center gap-1.5 transition-colors"
+                  >
+                    <UploadCloud size={14} />
+                    <span>Enviar Dados deste Aparelho para a Nuvem</span>
+                  </button>
+                </div>
+              </div>
+
               <form onSubmit={handleSalvarGeral} className="space-y-6">
                 <h3 className="font-serif font-bold text-base text-[#5A4535] border-b border-[#FAF9F6] pb-2">Configurações Gerais</h3>
               
@@ -439,7 +548,7 @@ export const Configuracoes: React.FC = () => {
                 <p>Por padrão no protótipo, o login usa chaves de API virtuais e importa com sucesso os agendamentos da conta informada. Para vincular chaves oficiais do Google Cloud de produção do seu próprio negócio, acesse a documentação do Google API Console.</p>
               </div>
             </div>
-          </>
+          </div>
         )}
 
           {/* TAB 2: EXPEDIENTE */}

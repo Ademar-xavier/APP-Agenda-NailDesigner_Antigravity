@@ -86,6 +86,7 @@ interface AppStateContextType {
   isSyncingCloud: boolean;
   lastCloudSyncTime: string | null;
   sincronizarComNuvem: (forcarSobrescrita?: boolean) => Promise<{ sucesso: boolean; mensagem: string }>;
+  enviarDadosParaNuvem: () => Promise<{ sucesso: boolean; mensagem: string }>;
 
   // Despesas
   despesas: Despesa[];
@@ -565,14 +566,59 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       setLastCloudSyncTime(agora);
       setIsSyncingCloud(false);
+      const totalItens = (dados.clientes?.length || 0) + (dados.agendamentos?.length || 0);
       return { 
         sucesso: true, 
-        mensagem: `Sincronização com o Supabase concluída com sucesso às ${agora}!` 
+        mensagem: totalItens > 0 
+          ? `Sincronização com o Supabase concluída com sucesso às ${agora}! (${totalItens} registros baixados)`
+          : `Conectado ao Supabase com sucesso às ${agora}! O banco na nuvem ainda não possui registros.`
       };
     } catch (e: any) {
       console.error('Erro na sincronizacao com Supabase:', e);
       setIsSyncingCloud(false);
       return { sucesso: false, mensagem: e.message || 'Erro ao sincronizar com a nuvem.' };
+    }
+  };
+
+  // Enviar todos os dados locais para a nuvem Supabase (Upload Forçado)
+  const enviarDadosParaNuvem = async (): Promise<{ sucesso: boolean; mensagem: string }> => {
+    setIsSyncingCloud(true);
+    try {
+      let clientesSalvos = 0;
+      let agendamentosSalvos = 0;
+      let servicosSalvos = 0;
+
+      for (const c of clientes) {
+        await salvarClienteSupabase(c);
+        clientesSalvos++;
+      }
+
+      for (const s of servicos) {
+        await salvarServicoSupabase(s);
+        servicosSalvos++;
+      }
+
+      for (const a of agendamentos) {
+        const sIds = itensAgendamento[a.id] || [];
+        await salvarAgendamentoSupabase(a, sIds);
+        agendamentosSalvos++;
+      }
+
+      for (const l of listaEspera) {
+        await salvarListaEsperaSupabase(l);
+      }
+
+      const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setLastCloudSyncTime(agora);
+      setIsSyncingCloud(false);
+      return {
+        sucesso: true,
+        mensagem: `Upload concluído com sucesso às ${agora}! (${clientesSalvos} clientes, ${servicosSalvos} serviços, ${agendamentosSalvos} agendamentos salvos na nuvem)`
+      };
+    } catch (e: any) {
+      console.error('Erro ao enviar dados para a nuvem:', e);
+      setIsSyncingCloud(false);
+      return { sucesso: false, mensagem: e.message || 'Erro ao enviar dados para a nuvem.' };
     }
   };
 
@@ -1288,6 +1334,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       isSyncingCloud,
       lastCloudSyncTime,
       sincronizarComNuvem,
+      enviarDadosParaNuvem,
       despesas,
       addDespesa,
       updateDespesa,
