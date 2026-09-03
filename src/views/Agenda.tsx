@@ -258,17 +258,43 @@ export const Agenda: React.FC<AgendaProps> = ({
     })
     .sort((a, b) => a.inicio.localeCompare(b.inicio));
 
-  // Gerar slots horários para exibição visual do dia (das 08:00 às 20:00)
-  const horasExpediente = Array.from({ length: 25 }, (_, i) => {
-    const hora = 8 + Math.floor(i / 2);
-    const min = (i % 2) * 30;
-    return `${String(hora).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  });
+  // Validação do dia da semana e expediente cadastrado
+  const nomesDias = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+  const diaSemanaSelecionado = new Date(dataSelecionada + 'T12:00:00').getDay();
+  const expedienteDoDia = configSalao.horarios_trabalho?.[diaSemanaSelecionado];
+  const diaFechado = !expedienteDoDia || !expedienteDoDia.ativo;
+
+  // Gerar slots horários respeitando o expediente do dia selecionado
+  const horasExpediente = useMemo(() => {
+    if (diaFechado || !expedienteDoDia) return [];
+    const [hIni, mIni] = (expedienteDoDia.inicio || '08:00').split(':').map(Number);
+    const [hFim, mFim] = (expedienteDoDia.fim || '20:00').split(':').map(Number);
+    const minInicio = hIni * 60 + mIni;
+    const minFim = hFim * 60 + mFim;
+    const slots: string[] = [];
+    for (let m = minInicio; m < minFim; m += 30) {
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      slots.push(`${hStr}:${mStr}`);
+    }
+    return slots;
+  }, [diaFechado, expedienteDoDia]);
+
+  useEffect(() => {
+    if (horasExpediente.length > 0 && !horasExpediente.includes(horaInicio)) {
+      setHoraInicio(horasExpediente[0]);
+    }
+  }, [horasExpediente]);
 
   // Salvar agendamento
   const handleCriarAgendamento = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorAgendamento('');
+
+    if (diaFechado) {
+      setErrorAgendamento(`O salão não abre aos ${nomesDias[diaSemanaSelecionado]}s (Fechado). Por favor, selecione uma data de expediente.`);
+      return;
+    }
 
     let cId = clienteId;
 
@@ -645,13 +671,6 @@ export const Agenda: React.FC<AgendaProps> = ({
 
             <form onSubmit={handleCriarAgendamento} className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
-                {errorAgendamento && (
-                  <div className="p-3 bg-[#FDF2F2] border border-[#FDE2E2] rounded-xl text-xs text-[#C81E1E] flex items-center gap-2">
-                    <AlertTriangle size={14} />
-                    <span>{errorAgendamento}</span>
-                  </div>
-                )}
-
                 {/* Toggle Bloqueio Pessoal */}
                 <div className="flex justify-between items-center bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6]">
                   <div>
@@ -873,27 +892,47 @@ export const Agenda: React.FC<AgendaProps> = ({
                 )}
 
                 {/* Data & Hora */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data</label>
                     <input 
                       type="date" 
                       value={dataSelecionada}
-                      onChange={(e) => setDataSelecionada(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      onChange={(e) => {
+                        setDataSelecionada(e.target.value);
+                        setErrorAgendamento('');
+                      }}
+                      className={`w-full border rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none ${
+                        diaFechado ? 'border-[#C81E1E] bg-[#FDF2F2]' : 'border-[#EFECE6]'
+                      }`}
                     />
+                    {diaFechado && (
+                      <p className="text-[11px] text-[#C81E1E] font-bold mt-1 flex items-center gap-1">
+                        <AlertTriangle size={13} className="shrink-0" />
+                        <span>Salão fechado aos {nomesDias[diaSemanaSelecionado]}s! Escolha outro dia.</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Horário de Início</label>
-                    <select
-                      value={horaInicio}
-                      onChange={(e) => setHoraInicio(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
-                    >
-                      {horasExpediente.map(h => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
-                    </select>
+                    {horasExpediente.length === 0 ? (
+                      <div className="border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#8C7A6B] bg-[#FAF9F6]">
+                        Sem horários disponíveis
+                      </div>
+                    ) : (
+                      <select
+                        value={horaInicio}
+                        onChange={(e) => {
+                          setHoraInicio(e.target.value);
+                          setErrorAgendamento('');
+                        }}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      >
+                        {horasExpediente.map(h => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 </div>
 
@@ -911,21 +950,31 @@ export const Agenda: React.FC<AgendaProps> = ({
                 )}
               </div>
 
-              {/* Botões Footer */}
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] p-6 bg-white rounded-b-2xl shrink-0">
-                <button
-                  type="button"
-                  onClick={handleCloseLocalModal}
-                  className="px-4 py-2.5 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
-                >
-                  {isBloqueio ? 'Bloquear Horário' : 'Salvar'}
-                </button>
+              {/* Botões Footer com Aviso Logo Acima do Botão */}
+              <div className="border-t border-[#EFECE6] p-4 sm:p-6 bg-white rounded-b-2xl shrink-0 space-y-3">
+                {errorAgendamento && (
+                  <div className="p-3 bg-[#FDF2F2] border border-[#FDE2E2] rounded-xl text-xs text-[#C81E1E] flex items-center gap-2 animate-in fade-in duration-150">
+                    <AlertTriangle size={16} className="shrink-0 text-[#C81E1E]" />
+                    <span className="font-semibold">{errorAgendamento}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2 justify-end items-center">
+                  <button
+                    type="button"
+                    onClick={handleCloseLocalModal}
+                    className="px-4 py-2.5 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={diaFechado}
+                    className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                  >
+                    {isBloqueio ? 'Bloquear Horário' : 'Salvar'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
