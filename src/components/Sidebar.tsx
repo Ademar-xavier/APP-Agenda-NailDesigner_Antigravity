@@ -16,7 +16,9 @@ import {
   Menu,
   X,
   Copy,
-  Check
+  Check,
+  RefreshCw,
+  Cloud
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AlicateIcon } from './AlicateIcon';
@@ -34,9 +36,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isAdmin, 
   setIsAdmin 
 }) => {
-  const { configSalao, currentUser, logout } = useAppState();
+  const { 
+    configSalao, 
+    currentUser, 
+    logout, 
+    isSyncingCloud, 
+    lastCloudSyncTime, 
+    sincronizarComNuvem 
+  } = useAppState();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [copiadoLink, setCopiadoLink] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const handleSincronizarNuvem = async () => {
+    const res = await sincronizarComNuvem(true);
+    setSyncFeedback(res.sucesso ? 'Sincronizado!' : 'Erro');
+    setTimeout(() => setSyncFeedback(null), 3000);
+    alert(res.mensagem);
+  };
 
   const handleCopiarLink = () => {
     const url = 'https://sheilasantos-agenda.netlify.app';
@@ -151,6 +168,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Switch View Link & Logout */}
         <div className="p-4 border-t border-[#EFECE6] space-y-2">
+          {/* Botão de Sincronização em Nuvem */}
+          <button
+            onClick={handleSincronizarNuvem}
+            disabled={isSyncingCloud}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#FAF9F6] border border-[#EFECE6] hover:border-[#8C6D58] rounded-xl text-xs font-bold text-[#5A4535] hover:text-[#8C6D58] transition-all shadow-2xs active:scale-98"
+            title="Sincronizar todos os dados com o banco Supabase na nuvem"
+          >
+            <RefreshCw size={13} className={`text-[#8C6D58] ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Sincronizando...' : syncFeedback || 'Sincronizar com a Nuvem'}</span>
+          </button>
+
           <button
             onClick={handleCopiarLink}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#F4EBE1] border border-[#E5D5C5] rounded-xl text-xs font-bold text-[#6D4C3D] hover:bg-[#EBDDCF] transition-all shadow-xs active:scale-98"
@@ -262,6 +290,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <div className="mt-5 pt-4 border-t border-[#EFECE6] space-y-2">
+              <button
+                onClick={() => {
+                  handleSincronizarNuvem();
+                  setShowMobileMenu(false);
+                }}
+                disabled={isSyncingCloud}
+                className="w-full flex items-center justify-center gap-2 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl text-xs font-bold text-[#5A4535] hover:bg-[#F3ECE0] transition-colors"
+              >
+                <RefreshCw size={14} className={`text-[#8C6D58] ${isSyncingCloud ? 'animate-spin' : ''}`} />
+                <span>{isSyncingCloud ? 'Sincronizando...' : 'Sincronizar com a Nuvem'}</span>
+              </button>
+
               <button
                 onClick={() => {
                   setIsAdmin(false);

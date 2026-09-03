@@ -168,18 +168,22 @@ export const deletarFotoClienteSupabase = async (id: string) => {
 // --- BUSCAR DADOS DA NUVEM (SINCRONIZAÇÃO INICIAL) ---
 export const carregarDadosNuvemSupabase = async () => {
   try {
-    const [clientesRes, agendamentosRes, listaRes, servicosRes] = await Promise.all([
+    const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, fotosRes] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('agendamentos').select('*'),
       supabase.from('lista_espera').select('*'),
-      supabase.from('servicos').select('*')
+      supabase.from('servicos').select('*'),
+      supabase.from('usuarios').select('*'),
+      supabase.from('fotos_clientes').select('*')
     ]);
 
     return {
       clientes: clientesRes.data || [],
       agendamentos: agendamentosRes.data || [],
       listaEspera: listaRes.data || [],
-      servicos: servicosRes.data || []
+      servicos: servicosRes.data || [],
+      usuarios: usuariosRes.data || [],
+      fotos: fotosRes.data || []
     };
   } catch (e) {
     console.error('Erro ao carregar dados do Supabase:', e);
