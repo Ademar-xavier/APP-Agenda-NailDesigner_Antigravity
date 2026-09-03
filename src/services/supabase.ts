@@ -170,16 +170,87 @@ export const deletarFotoClienteSupabase = async (id: string) => {
   }
 };
 
+// --- SALVAR / ATUALIZAR MATERIAL ---
+export const salvarMaterialSupabase = async (material: any) => {
+  try {
+    const { error } = await supabase.from('materiais').upsert({
+      id: material.id,
+      nome: material.nome,
+      marca: material.marca || null,
+      preco_compra: Number(material.preco_compra) || 0,
+      rendimento: Number(material.rendimento) || 1,
+      ativo: material.ativo !== false
+    });
+    if (error && error.code !== 'PGRST205') console.error('Erro ao salvar material no Supabase:', error);
+  } catch (e) {}
+};
+
+// --- DELETAR MATERIAL ---
+export const deletarMaterialSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('materiais').delete().eq('id', id);
+    if (error && error.code !== 'PGRST205') console.error('Erro ao deletar material no Supabase:', error);
+  } catch (e) {}
+};
+
+// --- SALVAR / ATUALIZAR DESPESA ---
+export const salvarDespesaSupabase = async (despesa: any) => {
+  try {
+    const { error } = await supabase.from('despesas').upsert({
+      id: despesa.id,
+      descricao: despesa.descricao,
+      categoria: despesa.categoria,
+      valor: Number(despesa.valor) || 0,
+      data: despesa.data,
+      pago: despesa.pago !== false
+    });
+    if (error && error.code !== 'PGRST205') console.error('Erro ao salvar despesa no Supabase:', error);
+  } catch (e) {}
+};
+
+// --- DELETAR DESPESA ---
+export const deletarDespesaSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('despesas').delete().eq('id', id);
+    if (error && error.code !== 'PGRST205') console.error('Erro ao deletar despesa no Supabase:', error);
+  } catch (e) {}
+};
+
+// --- SALVAR / ATUALIZAR CONFIGURAÇÕES GERAIS (Técnicas, Formatos, Dados do Salão) ---
+export const salvarConfiguracoesSupabase = async (dados: {
+  configSalao?: any;
+  tecnicas?: string[];
+  formatos?: string[];
+  categoriasServico?: string[];
+  categoriasDespesa?: string[];
+}) => {
+  try {
+    const { error } = await supabase.from('configuracoes').upsert({
+      id: 'salao_principal',
+      config_salao: dados.configSalao,
+      tecnicas: dados.tecnicas,
+      formatos: dados.formatos,
+      categorias_servico: dados.categoriasServico,
+      categorias_despesa: dados.categoriasDespesa,
+      atualizado_em: new Date().toISOString()
+    });
+    if (error && error.code !== 'PGRST205') console.error('Erro ao salvar configuracoes no Supabase:', error);
+  } catch (e) {}
+};
+
 // --- BUSCAR DADOS DA NUVEM (SINCRONIZAÇÃO INICIAL) ---
 export const carregarDadosNuvemSupabase = async () => {
   try {
-    const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, fotosRes] = await Promise.all([
+    const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, fotosRes, matRes, despRes, configRes] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('agendamentos').select('*'),
       supabase.from('lista_espera').select('*'),
       supabase.from('servicos').select('*'),
       supabase.from('usuarios').select('*'),
-      supabase.from('fotos_clientes').select('*')
+      supabase.from('fotos_clientes').select('*'),
+      supabase.from('materiais').select('*'),
+      supabase.from('despesas').select('*'),
+      supabase.from('configuracoes').select('*')
     ]);
 
     return {
@@ -188,7 +259,10 @@ export const carregarDadosNuvemSupabase = async () => {
       listaEspera: listaRes.data || [],
       servicos: servicosRes.data || [],
       usuarios: usuariosRes.data || [],
-      fotos: fotosRes.data || []
+      fotos: fotosRes.data || [],
+      materiais: matRes.data || [],
+      despesas: despRes.data || [],
+      configuracoes: configRes.data?.[0] || null
     };
   } catch (e) {
     console.error('Erro ao carregar dados do Supabase:', e);
