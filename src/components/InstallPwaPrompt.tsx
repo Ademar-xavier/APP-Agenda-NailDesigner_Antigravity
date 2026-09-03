@@ -1,16 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Smartphone, Download, X, Sparkles } from 'lucide-react';
 
-export const InstallPwaPrompt: React.FC = () => {
+interface InstallPwaPromptProps {
+  isAdmin?: boolean;
+}
+
+export const InstallPwaPrompt: React.FC<InstallPwaPromptProps> = ({ isAdmin = false }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
-    // Verifica se já está rodando como PWA instalado
+    // 1. Verifica se já está rodando como PWA instalado
     const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
     if (isRunningStandalone) {
       setIsStandalone(true);
+      return;
+    }
+
+    // 2. REGRA DE SEGURANÇA COMERCIAL:
+    // NUNCA exibe o prompt para clientes no link de agendamento!
+    // Apenas exibe na área administrativa ou acessando #instalar
+    const hash = window.location.hash.toLowerCase();
+    const isPermitido = isAdmin || hash.includes('instalar') || hash.includes('admin');
+    if (!isPermitido) {
       return;
     }
 

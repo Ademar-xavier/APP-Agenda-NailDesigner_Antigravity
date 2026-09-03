@@ -13,6 +13,7 @@ import { Confirmacoes } from './views/Confirmacoes';
 import { Materiais } from './views/Materiais';
 import { Cadastros } from './views/Cadastros';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
+import { InstalarApp } from './views/InstalarApp';
 
 function AppContent() {
   const { currentUser } = useAppState();
@@ -34,16 +35,26 @@ function AppContent() {
     return hash.includes('admin') || search.includes('admin') || pathname.includes('admin');
   });
 
+  const [isInstalarRoute, setIsInstalarRoute] = useState<boolean>(() => {
+    return window.location.hash.toLowerCase().includes('instalar') || 
+           window.location.search.toLowerCase().includes('instalar') ||
+           window.location.pathname.toLowerCase().includes('instalar');
+  });
+
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
 
-  // Sincroniza com navegação por hash (#admin ou #agendar)
+  // Sincroniza com navegação por hash (#admin, #instalar ou #agendar)
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
-      if (hash.includes('admin')) {
+      if (hash.includes('instalar')) {
+        setIsInstalarRoute(true);
+      } else if (hash.includes('admin')) {
+        setIsInstalarRoute(false);
         setIsAdmin(true);
       } else if (hash.includes('agendar') || hash === '' || hash === '#') {
+        setIsInstalarRoute(false);
         const isNative = 
           window.location.protocol === 'file:' || 
           !!(window as any).Capacitor?.isNativePlatform?.();
@@ -215,12 +226,30 @@ function AppContent() {
     }
   };
 
+  // Se estiver acessando a rota exclusiva de instalação da profissional (#instalar)
+  if (isInstalarRoute) {
+    return (
+      <InstalarApp 
+        onEntrarAdmin={() => {
+          setIsInstalarRoute(false);
+          setIsAdmin(true);
+          window.location.hash = 'admin';
+        }}
+        onIrAgendar={() => {
+          setIsInstalarRoute(false);
+          setIsAdmin(false);
+          window.location.hash = 'agendar';
+        }}
+      />
+    );
+  }
+
   // Se não estiver logado e estiver tentando acessar a parte admin, mostra tela de Login
   if (isAdmin && !currentUser) {
     return <Login setIsAdmin={setIsAdmin} />;
   }
 
-  // Se estiver acessando como cliente
+  // Se estiver acessando como cliente (NUNCA VÊ O PROMPT DE INSTALAÇÃO)
   if (!isAdmin) {
     return <PublicBooking setIsAdmin={setIsAdmin} />;
   }
@@ -243,8 +272,8 @@ function AppContent() {
         {renderView()}
       </main>
 
-      {/* Notificação de Instalação PWA no Celular */}
-      <InstallPwaPrompt />
+      {/* Notificação de Instalação PWA no Celular (Exclusiva para a Profissional) */}
+      <InstallPwaPrompt isAdmin={isAdmin} />
     </div>
   );
 }
