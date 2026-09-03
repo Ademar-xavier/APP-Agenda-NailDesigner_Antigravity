@@ -671,9 +671,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                             className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
                           >
                             <option value="">-- Selecione a Cliente --</option>
-                            {clientes.map(c => (
-                              <option key={c.id} value={c.id}>{c.nome} ({c.telefone})</option>
-                            ))}
+                            {[...clientes]
+                              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+                              .map(c => (
+                                <option key={c.id} value={c.id}>{c.nome} ({c.telefone})</option>
+                              ))}
                           </select>
                         </div>
                       ) : (
