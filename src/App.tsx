@@ -233,8 +233,24 @@ function AppContent() {
     }
   };
 
-  // Se estiver acessando a rota exclusiva de instalação da profissional (#instalar)
-  if (isInstalarRoute) {
+  // Verifica se é aplicativo instalado em qualquer plataforma:
+  // Desktop Windows, Android Nativo ou PWA instalado no celular via link
+  const isInstalledApp = 
+    window.matchMedia('(display-mode: standalone)').matches || 
+    (window.navigator as any).standalone === true ||
+    window.location.protocol === 'file:' || 
+    navigator.userAgent.includes('Electron') ||
+    !!(window as any).Capacitor?.isNativePlatform?.() ||
+    window.location.search.includes('app=1');
+
+  // 1. Se for aplicativo instalado (inclusive via link) e não estiver logado:
+  // INICIA SEMPRE NA TELA DE LOGIN!
+  if (isInstalledApp && !currentUser) {
+    return <Login setIsAdmin={setIsAdmin} />;
+  }
+
+  // 2. Se for navegador comum acessando a rota exclusiva de instalação (#instalar)
+  if (isInstalarRoute && !isInstalledApp) {
     return (
       <InstalarApp 
         onEntrarAdmin={() => {
@@ -251,13 +267,13 @@ function AppContent() {
     );
   }
 
-  // Se não estiver logado e estiver tentando acessar a parte admin, mostra tela de Login
+  // 3. Se não estiver logado e estiver acessando a rota administrativa, mostra Login
   if (isAdmin && !currentUser) {
     return <Login setIsAdmin={setIsAdmin} />;
   }
 
-  // Se estiver acessando como cliente (NUNCA VÊ O PROMPT DE INSTALAÇÃO)
-  if (!isAdmin) {
+  // 4. Se for cliente acessando no navegador comum público
+  if (!isAdmin && !isInstalledApp) {
     return <PublicBooking setIsAdmin={setIsAdmin} />;
   }
 

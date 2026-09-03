@@ -12,10 +12,12 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
   const [instalando, setInstalando] = useState(false);
 
   useEffect(() => {
-    // Verifica se já está em modo standalone (já instalado)
+    // Se já está instalado, não deve ficar na tela de instalação: vai direto para o Login!
     const isRunningStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
     if (isRunningStandalone) {
       setIsInstalled(true);
+      onEntrarAdmin();
+      return;
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -46,6 +48,9 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
       setIsInstalled(true);
+      setTimeout(() => {
+        onEntrarAdmin();
+      }, 1000);
     }
     setInstalando(false);
     setDeferredPrompt(null);
