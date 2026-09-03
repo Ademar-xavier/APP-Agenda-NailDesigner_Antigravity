@@ -648,11 +648,19 @@ export const Confirmacoes: React.FC = () => {
                     
                     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase ${
-                        rec.diasAtraso === 0 
-                          ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]' 
-                          : 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]'
+                        rec.statusManutencao === 'atrasada'
+                          ? 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]' 
+                          : rec.statusManutencao === 'hoje'
+                            ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]' 
+                            : rec.statusManutencao === 'em_breve'
+                              ? 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                              : 'bg-[#F2F8F4] text-[#2D6A4F] border border-[#D1E7D8]'
                       }`}>
-                        {rec.diasAtraso === 0 ? 'Vence hoje' : `Atrasada há ${rec.diasAtraso}d`}
+                        {rec.statusManutencao === 'atrasada'
+                          ? `Atrasada há ${rec.diasAtraso}d` 
+                          : rec.statusManutencao === 'hoje'
+                            ? 'Vence hoje' 
+                            : `Em ${rec.diasRestantes} dias`}
                       </span>
 
                       <button

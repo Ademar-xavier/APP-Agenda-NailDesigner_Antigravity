@@ -128,7 +128,14 @@ interface AppStateContextType {
   // Auxiliares
   checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string) => boolean;
   obterServicosDeAgendamento: (agendamentoId: string) => Servico[];
-  obterRecomendacoesManutencao: () => { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }[];
+  obterRecomendacoesManutencao: () => { 
+    cliente: Cliente; 
+    servico: Servico; 
+    dataSugerida: string; 
+    diasAtraso: number;
+    diasRestantes?: number;
+    statusManutencao?: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
+  }[];
   obterProximoHorarioLivre: (data: string, duracaoMinutos: number) => string | null;
   notificacaoGlobal: { mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null;
   mostrarNotificacaoGlobal: (mensagem: string, tipo?: 'sucesso' | 'info' | 'erro') => void;
@@ -1324,11 +1331,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // --- Lógica de Manutenção Sugerida ---
   const obterRecomendacoesManutencao = () => {
     const hoje = new Date();
-    const recomendacoes: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }[] = [];
+    const hojeZero = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const recomendacoes: { 
+      cliente: Cliente; 
+      servico: Servico; 
+      dataSugerida: string; 
+      diasAtraso: number;
+      diasRestantes: number;
+      statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
+    }[] = [];
 
     clientes.forEach(cliente => {
+      // Considera atendimentos concluídos ou confirmados
       const agendsCliente = agendamentos
-        .filter(a => a.cliente_id === cliente.id && a.status === 'concluido')
+        .filter(a => a.cliente_id === cliente.id && (a.status === 'concluido' || a.status === 'confirmado'))
         .sort((a, b) => new Date(b.inicio).getTime() - new Date(a.inicio).getTime());
       
       if (agendsCliente.length === 0) return;
@@ -1336,13 +1352,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const ultimoAgend = agendsCliente[0];
       const servs = obterServicosDeAgendamento(ultimoAgend.id);
       
-      const servsManutencao = servs.filter(s => s.intervalo_manutencao_dias > 0);
+      const servsManutencao = servs.filter(s => {
+        const d = Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0;
+        return d > 0;
+      });
       if (servsManutencao.length === 0) return;
 
       servsManutencao.forEach(serv => {
+        const intervaloDias = Number(serv.intervalo_manutencao_dias || (serv as any).retorno_dias) || 20;
         const dataUltimoAtendimento = new Date(ultimoAgend.inicio);
-        const dataSugerida = new Date(dataUltimoAtendimento.getTime() + serv.intervalo_manutencao_dias * 24 * 60 * 60 * 1000);
+        const dataSugerida = new Date(dataUltimoAtendimento.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
         
+        // Verifica se a cliente já tem um agendamento futuro marcado após o último atendimento
         const temAgendamentoFuturo = agendamentos.some(a => 
           a.cliente_id === cliente.id && 
           new Date(a.inicio).getTime() > dataUltimoAtendimento.getTime() && 
@@ -1350,17 +1371,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         );
 
         if (!temAgendamentoFuturo) {
-          const diffTempo = hoje.getTime() - dataSugerida.getTime();
-          const diasAtraso = Math.floor(diffTempo / (1000 * 60 * 60 * 24));
-          
-          if (diasAtraso >= -3) {
-            recomendacoes.push({
-              cliente,
-              servico: serv,
-              dataSugerida: dataSugerida.toISOString().split('T')[0],
-              diasAtraso: diasAtraso > 0 ? diasAtraso : 0
-            });
+          const dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
+          const diffMs = dataSugZero.getTime() - hojeZero.getTime();
+          const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
+          const diasAtraso = -diasRestantes;
+
+          let statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada' = 'programada';
+          if (diasRestantes < 0) {
+            statusManutencao = 'atrasada';
+          } else if (diasRestantes === 0) {
+            statusManutencao = 'hoje';
+          } else if (diasRestantes <= 7) {
+            statusManutencao = 'em_breve';
           }
+
+          recomendacoes.push({
+            cliente,
+            servico: {
+              ...serv,
+              intervalo_manutencao_dias: intervaloDias
+            },
+            dataSugerida: dataSugerida.toISOString().split('T')[0],
+            diasAtraso: diasAtraso > 0 ? diasAtraso : 0,
+            diasRestantes,
+            statusManutencao
+          });
         }
       });
     });
