@@ -15,9 +15,45 @@ import { Cadastros } from './views/Cadastros';
 
 function AppContent() {
   const { currentUser } = useAppState();
-  const [isAdmin, setIsAdmin] = useState<boolean>(true);
+  
+  // No navegador web público, abre SEMPRE a tela de agendamento do cliente por padrão!
+  // Apenas abre o painel se for o app instalado (Electron/Capacitor) ou se a URL contiver #admin
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    const isNativeApp = 
+      window.location.protocol === 'file:' || 
+      !!(window as any).Capacitor?.isNativePlatform?.() ||
+      navigator.userAgent.includes('Electron');
+
+    if (isNativeApp) return true;
+
+    const hash = window.location.hash.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    const pathname = window.location.pathname.toLowerCase();
+    
+    return hash.includes('admin') || search.includes('admin') || pathname.includes('admin');
+  });
+
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
+
+  // Sincroniza com navegação por hash (#admin ou #agendar)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes('admin')) {
+        setIsAdmin(true);
+      } else if (hash.includes('agendar') || hash === '' || hash === '#') {
+        const isNative = 
+          window.location.protocol === 'file:' || 
+          !!(window as any).Capacitor?.isNativePlatform?.();
+        if (!isNative) {
+          setIsAdmin(false);
+        }
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
   
   // Efeito para scrollar para o topo ao trocar de aba
   useEffect(() => {

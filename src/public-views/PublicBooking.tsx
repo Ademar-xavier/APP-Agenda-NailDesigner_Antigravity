@@ -223,7 +223,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
           <span>Agendamento Online · Sheila Santos</span>
         </span>
         <button
-          onClick={() => setIsAdmin(true)}
+          onClick={() => {
+            window.location.hash = 'admin';
+            setIsAdmin(true);
+          }}
           className="bg-white text-[#C71585] px-3 py-1 rounded-lg font-bold hover:bg-[#FFF0F4] transition-colors shadow-sm"
         >
           Painel Administrativo
