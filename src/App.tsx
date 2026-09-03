@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Cloud } from 'lucide-react';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -18,7 +19,7 @@ import { AtivacaoLicenca } from './views/AtivacaoLicenca';
 import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
 
 function AppContent() {
-  const { currentUser } = useAppState();
+  const { currentUser, notificacaoGlobal } = useAppState();
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
   const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());
@@ -354,6 +355,22 @@ function AppContent() {
 
       {/* Notificação de Instalação PWA no Celular (Exclusiva para a Profissional) */}
       <InstallPwaPrompt isAdmin={isAdmin} />
+
+      {/* TOAST GLOBAL DE CONFIRMAÇÃO DE SALVAMENTO & SINCRONIZAÇÃO NA NUVEM */}
+      {notificacaoGlobal && (
+        <div className="fixed bottom-6 right-6 z-[99999] pointer-events-none animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <div className={`px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-2.5 text-xs font-bold ${
+            notificacaoGlobal.tipo === 'sucesso'
+              ? 'bg-[#1C1917] text-emerald-400 border-emerald-500/40 shadow-emerald-950/40'
+              : notificacaoGlobal.tipo === 'erro'
+              ? 'bg-[#1C1917] text-rose-400 border-rose-500/40'
+              : 'bg-[#1C1917] text-amber-300 border-amber-500/40'
+          }`}>
+            <Cloud size={16} className="text-emerald-400 shrink-0" />
+            <span>{notificacaoGlobal.mensagem}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
