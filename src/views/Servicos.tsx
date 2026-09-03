@@ -239,16 +239,21 @@ export const Servicos: React.FC = () => {
                       <Clock size={13} className="text-[#8C7A6B]" />
                       <span>Duração total: <strong>{s.duracao_minutos} minutos</strong></span>
                     </div>
-                    {s.sinal_tipo !== 'nenhum' && (
-                      <div className="flex items-center gap-1.5">
-                        <DollarSign size={13} className="text-amber-600" />
+                    {s.sinal_tipo && s.sinal_tipo !== 'nenhum' && Number(s.sinal_valor) > 0 ? (
+                      <div className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200/70 w-fit">
+                        <DollarSign size={13} className="text-amber-600 shrink-0" />
                         <span>
-                          Sinal Exigido: <strong>
+                          Sinal para Reserva: <strong className="font-bold text-amber-900">
                             {s.sinal_tipo === 'fixo' 
-                              ? formatarMoeda(s.sinal_valor) 
-                              : `${s.sinal_valor}% (${formatarMoeda(s.preco * s.sinal_valor / 100)})`}
+                              ? formatarMoeda(Number(s.sinal_valor)) 
+                              : `${s.sinal_valor}% (${formatarMoeda((Number(s.preco) || 0) * (Number(s.sinal_valor) || 0) / 100)})`}
                           </strong>
                         </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#5A4535] bg-[#F6ECE8]/60 px-2.5 py-1 rounded-lg border border-[#EFECE6] w-fit">
+                        <Check size={12} className="text-[#8C6D58] shrink-0" />
+                        <span>Sem exigência de sinal (Pagamento no local)</span>
                       </div>
                     )}
                     {!s.is_pacote && s.intervalo_manutencao_dias > 0 && (

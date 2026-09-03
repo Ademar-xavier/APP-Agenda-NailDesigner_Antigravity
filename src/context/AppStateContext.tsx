@@ -128,6 +128,8 @@ interface AppStateContextType {
   obterServicosDeAgendamento: (agendamentoId: string) => Servico[];
   obterRecomendacoesManutencao: () => { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }[];
   obterProximoHorarioLivre: (data: string, duracaoMinutos: number) => string | null;
+  notificacaoGlobal: { mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null;
+  mostrarNotificacaoGlobal: (mensagem: string, tipo?: 'sucesso' | 'info' | 'erro') => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -208,6 +210,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         console.error(e);
       }
     }
+  };
+
+  // Feedback visual global de salvamento e sincronização com a nuvem
+  const [notificacaoGlobal, setNotificacaoGlobal] = useState<{ mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null>(null);
+
+  const mostrarNotificacaoGlobal = (mensagem: string, tipo: 'sucesso' | 'info' | 'erro' = 'sucesso') => {
+    setNotificacaoGlobal({ mensagem, tipo });
+    setTimeout(() => {
+      setNotificacaoGlobal(null);
+    }, 3800);
   };
 
   const [clientes, setClientes] = useState<Cliente[]>(() => {
@@ -782,6 +794,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setClientes(prev => [...prev, cliente]);
     salvarClienteSupabase(cliente);
+    mostrarNotificacaoGlobal(`✅ Cliente "${cliente.nome}" cadastrada e sincronizada com a nuvem!`);
     return cliente;
   };
 
@@ -792,12 +805,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (cli) salvarClienteSupabase(cli);
       return next;
     });
+    mostrarNotificacaoGlobal('✅ Dados da cliente salvos e sincronizados com a nuvem!');
   };
 
   const deleteCliente = (id: string) => {
     limparFocoAtivo();
     setClientes(prev => prev.filter(c => c.id !== id));
     deletarClienteSupabase(id);
+    mostrarNotificacaoGlobal('✅ Cliente removida da nuvem com sucesso!');
   };
 
   // --- Ações de Serviços ---
@@ -809,6 +824,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setServicos(prev => [...prev, servico]);
     salvarServicoSupabase(servico);
+    mostrarNotificacaoGlobal(`✅ Serviço "${servico.nome}" salvo e sincronizado com a nuvem!`);
   };
 
   const updateServico = (id: string, updated: Partial<Servico>) => {
@@ -818,6 +834,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (serv) salvarServicoSupabase(serv);
       return next;
     });
+    mostrarNotificacaoGlobal('✅ Serviço atualizado e sincronizado com a nuvem!');
   };
 
   const deleteServico = (id: string) => {
@@ -828,6 +845,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (serv) salvarServicoSupabase(serv);
       return next;
     });
+    mostrarNotificacaoGlobal('✅ Serviço desativado e atualizado na nuvem!');
   };
 
   // --- Ações de Despesas ---
@@ -838,6 +856,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setDespesas(prev => [...prev, despesa]);
     salvarDespesaSupabase(despesa);
+    mostrarNotificacaoGlobal(`✅ Despesa "${despesa.descricao}" registrada na nuvem!`);
   };
 
   const updateDespesa = (id: string, updated: Partial<Despesa>) => {
@@ -847,12 +866,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (desp) salvarDespesaSupabase(desp);
       return next;
     });
+    mostrarNotificacaoGlobal('✅ Despesa atualizada e sincronizada com a nuvem!');
   };
 
   const deleteDespesa = (id: string) => {
     limparFocoAtivo();
     setDespesas(prev => prev.filter(d => d.id !== id));
     deletarDespesaSupabase(id);
+    mostrarNotificacaoGlobal('✅ Despesa removida da nuvem!');
   };
 
   const addCategoriaDespesa = (nome: string) => {
@@ -912,6 +933,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setMateriais(prev => [...prev, material]);
     salvarMaterialSupabase(material);
+    mostrarNotificacaoGlobal(`✅ Material "${material.nome}" salvo e sincronizado com a nuvem!`);
   };
 
   const updateMaterial = (id: string, updated: Partial<Material>) => {
@@ -931,12 +953,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (mat) salvarMaterialSupabase(mat);
       return next;
     });
+    mostrarNotificacaoGlobal('✅ Insumo/Material atualizado e sincronizado com a nuvem!');
   };
 
   const deleteMaterial = (id: string) => {
     limparFocoAtivo();
     setMateriais(prev => prev.filter(m => m.id !== id));
     deletarMaterialSupabase(id);
+    mostrarNotificacaoGlobal('✅ Material removido da nuvem!');
   };
 
   // --- Lógica de Conflitos ---
@@ -984,7 +1008,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     const dataInicio = new Date(novoAgendamento.inicio);
     const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
-    const fimStr = dataFim.toISOString().replace(/\.\d+Z$/, '');
+    
+    // Formata em horário local (sem a distorção de fuso UTC do toISOString)
+    const ano = dataFim.getFullYear();
+    const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
+    const dia = String(dataFim.getDate()).padStart(2, '0');
+    const hora = String(dataFim.getHours()).padStart(2, '0');
+    const min = String(dataFim.getMinutes()).padStart(2, '0');
+    const seg = String(dataFim.getSeconds()).padStart(2, '0');
+    const fimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
     
     const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, novoAgendamento.profissional_id);
     if (conflito && novoAgendamento.cliente_id !== 'bloqueado') {
@@ -1019,6 +1051,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setAgendamentos(prev => [...prev, agendamento]);
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
+    mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
 
     if (googleConnected) {
       const cli = clientes.find(c => c.id === agendamento.cliente_id);
@@ -1122,6 +1155,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return p;
     }));
+
+    mostrarNotificacaoGlobal('✅ Atendimento concluído com sucesso e sincronizado na nuvem!');
   };
 
   // --- Ações de Lista de Espera ---
@@ -1218,7 +1253,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const inicioAgend = `${data}T${hStr}:${mStr}:00`;
       const dateInicio = new Date(inicioAgend);
       const dateFim = new Date(dateInicio.getTime() + duracaoMinutos * 60 * 1000);
-      const fimAgend = dateFim.toISOString().replace(/\.\d+Z$/, '');
+      const anoF = dateFim.getFullYear();
+      const mesF = String(dateFim.getMonth() + 1).padStart(2, '0');
+      const diaF = String(dateFim.getDate()).padStart(2, '0');
+      const horaF = String(dateFim.getHours()).padStart(2, '0');
+      const minF = String(dateFim.getMinutes()).padStart(2, '0');
+      const segF = String(dateFim.getSeconds()).padStart(2, '0');
+      const fimAgend = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
 
       const conflito = checkConflitoHorario(inicioAgend, fimAgend, 'u1'); // Default to Sheila's professional ID 'u1'
       if (!conflito) {
@@ -1367,7 +1408,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       materiais,
       addMaterial,
       updateMaterial,
-      deleteMaterial
+      deleteMaterial,
+      notificacaoGlobal,
+      mostrarNotificacaoGlobal
     }}>
       {children}
     </AppStateContext.Provider>

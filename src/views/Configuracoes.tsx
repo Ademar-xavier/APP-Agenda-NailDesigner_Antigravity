@@ -30,7 +30,8 @@ import {
   Cloud,
   UploadCloud,
   ExternalLink,
-  Calendar
+  Calendar,
+  Edit2
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -52,6 +53,7 @@ export const Configuracoes: React.FC = () => {
   const { 
     configSalao, 
     updateConfigSalao, 
+    servicos,
     equipe, 
     addEquipe, 
     updateEquipe,
@@ -226,11 +228,53 @@ export const Configuracoes: React.FC = () => {
   const [novoMembroFone, setNovoMembroFone] = useState('');
   const [novoMembroSenha, setNovoMembroSenha] = useState('');
   const [novoMembroPerfil, setNovoMembroPerfil] = useState<'admin' | 'profissional'>('profissional');
+  const [novoMembroServicos, setNovoMembroServicos] = useState<string[]>([]);
 
   // --- ALTERAR SENHA MODAL STATE ---
   const [isAlterarSenhaModalOpen, setIsAlterarSenhaModalOpen] = useState(false);
   const [membroParaAlterarSenha, setMembroParaAlterarSenha] = useState<Usuario | null>(null);
   const [novaSenhaInput, setNovaSenhaInput] = useState('');
+
+  // --- EDITAR DADOS & SERVIÇOS DO MEMBRO ---
+  const [isEditarMembroModalOpen, setIsEditarMembroModalOpen] = useState(false);
+  const [membroEditando, setMembroEditando] = useState<Usuario | null>(null);
+  const [editNome, setEditNome] = useState('');
+  const [editFone, setEditFone] = useState('');
+  const [editPerfil, setEditPerfil] = useState<'admin' | 'profissional'>('profissional');
+  const [editAtivo, setEditAtivo] = useState(true);
+  const [editServicosHabilitados, setEditServicosHabilitados] = useState<string[]>([]);
+
+  const formatarMoedaLocal = (valor: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
+  };
+
+  const handleAbrirEditarMembro = (membro: Usuario) => {
+    setMembroEditando(membro);
+    setEditNome(membro.nome);
+    setEditFone(membro.telefone || '');
+    setEditPerfil(membro.perfil);
+    setEditAtivo(membro.ativo);
+    setEditServicosHabilitados(membro.servicos_habilitados || []);
+    setIsEditarMembroModalOpen(true);
+  };
+
+  const handleSalvarEdicaoMembro = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!membroEditando || !editNome.trim()) return;
+
+    updateEquipe(membroEditando.id, {
+      nome: editNome.trim(),
+      telefone: editFone.trim(),
+      perfil: editPerfil,
+      ativo: editAtivo,
+      servicos_habilitados: editServicosHabilitados
+    });
+
+    setIsEditarMembroModalOpen(false);
+    setMembroEditando(null);
+    exibirToast(`✅ Dados e serviços da profissional ${editNome} salvos e sincronizados com a nuvem!`);
+    triggerSuccess();
+  };
 
   const handleSalvarGeral = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,14 +361,17 @@ export const Configuracoes: React.FC = () => {
       telefone: novoMembroFone,
       email: novoMembroNome.toLowerCase().replace(/\s+/g, '') + '@agenda.com',
       perfil: novoMembroPerfil,
-      senha: novoMembroSenha.trim() || (novoMembroPerfil === 'admin' ? 'admin' : '1234')
+      senha: novoMembroSenha.trim() || (novoMembroPerfil === 'admin' ? 'admin' : '1234'),
+      servicos_habilitados: novoMembroServicos
     });
 
     setNovoMembroNome('');
     setNovoMembroFone('');
     setNovoMembroSenha('');
     setNovoMembroPerfil('profissional');
+    setNovoMembroServicos([]);
     setIsEquipeModalOpen(false);
+    exibirToast(`✅ Profissional ${novoMembroNome} cadastrada e sincronizada com a nuvem!`);
     triggerSuccess();
   };
 
@@ -849,19 +896,6 @@ export const Configuracoes: React.FC = () => {
                 </button>
               </div>
 
-              {/* Dica de Segurança e .env */}
-              <div className="p-3.5 bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-white text-[#8C6D58] border border-[#EFECE6] shadow-2xs mt-0.5">
-                  <Shield size={16} />
-                </div>
-                <div className="text-xs text-[#5A4535]">
-                  <p className="font-bold">Segurança de Acesso e Comercialização:</p>
-                  <p className="text-[#8C7A6B] mt-0.5">
-                    Você pode alterar a senha de qualquer profissional clicando em <strong>Alterar Senha</strong> abaixo. A senha mestre padrão do Administrador também pode ser personalizada diretamente no arquivo <strong>.env</strong> pela variável <code>VITE_ADMIN_PASSWORD</code>.
-                  </p>
-                </div>
-              </div>
-
               {/* Lista de Membros da Equipe */}
               <div className="space-y-3">
                 {equipe.map((membro) => {
@@ -885,11 +919,36 @@ export const Configuracoes: React.FC = () => {
                               ? 'Administradora' 
                               : 'Profissional · Sem Acesso A Dados Financeiros Globais'}
                           </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {membro.telefone && (
+                              <span className="text-[10px] text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#EFECE6]">
+                                📱 {membro.telefone}
+                              </span>
+                            )}
+                            {(!membro.servicos_habilitados || membro.servicos_habilitados.length === 0) ? (
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                                ✨ Realiza todos os serviços
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-md border border-[#EFECE6]">
+                                💅 {membro.servicos_habilitados.length} serviço{membro.servicos_habilitados.length > 1 ? 's' : ''} habilitado{membro.servicos_habilitados.length > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Ações: Alterar Senha + Toggle Ativo */}
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                      {/* Ações: Editar + Alterar Senha + Toggle Ativo */}
+                      <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => handleAbrirEditarMembro(membro)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-colors shadow-2xs"
+                        >
+                          <Edit2 size={13} />
+                          <span>Editar</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => {
@@ -1403,8 +1462,54 @@ export const Configuracoes: React.FC = () => {
                 />
               </div>
 
+              {/* Serviços que realiza */}
+              <div className="pt-2 border-t border-[#EFECE6]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-[#8C7A6B]">Serviços Habilitados</label>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setNovoMembroServicos(servicos.filter(s => s.ativo).map(s => s.id))}
+                      className="text-[#8C6D58] hover:underline font-bold"
+                    >
+                      Todos
+                    </button>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setNovoMembroServicos([])}
+                      className="text-gray-400 hover:underline"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs">
+                  {servicos.filter(s => s.ativo).map(s => (
+                    <label key={s.id} className="flex items-center gap-2 cursor-pointer p-1 rounded hover:bg-white">
+                      <input
+                        type="checkbox"
+                        checked={novoMembroServicos.includes(s.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNovoMembroServicos(prev => [...prev, s.id]);
+                          } else {
+                            setNovoMembroServicos(prev => prev.filter(id => id !== s.id));
+                          }
+                        }}
+                        className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-3.5 w-3.5"
+                      />
+                      <span className="text-[#5A4535]">{s.nome}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[#8C7A6B] mt-1 italic">
+                  * Se nenhum for marcado, ela realiza todos os serviços.
+                </p>
+              </div>
+
               {/* Footer */}
-              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] mt-6">
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] mt-4">
                 <button
                   type="button"
                   onClick={() => setIsEquipeModalOpen(false)}
@@ -1417,6 +1522,147 @@ export const Configuracoes: React.FC = () => {
                   className="px-5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
                 >
                   Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL EDITAR PROFISSIONAL & SERVIÇOS --- */}
+      {isEditarMembroModalOpen && membroEditando && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#EFECE6] max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-4 border-b border-[#EFECE6] pb-3">
+              <div>
+                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                  <Edit2 size={16} className="text-[#8C6D58]" />
+                  <span>Editar Profissional</span>
+                </h3>
+                <p className="text-xs text-[#8C7A6B] mt-0.5">Altere dados cadastrais e os serviços que ela realiza</p>
+              </div>
+              <button 
+                onClick={() => setIsEditarMembroModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarEdicaoMembro} className="space-y-4 overflow-y-auto pr-1 flex-1">
+              <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Nome Completo</label>
+                <input 
+                  type="text" required 
+                  value={editNome} onChange={(e) => setEditNome(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Telefone / WhatsApp</label>
+                  <input 
+                    type="text" 
+                    value={editFone} onChange={(e) => setEditFone(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Perfil de Acesso</label>
+                  <select
+                    value={editPerfil}
+                    onChange={(e) => setEditPerfil(e.target.value as 'admin' | 'profissional')}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                  >
+                    <option value="profissional">Profissional da equipe</option>
+                    <option value="admin">Administradora</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* SELEÇÃO DE SERVIÇOS REALIZADOS */}
+              <div className="pt-2 border-t border-[#EFECE6]">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <label className="block text-xs font-bold text-[#5A4535]">Serviços Habilitados</label>
+                    <p className="text-[11px] text-[#8C7A6B]">Procedimentos disponíveis para agendamento dela</p>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setEditServicosHabilitados(servicos.filter(s => s.ativo).map(s => s.id))}
+                      className="text-[#8C6D58] hover:underline font-bold"
+                    >
+                      Todos
+                    </button>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => setEditServicosHabilitados([])}
+                      className="text-gray-400 hover:underline"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto p-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl">
+                  {servicos.filter(s => s.ativo).map(s => {
+                    const isChecked = editServicosHabilitados.includes(s.id);
+                    return (
+                      <label 
+                        key={s.id} 
+                        className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                          isChecked 
+                            ? 'bg-white border-[#8C6D58]/50 shadow-2xs' 
+                            : 'bg-white/50 border-transparent opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditServicosHabilitados(prev => [...prev, s.id]);
+                              } else {
+                                setEditServicosHabilitados(prev => prev.filter(id => id !== s.id));
+                              }
+                            }}
+                            className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                          />
+                          <div>
+                            <span className="font-bold text-[#5A4535]">{s.nome}</span>
+                            <span className="text-[10px] text-[#8C7A6B] block">{s.duracao_minutos} min • {s.categoria}</span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-semibold text-[#8C6D58]">
+                          {formatarMoedaLocal(s.preco)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-[#8C7A6B] mt-1.5 italic">
+                  * Se nenhum serviço for marcado, ela estará disponível para todos os serviços cadastrados.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+                <button
+                  type="button"
+                  onClick={() => setIsEditarMembroModalOpen(false)}
+                  className="px-4 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                >
+                  Salvar Alterações
                 </button>
               </div>
             </form>
@@ -1459,18 +1705,6 @@ export const Configuracoes: React.FC = () => {
                   Essa senha será exigida na tela de login para este perfil.
                 </p>
               </div>
-
-              {membroParaAlterarSenha.perfil === 'admin' && (
-                <div className="p-3 bg-[#FAF8F5] border border-[#F3ECE0] rounded-xl text-[11px] text-[#8C7A6B] space-y-1">
-                  <span className="font-bold flex items-center gap-1 text-[#5A4535]">
-                    <Shield size={12} className="text-[#8C6D58]" />
-                    Dica para Comercialização:
-                  </span>
-                  <p>
-                    A senha padrão do Administrador também pode ser personalizada diretamente no arquivo <strong>.env</strong> pela variável <code>VITE_ADMIN_PASSWORD</code>.
-                  </p>
-                </div>
-              )}
 
               <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
                 <button

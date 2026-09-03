@@ -7,6 +7,7 @@ export interface Usuario {
   ativo: boolean;
   foto?: string;
   senha?: string;
+  servicos_habilitados?: string[]; // IDs dos serviços que esta profissional realiza
 }
 
 export interface Cliente {
