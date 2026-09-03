@@ -171,6 +171,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const handleCancelar = () => {
     if (!motivoCancelamento.trim()) return;
     cancelAgendamento(agendamento.id, motivoCancelamento, 'admin');
+
+    if (cliente?.telefone) {
+      const fone = cliente.telefone.replace(/\D/g, '');
+      const dataStr = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
+      const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
+      const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoCancelamento}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕`;
+      window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
     setAcao(null);
     onClose();
   };

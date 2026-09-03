@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -33,14 +33,72 @@ export const Agenda: React.FC<AgendaProps> = ({
     addAgendamento, 
     addCliente, 
     equipe,
-    currentUser
+    currentUser,
+    configSalao,
+    checkConflitoHorario,
+    obterServicosDeAgendamento
   } = useAppState();
 
-  const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
+  // Data Base Real (Data Local Hoje)
+  const dataHojeObj = new Date();
+  const dataBaseStr = dataHojeObj.toLocaleDateString('en-CA');
+
   const [dataSelecionada, setDataSelecionada] = useState<string>(dataBaseStr);
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
   const [busca, setBusca] = useState<string>('');
   
+  // Calendário Popover com Destaque de Atendimentos
+  const [showCalendarPicker, setShowCalendarPicker] = useState<boolean>(false);
+  const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
+
+  // Mapa de dias com atendimento (para marcar com pontinho no calendário)
+  const mapaDiasComAtendimento = useMemo(() => {
+    const mapa: { [dataStr: string]: number } = {};
+    agendamentos.forEach(a => {
+      if (a.status !== 'cancelado') {
+        const dia = a.inicio.split('T')[0];
+        mapa[dia] = (mapa[dia] || 0) + 1;
+      }
+    });
+    return mapa;
+  }, [agendamentos]);
+
+  // Auxiliar para gerar os dias da grade mensal
+  const gerarDiasDoMes = (dataBase: Date) => {
+    const ano = dataBase.getFullYear();
+    const mes = dataBase.getMonth();
+    
+    const primeiroDiaMes = new Date(ano, mes, 1);
+    const ultimoDiaMes = new Date(ano, mes + 1, 0);
+    
+    const dias: { data: Date; iso: string; dia: number; outroMes: boolean }[] = [];
+    
+    // Dias do mês anterior
+    const diaSemanaInicio = primeiroDiaMes.getDay();
+    for (let i = diaSemanaInicio - 1; i >= 0; i--) {
+      const d = new Date(ano, mes, -i);
+      const iso = d.toLocaleDateString('en-CA');
+      dias.push({ data: d, iso, dia: d.getDate(), outroMes: true });
+    }
+    
+    // Dias do mês atual
+    for (let i = 1; i <= ultimoDiaMes.getDate(); i++) {
+      const d = new Date(ano, mes, i);
+      const iso = d.toLocaleDateString('en-CA');
+      dias.push({ data: d, iso, dia: i, outroMes: false });
+    }
+    
+    // Dias do próximo mês
+    const restantes = (7 - (dias.length % 7)) % 7;
+    for (let i = 1; i <= restantes; i++) {
+      const d = new Date(ano, mes + 1, i);
+      const iso = d.toLocaleDateString('en-CA');
+      dias.push({ data: d, iso, dia: i, outroMes: true });
+    }
+    
+    return dias;
+  };
+
   // Detalhes do agendamento selecionado
   const [selectedAgendamentoId, setSelectedAgendamentoId] = useState<string | null>(null);
   
@@ -56,6 +114,18 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [profissionalId, setProfissionalId] = useState<string>('u1');
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
   const [cobrarSinal, setCobrarSinal] = useState<boolean>(true);
+
+  // Serviços habilitados da profissional selecionada
+  const profSelecionada = equipe.find(u => u.id === profissionalId);
+  const servicosHabilitadosProf = useMemo(() => {
+    return servicos.filter(s => {
+      if (!s.ativo) return false;
+      if (!profSelecionada?.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
+        return true;
+      }
+      return profSelecionada.servicos_habilitados.includes(s.id);
+    });
+  }, [servicos, profSelecionada]);
 
   // Local state for modal to prevent rendering lag
   const [localNewAgendamentoOpen, setLocalNewAgendamentoOpen] = useState(isNewAgendamentoModalOpen);
@@ -243,14 +313,120 @@ export const Agenda: React.FC<AgendaProps> = ({
             <ChevronLeft size={16} />
           </button>
           
-          <div className="flex items-center gap-2 px-3 py-1 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">
-            <CalendarIcon size={14} className="text-[#8C6D58]" />
-            <input 
-              type="date" 
-              value={dataSelecionada} 
-              onChange={(e) => setDataSelecionada(e.target.value)}
-              className="text-xs font-semibold text-[#5A4535] bg-transparent border-none outline-none focus:ring-0 w-28"
-            />
+          {/* Seletor com Calendário Popover Interativo */}
+          <div className="relative">
+            <button 
+              type="button"
+              onClick={() => {
+                const partes = dataSelecionada.split('-');
+                if (partes.length === 3) {
+                  setCalendarViewDate(new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2])));
+                }
+                setShowCalendarPicker(!showCalendarPicker);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#F6ECE8] transition-colors rounded-xl border border-[#EFECE6] text-xs font-semibold text-[#5A4535]"
+              title="Abrir calendário mensal"
+            >
+              <CalendarIcon size={14} className="text-[#8C6D58]" />
+              <span>{dataSelecionada.split('-').reverse().join('/')}</span>
+              {mapaDiasComAtendimento[dataSelecionada] ? (
+                <span className="w-2 h-2 rounded-full bg-[#DB7093]" title={`${mapaDiasComAtendimento[dataSelecionada]} agendamento(s)`} />
+              ) : null}
+            </button>
+
+            {/* POPOVER DO CALENDÁRIO COM DESTAQUE DE DIAS COM ATENDIMENTO */}
+            {showCalendarPicker && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowCalendarPicker(false)}
+                />
+                <div className="absolute top-full left-0 mt-2 z-50 bg-white rounded-2xl shadow-2xl border border-[#EFECE6] p-4 w-72 animate-in fade-in zoom-in duration-150">
+                  {/* Cabeçalho do Mês */}
+                  <div className="flex items-center justify-between mb-3">
+                    <button 
+                      type="button"
+                      onClick={() => setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() - 1, 1))}
+                      className="p-1 rounded-lg hover:bg-[#FAF9F6] text-[#8C7A6B]"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span className="text-xs font-bold text-[#5A4535] capitalize">
+                      {calendarViewDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => setCalendarViewDate(new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth() + 1, 1))}
+                      className="p-1 rounded-lg hover:bg-[#FAF9F6] text-[#8C7A6B]"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  {/* Dias da semana */}
+                  <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                      <span key={i} className="text-[10px] font-bold text-[#A88690] py-1">
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Grade de Dias */}
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {gerarDiasDoMes(calendarViewDate).map((item, idx) => {
+                      const isSelected = item.iso === dataSelecionada;
+                      const qtdAtendimentos = mapaDiasComAtendimento[item.iso] || 0;
+                      const temAtendimento = qtdAtendimentos > 0;
+
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setDataSelecionada(item.iso);
+                            setShowCalendarPicker(false);
+                          }}
+                          className={`relative py-1.5 px-0.5 rounded-xl text-xs flex flex-col items-center justify-center transition-all ${
+                            isSelected
+                              ? 'bg-[#8C6D58] text-white font-bold shadow-sm'
+                              : temAtendimento
+                              ? 'bg-[#FFF0F5] text-[#C71585] font-bold border border-[#FAD0DC] hover:bg-[#FAD0DC]/60'
+                              : item.outroMes
+                              ? 'text-[#C2B7AE] hover:bg-[#FAF9F6]'
+                              : 'text-[#5A4535] hover:bg-[#FAF9F6]'
+                          }`}
+                          title={temAtendimento ? `${qtdAtendimentos} atendimento(s)` : undefined}
+                        >
+                          <span>{item.dia}</span>
+                          {temAtendimento && (
+                            <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? 'bg-white' : 'bg-[#DB7093]'}`} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Rodapé explicativo */}
+                  <div className="mt-3 pt-2.5 border-t border-[#EFECE6] flex items-center justify-between text-[10px] text-[#8C7A6B]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#DB7093]" />
+                      <span className="font-medium text-[#C71585]">Dias com atendimento</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDataSelecionada(dataBaseStr);
+                        setShowCalendarPicker(false);
+                      }}
+                      className="font-bold text-[#8C6D58] hover:underline"
+                    >
+                      Hoje
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           
           <button 
@@ -445,7 +621,14 @@ export const Agenda: React.FC<AgendaProps> = ({
                       <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Profissional do Atendimento</label>
                       <select
                         value={profissionalId}
-                        onChange={(e) => setProfissionalId(e.target.value)}
+                        onChange={(e) => {
+                          const novoId = e.target.value;
+                          setProfissionalId(novoId);
+                          const prof = equipe.find(u => u.id === novoId);
+                          if (prof?.servicos_habilitados && prof.servicos_habilitados.length > 0) {
+                            setServicosSelecionados(prev => prev.filter(sId => prof.servicos_habilitados!.includes(sId)));
+                          }
+                        }}
                         disabled={currentUser?.perfil === 'profissional'}
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58] disabled:opacity-75"
                       >
@@ -521,41 +704,54 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                     {/* Serviços */}
                     <div>
-                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-2">Serviços Selecionados</label>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Serviços Selecionados</label>
+                        {profSelecionada && (
+                          <span className="text-[10px] text-[#A88690] italic">
+                            Especialidades de {profSelecionada.nome}
+                          </span>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto border border-[#EFECE6] p-3 rounded-xl bg-[#FAF9F6]">
-                        {servicos.filter(s => s.ativo).map(s => {
-                          const selecionado = servicosSelecionados.includes(s.id);
-                          return (
-                            <label 
-                              key={s.id} 
-                              className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
-                                selecionado 
-                                  ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
-                                  : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <input 
-                                  type="checkbox"
-                                  checked={selecionado}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setServicosSelecionados(prev => [...prev, s.id]);
-                                    } else {
-                                      setServicosSelecionados(prev => prev.filter(id => id !== s.id));
-                                    }
-                                  }}
-                                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
-                                />
-                                <div>
-                                  <span className="font-semibold block">{s.nome}</span>
-                                  <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
+                        {servicosHabilitadosProf.length === 0 ? (
+                          <p className="col-span-2 text-center text-xs text-[#8C7A6B] py-3">
+                            Nenhum serviço habilitado cadastrado para esta profissional.
+                          </p>
+                        ) : (
+                          servicosHabilitadosProf.map(s => {
+                            const selecionado = servicosSelecionados.includes(s.id);
+                            return (
+                              <label 
+                                key={s.id} 
+                                className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                  selecionado 
+                                    ? 'bg-[#F6ECE8] border-[#8C6D58] text-[#8C6D58]' 
+                                    : 'bg-white border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox"
+                                    checked={selecionado}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setServicosSelecionados(prev => [...prev, s.id]);
+                                      } else {
+                                        setServicosSelecionados(prev => prev.filter(id => id !== s.id));
+                                      }
+                                    }}
+                                    className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                  />
+                                  <div>
+                                    <span className="font-semibold block">{s.nome}</span>
+                                    <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
+                                  </div>
                                 </div>
-                              </div>
-                              <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
-                            </label>
-                          );
-                        })}
+                                <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
+                              </label>
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 
