@@ -69,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-6 border-b border-[#EFECE6] flex flex-col items-center text-center">
           <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
             <img 
-              src="./logo.png" 
+              src="./logo.png?v=3" 
               alt="Logo Sheila Santos Nails Designer" 
               className="w-full h-full object-cover rounded-full" 
               onError={(e) => {

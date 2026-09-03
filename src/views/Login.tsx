@@ -85,7 +85,7 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
         {/* Logo no topo - Imagem 2 Rosa com Borda Suave */}
         <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] flex items-center justify-center mb-6 overflow-hidden shadow-xl p-0.5">
           <img 
-            src="./logo.png" 
+            src="./logo.png?v=3" 
             alt="Logo Sheila Santos Nails Designer" 
             className="w-full h-full object-cover rounded-full"
             onError={(e) => {
