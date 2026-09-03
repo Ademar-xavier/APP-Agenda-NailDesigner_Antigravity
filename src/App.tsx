@@ -40,7 +40,7 @@ function AppContent() {
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     const isElectron = window.location.protocol === 'file:' || navigator.userAgent.includes('Electron');
     const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator as any).standalone === true;
     const isAppParam = window.location.search.includes('app=1') || window.location.hash.toLowerCase().includes('admin');
 
     // Em todas as plataformas instaladas, inicia SEMPRE na tela administrativa (Login)
@@ -64,7 +64,7 @@ function AppContent() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator as any).standalone === true;
       const isNative = 
         window.location.protocol === 'file:' || 
         navigator.userAgent.includes('Electron') ||
@@ -250,7 +250,7 @@ function AppContent() {
   // Verifica se é aplicativo instalado em qualquer plataforma:
   // Desktop Windows, Android Nativo ou PWA instalado no celular via link
   const isInstalledApp = 
-    window.matchMedia('(display-mode: standalone)').matches || 
+    (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || 
     (window.navigator as any).standalone === true ||
     window.location.protocol === 'file:' || 
     navigator.userAgent.includes('Electron') ||

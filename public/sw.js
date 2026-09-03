@@ -1,8 +1,6 @@
 // Service Worker para PWA (Sheila Santos Agenda)
-const CACHE_NAME = 'sheila-santos-cache-v1';
+const CACHE_NAME = 'sheila-santos-cache-v4';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/logo.png'
 ];
@@ -41,13 +39,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Para navegação de páginas (HTML): SEMPRE tenta a rede primeiro
+  // Isso garante que o celular nunca fique travado em tela branca ou versão antiga
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match('/index.html') || caches.match('/');
+      })
+    );
+    return;
+  }
+
+  // Para outros assets: tenta a rede com fallback para o cache
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      return cachedResponse || fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
-      });
+    fetch(event.request).catch(() => {
+      return caches.match(event.request);
     })
   );
 });
