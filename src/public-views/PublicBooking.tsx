@@ -37,7 +37,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
   
   // Agendamento State
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
-  const [dataSelecionada, setDataSelecionada] = useState<string>('2026-08-31'); // Padrão: Segunda-feira seguinte
+  const [dataSelecionada, setDataSelecionada] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [horarioSelecionado, setHorarioSelecionado] = useState<string>('');
   
   // Cliente State
@@ -378,7 +378,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 <CalendarIcon size={14} className="text-[#DB7093]" />
                 <input 
                   type="date" 
-                  min="2026-08-29"
+                  min={new Date().toLocaleDateString('en-CA')}
                   value={dataSelecionada}
                   onChange={(e) => {
                     setDataSelecionada(e.target.value);

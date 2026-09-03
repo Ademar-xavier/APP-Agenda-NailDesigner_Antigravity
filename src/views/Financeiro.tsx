@@ -56,7 +56,7 @@ export const Financeiro: React.FC = () => {
   const [descricao, setDescricao] = useState('');
   const [categoria, setCategoria] = useState('Materiais');
   const [valorDespesa, setValorDespesa] = useState(0);
-  const [dataDespesa, setDataDespesa] = useState('2026-08-29');
+  const [dataDespesa, setDataDespesa] = useState(new Date().toLocaleDateString('en-CA'));
 
   // Adicionar Categoria Field
   const [showNovaCat, setShowNovaCat] = useState(false);
