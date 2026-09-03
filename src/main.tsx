@@ -2,6 +2,10 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
+import { iniciarProtecaoAntiClone } from './services/securityShield';
+
+// Ativa Escudo de Segurança Cibernética, Anti-Clonagem e Proteção de Código-Fonte
+iniciarProtecaoAntiClone();
 
 // Registro do Service Worker para PWA (Instalação no celular)
 if ('serviceWorker' in navigator && import.meta.env.PROD) {

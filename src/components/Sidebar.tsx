@@ -67,18 +67,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-[#EFECE6] h-screen sticky top-0">
         {/* Header / Logo */}
         <div className="p-6 border-b border-[#EFECE6] flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mb-3 border border-[#E8DEC9] overflow-hidden">
+          <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
             <img 
               src="./logo.png" 
-              alt="Logo" 
-              className="w-full h-full object-cover" 
+              alt="Logo Sheila Santos Nails Designer" 
+              className="w-full h-full object-cover rounded-full" 
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 const parent = e.currentTarget.parentElement;
                 if (parent) {
                   const span = document.createElement('span');
-                  span.className = 'text-2xl font-serif text-[#8C6D58] font-bold';
-                  span.innerText = 'S';
+                  span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
+                  span.innerText = 'SS';
                   parent.appendChild(span);
                 }
               }}

@@ -1,26 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppState } from '../context/AppStateContext';
-import { Lock, Heart, Shield, Sparkles, User } from 'lucide-react';
+import { Lock, Heart, Shield, Sparkles, User, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { verificarBloqueioLogin, registrarFalhaLogin, resetarFalhasLogin } from '../services/securityShield';
 
 interface LoginProps {
   setIsAdmin: (isAdmin: boolean) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
-  const { equipe, loginWithCredentials } = useAppState();
-  const [usuarioInput, setUsuarioInput] = useState<string>('admin');
+  const { loginWithCredentials } = useAppState();
+  const [usuarioInput, setUsuarioInput] = useState<string>('');
   const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [bloqueioSegundos, setBloqueioSegundos] = useState<number>(0);
+
+  // Verifica se há bloqueio ativo por excesso de tentativas
+  useEffect(() => {
+    const status = verificarBloqueioLogin();
+    if (status.bloqueado) {
+      setBloqueioSegundos(status.segundosRestantes);
+    }
+  }, []);
+
+  // Timer regressivo de bloqueio
+  useEffect(() => {
+    if (bloqueioSegundos <= 0) return;
+    const timer = setInterval(() => {
+      setBloqueioSegundos(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [bloqueioSegundos]);
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    // Se estiver em período de bloqueio por tentativas
+    if (bloqueioSegundos > 0) {
+      setError(`Acesso temporariamente bloqueado por segurança. Aguarde ${bloqueioSegundos}s.`);
+      return;
+    }
+
     const targetUser = usuarioInput.trim();
     const pwd = password.trim();
 
     if (!targetUser) {
-      setError('Por favor, digite o usuário ou e-mail.');
+      setError('Por favor, digite o seu usuário ou e-mail.');
       return;
     }
 
@@ -30,8 +62,16 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     }
 
     const success = loginWithCredentials(targetUser, pwd);
-    if (!success) {
-      setError('Usuário ou senha incorretos. Verifique suas credenciais.');
+    if (success) {
+      resetarFalhasLogin();
+    } else {
+      const falha = registrarFalhaLogin();
+      if (falha.bloqueouAgora) {
+        setBloqueioSegundos(falha.segundosRestantes);
+        setError(`Múltiplas tentativas incorretas detectadas! O acesso foi bloqueado por ${falha.segundosRestantes} segundos para proteção da conta.`);
+      } else {
+        setError('Usuário ou senha incorretos. Verifique suas credenciais.');
+      }
     }
   };
 
@@ -42,18 +82,18 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
 
       {/* Login Box */}
       <div className="w-full max-w-md bg-[#1E1E1E] border border-[#2D2D2D] rounded-3xl p-8 shadow-2xl flex flex-col items-center">
-        {/* Logo no topo */}
-        <div className="w-24 h-24 rounded-full bg-[#141414] border border-[#3A3A3A] flex items-center justify-center mb-6 overflow-hidden">
+        {/* Logo no topo - Imagem 2 Rosa com Borda Suave */}
+        <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] flex items-center justify-center mb-6 overflow-hidden shadow-xl p-0.5">
           <img 
             src="./logo.png" 
-            alt="Logo Sheila Santos" 
-            className="w-full h-full object-cover"
+            alt="Logo Sheila Santos Nails Designer" 
+            className="w-full h-full object-cover rounded-full"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
               const parent = e.currentTarget.parentElement;
               if (parent) {
                 const span = document.createElement('span');
-                span.className = 'text-3xl font-serif text-[#8C6D58] font-extrabold';
+                span.className = 'text-3xl font-serif text-[#D48B70] font-extrabold';
                 span.innerText = 'SS';
                 parent.appendChild(span);
               }
@@ -70,12 +110,13 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
 
         <form onSubmit={handleLoginSubmit} className="w-full mt-8 space-y-5">
           {error && (
-            <div className="p-3 bg-[#3d1313] border border-[#C81E1E] rounded-xl text-xs text-[#F8D7DA]">
-              {error}
+            <div className="p-3 bg-[#3d1313] border border-[#C81E1E] rounded-xl text-xs text-[#F8D7DA] flex items-start gap-2">
+              <AlertTriangle size={15} className="text-red-400 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
-          {/* Campo de Usuário digitável */}
+          {/* Campo de Usuário digitável e seguro */}
           <div>
             <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider mb-2">
               Usuário ou E-mail
@@ -86,45 +127,17 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
                 type="text"
                 required
                 autoCapitalize="none"
-                placeholder="Digite seu usuário (ex: admin)"
+                autoComplete="username"
+                placeholder="Digite seu usuário ou e-mail"
                 value={usuarioInput}
                 onChange={(e) => setUsuarioInput(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0"
+                disabled={bloqueioSegundos > 0}
+                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0 disabled:opacity-50"
               />
-            </div>
-            {/* Sugestões rápidas de usuário */}
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              <button
-                type="button"
-                onClick={() => setUsuarioInput('admin')}
-                className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
-                  usuarioInput.toLowerCase() === 'admin'
-                    ? 'bg-[#8C6D58]/30 border-[#8C6D58] text-[#E0C09E] font-bold'
-                    : 'bg-[#141414] border-[#333] text-[#888] hover:text-[#CCC]'
-                }`}
-              >
-                admin
-              </button>
-              {equipe
-                .filter(u => u.ativo && u.nome.toLowerCase() !== 'administrador')
-                .map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => setUsuarioInput(u.nome)}
-                    className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
-                      usuarioInput.toLowerCase() === u.nome.toLowerCase()
-                        ? 'bg-[#8C6D58]/30 border-[#8C6D58] text-[#E0C09E] font-bold'
-                        : 'bg-[#141414] border-[#333] text-[#888] hover:text-[#CCC]'
-                    }`}
-                  >
-                    {u.nome}
-                  </button>
-                ))}
             </div>
           </div>
 
-          {/* Senha */}
+          {/* Senha com visualização segura */}
           <div>
             <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider mb-2">
               Senha / Código de Acesso
@@ -132,22 +145,35 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
             <div className="flex items-center bg-[#141414] border border-[#333] hover:border-[#8C6D58] focus-within:border-[#8C6D58] rounded-xl px-4 py-3 transition-colors">
               <Lock size={16} className="text-[#555] shrink-0 mr-3" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
                 placeholder="Digite a sua senha de acesso"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0"
+                disabled={bloqueioSegundos > 0}
+                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0 disabled:opacity-50"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-[#666] hover:text-[#AAA] p-1 transition-colors"
+                title={showPassword ? "Ocultar senha" : "Ver senha"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
-          {/* Submit */}
+          {/* Submit com proteção anti-força bruta */}
           <button
             type="submit"
-            className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md mt-2 flex items-center justify-center gap-1.5 active:scale-98"
+            disabled={bloqueioSegundos > 0}
+            className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:bg-[#444] disabled:opacity-60 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md mt-2 flex items-center justify-center gap-1.5 active:scale-98"
           >
             <Shield size={14} />
-            <span>Acessar Painel</span>
+            <span>
+              {bloqueioSegundos > 0 ? `Bloqueado (${bloqueioSegundos}s)` : 'Acessar Painel'}
+            </span>
           </button>
         </form>
 
@@ -158,20 +184,20 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
           <div className="h-[1px] bg-[#333] flex-1"></div>
         </div>
 
-        {/* Link para página pública */}
+        {/* Botão de retorno ao agendamento */}
         <button
           onClick={() => setIsAdmin(false)}
-          className="w-full border border-[#333] hover:border-[#8C6D58] hover:bg-[#141414] text-[#A19488] hover:text-white py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+          className="w-full bg-[#2A2A2A] hover:bg-[#333] text-[#CCC] py-3 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-2 border border-[#3A3A3A]"
         >
-          <Sparkles size={14} />
+          <Sparkles size={14} className="text-[#8C6D58]" />
           <span>Ir para o Agendamento de Clientes</span>
         </button>
       </div>
 
-      {/* Footer */}
-      <footer className="text-center text-[10px] text-[#555] flex items-center justify-center gap-1">
+      {/* Footer Branding */}
+      <footer className="mt-8 text-center text-xs text-[#555] flex items-center gap-1">
         <span>Sheila Santos Nails Designer © 2026</span>
-        <Heart size={10} className="fill-[#555] text-[#555]" />
+        <Heart size={10} className="text-[#8C6D58] fill-current" />
       </footer>
     </div>
   );

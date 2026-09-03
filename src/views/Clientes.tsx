@@ -413,12 +413,14 @@ export const Clientes: React.FC<ClientesProps> = ({
     }
   };
 
-  // Filtrar clientes
-  const clientesFiltrados = clientes.filter(c => 
-    c.nome.toLowerCase().includes(busca.toLowerCase()) || 
-    c.telefone.includes(busca) ||
-    c.preferencias?.tecnica?.toLowerCase().includes(busca.toLowerCase())
-  );
+  // Filtrar clientes e ordenar por ordem alfabética de A a Z
+  const clientesFiltrados = clientes
+    .filter(c => 
+      c.nome.toLowerCase().includes(busca.toLowerCase()) || 
+      c.telefone.includes(busca) ||
+      c.preferencias?.tecnica?.toLowerCase().includes(busca.toLowerCase())
+    )
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
 
   const clienteSelecionado = clientes.find(c => c.id === selectedClienteIdForDetails);
 

@@ -296,18 +296,18 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         
         {/* Header da Marca (Updated container background to match the black logo) */}
         <div className="text-center mb-6 border-b border-[#FFF0F4] pb-4">
-          <div className="w-20 h-20 rounded-full bg-[#1A1A1A] border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-md">
+          <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-md p-0.5">
             <img 
               src="./logo.png" 
-              alt="Logo Sheila" 
-              className="w-full h-full object-cover"
+              alt="Logo Sheila Santos Nails Designer" 
+              className="w-full h-full object-cover rounded-full"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 const parent = e.currentTarget.parentElement;
                 if (parent) {
                   const span = document.createElement('span');
-                  span.className = 'text-2xl font-serif text-[#DB7093] font-extrabold';
-                  span.innerText = 'S';
+                  span.className = 'text-2xl font-serif text-[#D48B70] font-extrabold';
+                  span.innerText = 'SS';
                   parent.appendChild(span);
                 }
               }}
