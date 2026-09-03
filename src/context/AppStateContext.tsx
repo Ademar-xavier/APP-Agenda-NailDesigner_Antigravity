@@ -82,6 +82,11 @@ interface AppStateContextType {
   desconectarGoogleAgenda: () => void;
   sincronizarGoogleAgenda: (eventos: any[]) => void;
 
+  // Sincronização em Nuvem (Supabase)
+  isSyncingCloud: boolean;
+  lastCloudSyncTime: string | null;
+  sincronizarComNuvem: (forcarSobrescrita?: boolean) => Promise<{ sucesso: boolean; mensagem: string }>;
+
   // Despesas
   despesas: Despesa[];
   addDespesa: (despesa: Omit<Despesa, 'id'>) => void;
@@ -491,35 +496,92 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [currentUser]);
 
-  // Sincronização em Nuvem (Supabase) + Ouvinte em Tempo Real (Realtime)
-  useEffect(() => {
-    // 1. Carrega dados da nuvem e mescla com dados locais
-    carregarDadosNuvemSupabase().then(dados => {
-      if (!dados) return;
-      if (dados.clientes && dados.clientes.length > 0) {
-        setClientes(prev => {
-          const map = new Map(prev.map(c => [c.id, c]));
-          dados.clientes.forEach((c: any) => map.set(c.id, c));
-          return Array.from(map.values());
-        });
-      }
-      if (dados.agendamentos && dados.agendamentos.length > 0) {
-        setAgendamentos(prev => {
-          const map = new Map(prev.map(a => [a.id, a]));
-          dados.agendamentos.forEach((a: any) => map.set(a.id, a));
-          return Array.from(map.values());
-        });
-      }
-      if (dados.listaEspera && dados.listaEspera.length > 0) {
-        setListaEspera(prev => {
-          const map = new Map(prev.map(l => [l.id, l]));
-          dados.listaEspera.forEach((l: any) => map.set(l.id, l));
-          return Array.from(map.values());
-        });
-      }
-    });
+  // Estado de Sincronização em Nuvem (Supabase)
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [lastCloudSyncTime, setLastCloudSyncTime] = useState<string | null>(null);
 
-    // 2. Escuta novos agendamentos e lista de espera em tempo real vindos do link da cliente!
+  // Sincronização em Nuvem (Supabase): Torna o banco na nuvem a fonte definitiva da verdade
+  const sincronizarComNuvem = async (forcarSobrescrita = true): Promise<{ sucesso: boolean; mensagem: string }> => {
+    setIsSyncingCloud(true);
+    try {
+      const dados = await carregarDadosNuvemSupabase();
+      if (!dados) {
+        setIsSyncingCloud(false);
+        return { sucesso: false, mensagem: 'Não foi possível conectar ao banco Supabase.' };
+      }
+
+      // 1. Clientes da Nuvem
+      if (dados.clientes && dados.clientes.length > 0) {
+        setClientes(dados.clientes);
+        try { localStorage.setItem('nail_clientes', JSON.stringify(dados.clientes)); } catch (e) {}
+      }
+
+      // 2. Agendamentos da Nuvem
+      if (dados.agendamentos && dados.agendamentos.length > 0) {
+        setAgendamentos(dados.agendamentos);
+        try { localStorage.setItem('nail_agendamentos', JSON.stringify(dados.agendamentos)); } catch (e) {}
+      } else if (forcarSobrescrita && dados.agendamentos && dados.agendamentos.length === 0) {
+        setAgendamentos([]);
+        try { localStorage.setItem('nail_agendamentos', JSON.stringify([])); } catch (e) {}
+      }
+
+      // 3. Lista de Espera da Nuvem
+      if (dados.listaEspera) {
+        setListaEspera(dados.listaEspera);
+        try { localStorage.setItem('nail_lista_espera', JSON.stringify(dados.listaEspera)); } catch (e) {}
+      }
+
+      // 4. Serviços da Nuvem
+      if (dados.servicos && dados.servicos.length > 0) {
+        setServicos(dados.servicos);
+        try { localStorage.setItem('nail_servicos', JSON.stringify(dados.servicos)); } catch (e) {}
+      }
+
+      // 5. Usuários / Equipe da Nuvem
+      if (dados.usuarios && dados.usuarios.length > 0) {
+        const usuariosComSenha = dados.usuarios.map((u: any) => ({
+          ...u,
+          senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin')
+        }));
+        setEquipe(usuariosComSenha);
+        try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
+      }
+
+      // 6. Fotos de Clientes da Nuvem
+      if (dados.fotos && dados.fotos.length > 0) {
+        const mapaFotos: { [clienteId: string]: any[] } = {};
+        dados.fotos.forEach((f: any) => {
+          if (!mapaFotos[f.cliente_id]) mapaFotos[f.cliente_id] = [];
+          mapaFotos[f.cliente_id].push({
+            id: f.id,
+            url: f.url,
+            tipo: f.tipo,
+            criado_em: f.criado_em
+          });
+        });
+        try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(mapaFotos)); } catch (e) {}
+      }
+
+      const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setLastCloudSyncTime(agora);
+      setIsSyncingCloud(false);
+      return { 
+        sucesso: true, 
+        mensagem: `Sincronização com o Supabase concluída com sucesso às ${agora}!` 
+      };
+    } catch (e: any) {
+      console.error('Erro na sincronizacao com Supabase:', e);
+      setIsSyncingCloud(false);
+      return { sucesso: false, mensagem: e.message || 'Erro ao sincronizar com a nuvem.' };
+    }
+  };
+
+  // Sincronização Automática na Abertura do App + Ouvinte em Tempo Real (Realtime)
+  useEffect(() => {
+    // 1. Prioridade Máxima: busca imediatamente os dados mais recentes na nuvem
+    sincronizarComNuvem(false);
+
+    // 2. Escuta alterações em tempo real vindas de qualquer dispositivo ou cliente
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, (payload: any) => {
@@ -549,6 +611,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setClientes(prev => {
             const map = new Map(prev.map(c => [c.id, c]));
             map.set(payload.new.id, payload.new as Cliente);
+            return Array.from(map.values());
+          });
+        } else if (payload.eventType === 'DELETE') {
+          setClientes(prev => prev.filter(c => c.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos' }, (payload: any) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          setServicos(prev => {
+            const map = new Map(prev.map(s => [s.id, s]));
+            map.set(payload.new.id, payload.new as Servico);
             return Array.from(map.values());
           });
         }
@@ -1212,6 +1285,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       conectarGoogleAgenda,
       desconectarGoogleAgenda,
       sincronizarGoogleAgenda,
+      isSyncingCloud,
+      lastCloudSyncTime,
+      sincronizarComNuvem,
       despesas,
       addDespesa,
       updateDespesa,
