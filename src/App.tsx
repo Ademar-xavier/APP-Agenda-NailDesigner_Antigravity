@@ -14,9 +14,14 @@ import { Materiais } from './views/Materiais';
 import { Cadastros } from './views/Cadastros';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { InstalarApp } from './views/InstalarApp';
+import { AtivacaoLicenca } from './views/AtivacaoLicenca';
+import { isLicencaAtiva } from './services/licencaService';
 
 function AppContent() {
   const { currentUser } = useAppState();
+  
+  // Status da Chave de Licença ou Assinatura Mensal Ativa
+  const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());
   
   // Identifica se está rodando como aplicativo instalado em qualquer plataforma:
   // 1. Electron Desktop
@@ -243,7 +248,24 @@ function AppContent() {
     !!(window as any).Capacitor?.isNativePlatform?.() ||
     window.location.search.includes('app=1');
 
-  // 1. Se for aplicativo instalado (inclusive via link) e não estiver logado:
+  // 1. BLOQUEIO OBRIGATÓRIO DE LICENÇA (Vitalícia ou Assinatura Mensal Ativa):
+  // Se for qualquer aplicativo instalado ou rota administrativa sem licença ativa
+  if ((isInstalledApp || isAdmin) && !temLicenca) {
+    return (
+      <AtivacaoLicenca 
+        onLicencaAtivada={() => {
+          setTemLicenca(true);
+          setIsAdmin(true);
+        }}
+        onVoltarAgendamento={() => {
+          setIsAdmin(false);
+          window.location.hash = 'agendar';
+        }}
+      />
+    );
+  }
+
+  // 2. Se for aplicativo instalado (inclusive via link) e não estiver autenticado:
   // INICIA SEMPRE NA TELA DE LOGIN!
   if (isInstalledApp && !currentUser) {
     return <Login setIsAdmin={setIsAdmin} />;
