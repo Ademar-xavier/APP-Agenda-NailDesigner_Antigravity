@@ -71,7 +71,8 @@ export const Configuracoes: React.FC = () => {
     isSyncingCloud,
     lastCloudSyncTime,
     sincronizarComNuvem,
-    enviarDadosParaNuvem
+    enviarDadosParaNuvem,
+    mostrarAlerta
   } = useAppState();
   
   const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp' | 'licenca'>('geral');
@@ -120,9 +121,21 @@ export const Configuracoes: React.FC = () => {
     navigator.clipboard.writeText(url).then(() => {
       setCopiadoLink(true);
       setTimeout(() => setCopiadoLink(false), 2500);
-      alert('Link copiado com sucesso!\n\n' + url + '\n\nPronto para colar no WhatsApp das clientes ou na Bio do seu Instagram!');
+      mostrarAlerta({
+        titulo: 'Link Copiado com Sucesso!',
+        mensagem: 'O link de agendamento online exclusivo do seu salão foi copiado!\n\nEle está pronto para você colar no WhatsApp das suas clientes ou colocar na Bio do Instagram.',
+        link: url,
+        tipo: 'sucesso',
+        textoBotao: 'Excelente, entendido!'
+      });
     }).catch(() => {
-      prompt('Copie o link abaixo para enviar às suas clientes:', url);
+      mostrarAlerta({
+        titulo: 'Link de Agendamento Online',
+        mensagem: 'Copie o link exclusivo do salão abaixo para enviar às suas clientes ou colocar na Bio do Instagram:',
+        link: url,
+        tipo: 'info',
+        textoBotao: 'Fechar'
+      });
     });
   };
 

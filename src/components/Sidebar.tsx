@@ -42,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allMenuItems = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard },
     { id: 'agenda', name: 'Agenda', icon: Calendar },
-    { id: 'clientes', name: 'Clientes', icon: Users, adminOnly: true },
+    { id: 'clientes', name: 'Clientes', icon: Users },
     { id: 'confirmacoes', name: 'Confirmações', icon: CheckCircle },
     { id: 'servicos', name: 'Serviços', icon: AlicateIcon, adminOnly: true },
     { id: 'cadastros', name: 'Cadastros', icon: ClipboardList, adminOnly: true },
