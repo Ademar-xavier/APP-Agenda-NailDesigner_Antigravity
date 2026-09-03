@@ -2,7 +2,7 @@
   "name": "Sheila Santos - Agenda & Gestão",
   "short_name": "Sheila Santos",
   "description": "Aplicativo oficial de agendamentos e gestão para Sheila Santos Nail Designer",
-  "start_url": "/",
+  "start_url": "/?app=1#admin",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

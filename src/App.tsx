@@ -18,21 +18,23 @@ import { InstalarApp } from './views/InstalarApp';
 function AppContent() {
   const { currentUser } = useAppState();
   
-  // No navegador web público, abre SEMPRE a tela de agendamento do cliente por padrão!
-  // Apenas abre o painel se for o app instalado (Electron/Capacitor) ou se a URL contiver #admin
+  // Identifica se está rodando como aplicativo instalado em qualquer plataforma:
+  // 1. Electron Desktop
+  // 2. Capacitor Android nativo
+  // 3. PWA instalado no celular (standalone)
+  // 4. Parâmetro explícito de app instalado (?app=1 ou #admin)
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    const isNativeApp = 
-      window.location.protocol === 'file:' || 
-      !!(window as any).Capacitor?.isNativePlatform?.() ||
-      navigator.userAgent.includes('Electron');
+    const isElectron = window.location.protocol === 'file:' || navigator.userAgent.includes('Electron');
+    const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+    const isAppParam = window.location.search.includes('app=1') || window.location.hash.toLowerCase().includes('admin');
 
-    if (isNativeApp) return true;
+    // Em todas as plataformas instaladas, inicia SEMPRE na tela administrativa (Login)
+    if (isElectron || isCapacitor || isStandalone || isAppParam) {
+      return true;
+    }
 
-    const hash = window.location.hash.toLowerCase();
-    const search = window.location.search.toLowerCase();
-    const pathname = window.location.pathname.toLowerCase();
-    
-    return hash.includes('admin') || search.includes('admin') || pathname.includes('admin');
+    return false;
   });
 
   const [isInstalarRoute, setIsInstalarRoute] = useState<boolean>(() => {
@@ -48,6 +50,14 @@ function AppContent() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+      const isNative = 
+        window.location.protocol === 'file:' || 
+        navigator.userAgent.includes('Electron') ||
+        !!(window as any).Capacitor?.isNativePlatform?.() ||
+        isStandalone ||
+        window.location.search.includes('app=1');
+
       if (hash.includes('instalar')) {
         setIsInstalarRoute(true);
       } else if (hash.includes('admin')) {
@@ -55,9 +65,7 @@ function AppContent() {
         setIsAdmin(true);
       } else if (hash.includes('agendar') || hash === '' || hash === '#') {
         setIsInstalarRoute(false);
-        const isNative = 
-          window.location.protocol === 'file:' || 
-          !!(window as any).Capacitor?.isNativePlatform?.();
+        // Se for aplicativo instalado (Desktop, Android ou PWA), NUNCA perde o modo admin!
         if (!isNative) {
           setIsAdmin(false);
         }
@@ -67,13 +75,12 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
   
-  // Efeito para scrollar para o topo ao trocar de aba
+  // Efeito para scrollar APENAS o conteúdo da direita para o topo ao trocar de aba (mantendo o menu lateral 100% fixo)
   useEffect(() => {
-    window.scrollTo({ top: 0 });
-    const scrollContainers = document.querySelectorAll('.overflow-y-auto');
-    scrollContainers.forEach(container => {
-      container.scrollTop = 0;
-    });
+    const mainContent = document.getElementById('main-content-scroll');
+    if (mainContent) {
+      mainContent.scrollTop = 0;
+    }
   }, [currentView]);
 
   // Patch global confirm/alert para reatar foco ao webview após janelas nativas
@@ -267,8 +274,8 @@ function AppContent() {
         setIsAdmin={setIsAdmin}
       />
       
-      {/* Container Principal */}
-      <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
+      {/* Container Principal (Apenas este rola para o topo) */}
+      <main id="main-content-scroll" className="flex-1 flex flex-col h-screen overflow-y-auto">
         {renderView()}
       </main>
 
