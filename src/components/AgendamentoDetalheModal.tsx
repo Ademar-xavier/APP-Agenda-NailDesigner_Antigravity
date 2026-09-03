@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
+import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -85,11 +86,41 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   // WhatsApp helper
-  const handleEnviarMensagemWhatsApp = (tipo: 'confirmacao' | 'lembrete') => {
+  const handleEnviarMensagemWhatsApp = async (tipo: 'confirmacao' | 'lembrete') => {
     if (!cliente) return;
     const fone = cliente.telefone.replace(/\D/g, '');
     const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
     const servText = servs.map(s => s.nome).join(' + ');
+    const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
+
+    // Se a Meta Cloud API estiver ativa, oferece envio oficial com botões clicáveis
+    const metaConfig = obterConfigMetaWhatsApp();
+    if (metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken) {
+      const usarMeta = confirm(
+        '✨ Deseja enviar esta mensagem com BOTÕES CLICÁVEIS oficiais do WhatsApp?\n\n' +
+        '• A cliente receberá na tela os botões [✅ Confirmar Horário] e [❌ Cancelar].\n' +
+        '• Se preferir abrir no WhatsApp normal, clique em "Cancelar".'
+      );
+
+      if (usarMeta) {
+        const textoCorpo = tipo === 'confirmacao'
+          ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo:`
+          : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} amanhã (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
+
+        const res = await enviarMensagemBotaoMeta({
+          destinatario: fone,
+          headerText: '✨ Sheila Santos Nails',
+          textoCorpo,
+          botoes: [
+            { id: `confirmar_${agendamento.id}`, title: '✅ Confirmar Horário' },
+            { id: `cancelar_${agendamento.id}`, title: '❌ Cancelar / Remarcar' }
+          ]
+        });
+
+        alert(res.mensagem);
+        if (res.sucesso) return;
+      }
+    }
     
     let msg = '';
     if (tipo === 'confirmacao') {
@@ -97,7 +128,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         .replace('{cliente}', cliente.nome)
         .replace('{servico}', servText)
         .replace('{profissional}', prof?.nome || 'Sheila')
-        .replace('{data}', new Date(agendamento.inicio).toLocaleDateString('pt-BR'))
+        .replace('{data}', dataFormatada)
         .replace('{hora}', horaStr)
         .replace('{sinal}', String(agendamento.valor_sinal))
         .replace('{chave_pix}', configSalao.chave_pix)
@@ -105,7 +136,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     } else {
       msg = configSalao.templates_whatsapp.lembrete
         .replace('{cliente}', cliente.nome)
-        .replace('{data}', new Date(agendamento.inicio).toLocaleDateString('pt-BR'))
+        .replace('{data}', dataFormatada)
         .replace('{hora}', horaStr)
         .replace('{servico}', servText)
         .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));

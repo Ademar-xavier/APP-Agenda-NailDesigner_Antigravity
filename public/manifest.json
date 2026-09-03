@@ -1,0 +1,26 @@
+{
+  "name": "Sheila Santos - Agenda & Gestão",
+  "short_name": "Sheila Santos",
+  "description": "Aplicativo oficial de agendamentos e gestão para Sheila Santos Nail Designer",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141414",
+  "theme_color": "#8C6D58",
+  "categories": ["business", "lifestyle"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

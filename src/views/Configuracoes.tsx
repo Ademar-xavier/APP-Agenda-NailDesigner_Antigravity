@@ -21,11 +21,20 @@ import {
   Trash2,
   Key,
   Lock,
-  Shield
+  Shield,
+  Bot,
+  Send,
+  Smartphone,
+  Copy
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
 import { Usuario } from '../types';
+import { 
+  obterConfigMetaWhatsApp, 
+  salvarConfigMetaWhatsApp, 
+  enviarMensagemBotaoMeta 
+} from '../services/metaWhatsApp';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -42,9 +51,52 @@ export const Configuracoes: React.FC = () => {
     desconectarGoogleAgenda
   } = useAppState();
   
-  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe'>('geral');
+  const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp'>('geral');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
+
+  // --- META WHATSAPP CONFIG STATE ---
+  const [metaConfig, setMetaConfig] = useState(obterConfigMetaWhatsApp());
+  const [metaPhoneId, setMetaPhoneId] = useState(metaConfig.phoneNumberId);
+  const [metaToken, setMetaToken] = useState(metaConfig.accessToken);
+  const [metaAtivo, setMetaAtivo] = useState(metaConfig.ativo);
+  const [metaNumeroTeste, setMetaNumeroTeste] = useState(configSalao.telefone || '');
+  const [metaTestando, setMetaTestando] = useState(false);
+  const [metaTestResult, setMetaTestResult] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
+
+  const handleSalvarMetaConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    const novaConfig = {
+      phoneNumberId: metaPhoneId.trim(),
+      accessToken: metaToken.trim(),
+      ativo: metaAtivo
+    };
+    salvarConfigMetaWhatsApp(novaConfig);
+    setMetaConfig(novaConfig);
+    triggerSuccess();
+  };
+
+  const handleTestarEnvioMeta = async () => {
+    if (!metaNumeroTeste.trim()) {
+      alert('Por favor, informe o número de WhatsApp com DDD para o teste.');
+      return;
+    }
+    setMetaTestando(true);
+    setMetaTestResult(null);
+
+    const resultado = await enviarMensagemBotaoMeta({
+      destinatario: metaNumeroTeste,
+      headerText: '✨ Agendamento Sheila Santos',
+      textoCorpo: 'Olá! Este é um teste oficial do robô de agendamentos com botões clicáveis.\n\nPor favor, toque em um dos botões abaixo para simular sua confirmação:',
+      botoes: [
+        { id: 'btn_teste_confirmar', title: '✅ Confirmar Horário' },
+        { id: 'btn_teste_cancelar', title: '❌ Cancelar / Remarcar' }
+      ]
+    });
+
+    setMetaTestando(false);
+    setMetaTestResult(resultado);
+  };
 
   // Form Geral Fields
   const [nome, setNome] = useState(configSalao.nome);
@@ -186,7 +238,8 @@ export const Configuracoes: React.FC = () => {
             { id: 'geral', label: 'Dados Gerais & Pix', icon: Settings },
             { id: 'expediente', label: 'Horários de Trabalho', icon: Clock },
             { id: 'mensagens', label: 'Mensagens WhatsApp', icon: MessageSquare },
-            { id: 'equipe', label: 'Equipe & Permissões', icon: Users }
+            { id: 'equipe', label: 'Equipe & Permissões', icon: Users },
+            { id: 'meta_whatsapp', label: 'Robô WhatsApp Meta', icon: Bot }
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -632,6 +685,265 @@ export const Configuracoes: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* TAB META WHATSAPP CLOUD API OFICIAL */}
+          {activeTab === 'meta_whatsapp' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="flex justify-between items-center border-b border-[#FAF9F6] pb-3">
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                    <Bot size={18} className="text-[#8C6D58]" />
+                    <span>Robô Oficial WhatsApp da Meta (Cloud API)</span>
+                  </h3>
+                  <p className="text-xs text-[#8C7A6B] mt-0.5">
+                    Envie lembretes e confirmações com botões clicáveis oficiais e 1.000 conversas gratuitas por mês.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                    metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                    {metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken
+                      ? '● Meta API Ativa'
+                      : '○ Em Configuração'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Banner de Destaque Oficial */}
+              <div className="bg-gradient-to-r from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-4.5 space-y-3">
+                <h4 className="font-bold text-xs text-[#5A4535] flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-[#8C6D58]" />
+                  <span>Vantagens do Padrão Oficial Meta para seu Salão e Comercialização:</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-[#6D4C3D]">
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                    <span className="font-bold block text-[#5A4535] mb-0.5">🎁 1.000 msgs/mês Grátis</span>
+                    A Meta oferece franquia gratuita renovada todo mês para cada salão.
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                    <span className="font-bold block text-[#5A4535] mb-0.5">🔘 Botões Clicáveis</span>
+                    A cliente recebe os botões <strong>[Confirmar]</strong> e <strong>[Cancelar]</strong> na tela.
+                  </div>
+                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                    <span className="font-bold block text-[#5A4535] mb-0.5">☁️ 24h na Nuvem</span>
+                    Funciona mesmo com o computador e celular desligados.
+                  </div>
+                </div>
+              </div>
+
+              {/* Formulário de Configuração de Credenciais */}
+              <form onSubmit={handleSalvarMetaConfig} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider">
+                  Credenciais da Meta (Meta for Developers)
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                      Phone Number ID (ID do Número de Telefone)
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: 104829104810294"
+                      value={metaPhoneId} 
+                      onChange={(e) => setMetaPhoneId(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                    />
+                    <p className="text-[10px] text-[#A19488] mt-1">
+                      Encontrado no painel da Meta em WhatsApp &gt; Configuração da API.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                      Token de Acesso (Access Token)
+                    </label>
+                    <input 
+                      type="password" 
+                      placeholder="Cole aqui seu Token permanente ou temporário..."
+                      value={metaToken} 
+                      onChange={(e) => setMetaToken(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                    />
+                    <p className="text-[10px] text-[#A19488] mt-1">
+                      Token gerado na aba de desenvolvedor da Meta.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#FAF9F6]">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMetaAtivo(!metaAtivo)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        metaAtivo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          metaAtivo ? 'translate-x-5' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                    <span className="text-xs font-bold text-[#5A4535]">
+                      Ativar Envio Automático com Botões Clicáveis
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  >
+                    <Save size={14} />
+                    <span>Salvar Credenciais da Meta</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Área de Teste de Envio */}
+              <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
+                  <Send size={14} className="text-[#8C6D58]" />
+                  <span>Testar Envio de Mensagem com Botões Clicáveis</span>
+                </h4>
+                <p className="text-xs text-[#8C7A6B]">
+                  Envie uma mensagem de teste para o seu próprio WhatsApp para ver como a sua cliente vai receber os botões na tela!
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 items-end">
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                      Número do WhatsApp com DDD (apenas números)
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: 35997141856"
+                      value={metaNumeroTeste} 
+                      onChange={(e) => setMetaNumeroTeste(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleTestarEnvioMeta}
+                    disabled={metaTestando}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-98"
+                  >
+                    <Send size={13} className={metaTestando ? 'animate-spin' : ''} />
+                    <span>{metaTestando ? 'Disparando...' : 'Enviar Teste com Botões'}</span>
+                  </button>
+                </div>
+
+                {metaTestResult && (
+                  <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2 ${
+                    metaTestResult.sucesso 
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}>
+                    {metaTestResult.sucesso ? <Check size={16} className="shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="shrink-0 mt-0.5" />}
+                    <div>
+                      <p className="font-bold">{metaTestResult.sucesso ? 'Sucesso!' : 'Atenção'}</p>
+                      <p className="mt-0.5">{metaTestResult.mensagem}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Webhook para Receber Cliques das Clientes */}
+              <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-3">
+                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
+                  <Globe size={14} className="text-[#8C6D58]" />
+                  <span>Configuração do Webhook na Meta (Recebimento Automático de Respostas)</span>
+                </h4>
+                <p className="text-xs text-[#8C7A6B]">
+                  Para que a Meta avise seu app quando a cliente clicar em <strong>[Confirmar]</strong> ou <strong>[Cancelar]</strong>, cole esses dados no painel da Meta em <strong>WhatsApp &gt; Configuração &gt; Webhook</strong>:
+                </p>
+
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                      URL de Retorno de Chamada (Callback URL)
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value="https://sheilasantos-agenda.netlify.app/api/whatsapp-webhook"
+                        className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('https://sheilasantos-agenda.netlify.app/api/whatsapp-webhook');
+                          alert('URL do Webhook copiada com sucesso!');
+                        }}
+                        className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                        title="Copiar URL"
+                      >
+                        <Copy size={13} />
+                        <span>Copiar</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                      Token de Verificação (Verify Token)
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        readOnly 
+                        value="sheila_nail_webhook_secret"
+                        className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText('sheila_nail_webhook_secret');
+                          alert('Token de verificação copiado com sucesso!');
+                        }}
+                        className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                        title="Copiar Token"
+                      >
+                        <Copy size={13} />
+                        <span>Copiar</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Guia Rápido de Configuração Passo a Passo */}
+              <div className="bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl p-5 space-y-3">
+                <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                  <span>📖 Como Obter suas Credenciais Gratuitas da Meta em 3 Passos:</span>
+                </h4>
+                <ol className="list-decimal list-inside space-y-2 text-xs text-[#6D4C3D] leading-relaxed">
+                  <li>
+                    Acesse o portal oficial <strong>developers.facebook.com</strong> e faça login com sua conta do Facebook.
+                  </li>
+                  <li>
+                    Clique em <strong>Meus Aplicativos &gt; Criar Aplicativo</strong>, selecione a opção <strong>Outro</strong> e em seguida <strong>Comercial</strong>.
+                  </li>
+                  <li>
+                    Na tela de produtos, clique em <strong>Configurar</strong> no card do <strong>WhatsApp</strong>.
+                  </li>
+                  <li>
+                    Na aba <strong>WhatsApp &gt; Configuração da API</strong>, você verá na tela o seu <strong>Identificador do número de telefone (Phone Number ID)</strong> e o seu <strong>Token de acesso temporário</strong> para testar na hora!
+                  </li>
+                  <li>
+                    Copie os dois valores, cole nos campos acima e clique em <strong>Salvar Credenciais da Meta</strong>!
+                  </li>
+                </ol>
               </div>
             </div>
           )}

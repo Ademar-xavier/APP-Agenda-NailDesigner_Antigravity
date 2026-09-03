@@ -12,6 +12,7 @@ import { Login } from './views/Login';
 import { Confirmacoes } from './views/Confirmacoes';
 import { Materiais } from './views/Materiais';
 import { Cadastros } from './views/Cadastros';
+import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 
 function AppContent() {
   const { currentUser } = useAppState();
@@ -241,6 +242,9 @@ function AppContent() {
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {renderView()}
       </main>
+
+      {/* Notificação de Instalação PWA no Celular */}
+      <InstallPwaPrompt />
     </div>
   );
 }
