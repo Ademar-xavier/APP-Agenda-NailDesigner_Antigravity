@@ -219,7 +219,7 @@ export const Confirmacoes: React.FC = () => {
   }, [confirmarVagaItem, loteModalOpen, selectedAgendamentoId]);
 
   // Filtragem de dados com base nas abas
-  const hoje = '2026-08-29';
+  const hoje = new Date().toLocaleDateString('en-CA');
   
   // A confirmar: pendentes e futuros
   const aConfirmar = agendamentos.filter(a => {

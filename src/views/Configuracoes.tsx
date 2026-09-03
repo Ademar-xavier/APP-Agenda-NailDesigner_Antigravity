@@ -109,7 +109,27 @@ export const Configuracoes: React.FC = () => {
   };
 
   const handleVerLinkAgendamento = () => {
-    window.open('https://sheilasantos-agenda.netlify.app', '_blank');
+    window.location.hash = 'agendar';
+  };
+
+  const handleLimparCache = async () => {
+    if (confirm('Deseja limpar os arquivos temporários de cache e recarregar a versão mais recente da nuvem?\n\n(Seus clientes, serviços e agendamentos no banco Supabase NÃO serão perdidos!)')) {
+      try {
+        if ('caches' in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map(name => caches.delete(name)));
+        }
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const reg of registrations) {
+            await reg.unregister();
+          }
+        }
+      } catch (e) {
+        console.error('Erro ao limpar caches:', e);
+      }
+      window.location.href = window.location.origin + window.location.pathname + '?t=' + Date.now();
+    }
   };
 
   const handleSincronizarNuvem = async () => {
@@ -391,20 +411,31 @@ export const Configuracoes: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Opção Adicional: Enviar Dados deste Computador para a Nuvem */}
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-[#E8DEC9]/40">
+                {/* Opção Adicional: Enviar Dados deste Computador para a Nuvem e Limpar Cache */}
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#E8DEC9]/40">
                   <span className="text-[11px] text-[#8C7A6B]">
-                    Precisa transferir os dados deste aparelho para outros dispositivos?
+                    Sincronização & Manutenção deste aparelho:
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleEnviarDadosNuvem}
-                    disabled={isSyncingCloud}
-                    className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] underline underline-offset-4 flex items-center gap-1.5 transition-colors"
-                  >
-                    <UploadCloud size={14} />
-                    <span>Enviar Dados deste Aparelho para a Nuvem</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleEnviarDadosNuvem}
+                      disabled={isSyncingCloud}
+                      className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] underline underline-offset-4 flex items-center gap-1.5 transition-colors"
+                    >
+                      <UploadCloud size={14} />
+                      <span>Enviar Dados para a Nuvem</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLimparCache}
+                      className="text-xs font-bold text-red-600 hover:text-red-700 underline underline-offset-4 flex items-center gap-1.5 transition-colors"
+                      title="Apaga arquivos temporários e recarrega a versão mais nova do app"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Limpar Cache & Recarregar</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 

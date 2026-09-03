@@ -36,7 +36,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     currentUser
   } = useAppState();
 
-  const dataBaseStr = '2026-08-29'; // Data atual fixa do protótipo
+  const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
   const [dataSelecionada, setDataSelecionada] = useState<string>(dataBaseStr);
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
   const [busca, setBusca] = useState<string>('');

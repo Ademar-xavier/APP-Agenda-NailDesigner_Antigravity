@@ -36,7 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     currentUser
   } = useAppState();
 
-  const dataBaseStr = '2026-08-29'; // Data atual fixa do protótipo
+  const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
 
   // 1. Filtrar agendamentos do profissional se não for administrador
   const agendamentosFiltrados = agendamentos.filter(a => {

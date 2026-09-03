@@ -257,7 +257,22 @@ function AppContent() {
     !!(window as any).Capacitor?.isNativePlatform?.() ||
     window.location.search.includes('app=1');
 
-  // 1. BLOQUEIO OBRIGATÓRIO DE LICENÇA (Vitalícia ou Assinatura Mensal Ativa):
+  // Verifica se o usuário solicitou explicitamente a tela de agendamento (via link, botão ou hash #agendar)
+  const isExplicitAgendamento = window.location.hash.toLowerCase().includes('agendar');
+
+  // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública
+  if (isExplicitAgendamento) {
+    return (
+      <PublicBooking 
+        setIsAdmin={(admin) => {
+          setIsAdmin(admin);
+          window.location.hash = admin ? 'admin' : 'agendar';
+        }} 
+      />
+    );
+  }
+
+  // 2. BLOQUEIO OBRIGATÓRIO DE LICENÇA (Vitalícia ou Assinatura Mensal Ativa):
   // Se for qualquer aplicativo instalado ou rota administrativa sem licença ativa
   if ((isInstalledApp || isAdmin) && !temLicenca) {
     return (
@@ -274,13 +289,7 @@ function AppContent() {
     );
   }
 
-  // 2. Se for aplicativo instalado (inclusive via link) e não estiver autenticado:
-  // INICIA SEMPRE NA TELA DE LOGIN!
-  if (isInstalledApp && !currentUser) {
-    return <Login setIsAdmin={setIsAdmin} />;
-  }
-
-  // 2. Se for navegador comum acessando a rota exclusiva de instalação (#instalar)
+  // 3. Se for navegador comum acessando a rota exclusiva de instalação (#instalar)
   if (isInstalarRoute && !isInstalledApp) {
     return (
       <InstalarApp 
@@ -298,14 +307,31 @@ function AppContent() {
     );
   }
 
-  // 3. Se não estiver logado e estiver acessando a rota administrativa, mostra Login
-  if (isAdmin && !currentUser) {
-    return <Login setIsAdmin={setIsAdmin} />;
+  // 4. Se for aplicativo instalado ou rota administrativa e não estiver autenticado:
+  // Inicia na tela de Login!
+  if ((isInstalledApp || isAdmin) && !currentUser) {
+    return (
+      <Login 
+        setIsAdmin={(admin) => {
+          setIsAdmin(admin);
+          if (!admin) {
+            window.location.hash = 'agendar';
+          }
+        }} 
+      />
+    );
   }
 
-  // 4. Se for cliente acessando no navegador comum público
+  // 5. Se for cliente acessando no navegador comum público
   if (!isAdmin && !isInstalledApp) {
-    return <PublicBooking setIsAdmin={setIsAdmin} />;
+    return (
+      <PublicBooking 
+        setIsAdmin={(admin) => {
+          setIsAdmin(admin);
+          window.location.hash = admin ? 'admin' : 'agendar';
+        }} 
+      />
+    );
   }
 
   return (

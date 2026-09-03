@@ -40,18 +40,23 @@ export const deletarClienteSupabase = async (id: string) => {
 // --- SALVAR / ATUALIZAR SERVIÇO ---
 export const salvarServicoSupabase = async (servico: any) => {
   try {
-    const { error } = await supabase.from('servicos').upsert({
+    const payload = {
       id: servico.id,
       nome: servico.nome,
-      categoria: servico.categoria,
-      descricao: servico.descricao || '',
-      duracao_minutos: servico.duracao_minutos,
-      preco: servico.preco,
-      exige_sinal: !!servico.exige_sinal,
-      valor_sinal: servico.valor_sinal || 0,
-      ativo: servico.ativo !== false
-    });
-    if (error) console.error('Erro ao salvar serviço no Supabase:', error);
+      categoria: servico.categoria || 'Geral',
+      descricao: servico.descricao || null,
+      duracao_minutos: Number(servico.duracao_minutos) || 60,
+      preco: Number(servico.preco) || 0,
+      ativo: servico.ativo !== false,
+      is_pacote: !!servico.is_pacote,
+      retorno_dias: Number(servico.retorno_dias) || 20
+    };
+    const { error } = await supabase.from('servicos').upsert(payload);
+    if (error) {
+      console.error('Erro ao salvar serviço no Supabase:', error);
+    } else {
+      console.log('Serviço sincronizado com a nuvem com sucesso:', servico.nome);
+    }
   } catch (e) {
     console.error('Falha na requisição salvarServicoSupabase:', e);
   }
@@ -63,12 +68,12 @@ export const salvarAgendamentoSupabase = async (agendamento: Agendamento, servic
     const { error } = await supabase.from('agendamentos').upsert({
       id: agendamento.id,
       cliente_id: agendamento.cliente_id,
-      profissional_id: agendamento.profissional_id,
+      profissional_id: agendamento.profissional_id || 'u1',
       inicio: agendamento.inicio,
       fim: agendamento.fim,
       status: agendamento.status,
-      valor_total: agendamento.valor_total,
-      valor_sinal: agendamento.valor_sinal || 0,
+      valor_total: Number(agendamento.valor_total) || 0,
+      valor_sinal: Number(agendamento.valor_sinal) || 0,
       observacoes: agendamento.observacoes || null,
       origem: agendamento.origem || 'cliente',
       motivo_cancelamento: agendamento.motivo_cancelamento || null,
