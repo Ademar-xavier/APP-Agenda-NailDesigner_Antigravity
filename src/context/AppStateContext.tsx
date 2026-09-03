@@ -707,6 +707,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return Math.random().toString(36).substring(2, 11);
   };
 
+  // Código amigável para a cliente (apenas letras maiúsculas e números)
+  const gerarCodigoReserva = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'AG';
+    for (let i = 0; i < 5; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
   // --- Ações de Autenticação ---
   const login = (userId: string) => {
     const user = equipe.find(u => u.id === userId && u.ativo);
@@ -1042,7 +1052,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, error: 'O horário selecionado conflita com outro agendamento ativo.' };
     }
 
-    const id = 'a_' + gerarId();
+    const id = gerarCodigoReserva();
     
     const agendamento: Agendamento = {
       ...novoAgendamento,
@@ -1120,6 +1130,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     limparFocoAtivo();
     setAgendamentos(prev => prev.filter(a => a.id !== id));
     deletarAgendamentoSupabase(id);
+    mostrarNotificacaoGlobal('✅ Agendamento excluído e sincronizado com a nuvem!');
   };
 
   const confirmarSinal = (agendamentoId: string, valor: number, metodo: MetodoPagamento) => {

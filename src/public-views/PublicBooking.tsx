@@ -73,7 +73,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const servsDisponiveis = servicos.filter(s => s.ativo);
+  const profSelecionada = equipe.find(e => e.id === profissionalId);
+  const servsDisponiveis = useMemo(() => {
+    return servicos.filter(s => {
+      if (!s.ativo) return false;
+      if (!profSelecionada?.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
+        return true;
+      }
+      return profSelecionada.servicos_habilitados.includes(s.id);
+    });
+  }, [servicos, profSelecionada]);
 
   // Duração e Preço Totais
   const duracaoTotal = servicosSelecionados.reduce((acc, id) => {
@@ -201,7 +210,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       setCodigoReserva(res.agendamento.id);
       setValorSinal(sinalTotal);
       setValorTotal(precoTotal);
-      setStep(4);
+      setStep(5);
     }
   };
 
@@ -237,7 +246,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       periodo_preferido: periodoPreferido
     });
 
-    setStep(6);
+    setStep(7);
   };
 
   const handleCopiarPix = () => {
@@ -308,76 +317,177 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           <p className="text-xs text-[#A88690] mt-1 font-medium">{configSalao.endereco}</p>
         </div>
 
-        {/* STEP 1: SELEÇÃO DE SERVIÇOS */}
+        {/* STEP 1: ESCOLHA DA PROFISSIONAL */}
         {step === 1 && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div>
-              <h3 className="font-serif font-bold text-base text-[#5A3F45]">Selecione os Serviços</h3>
-              <p className="text-xs text-[#A88690] mt-0.5">Escolha os procedimentos que deseja realizar</p>
+              <h3 className="font-serif font-bold text-base text-[#5A3F45]">Escolha a Profissional</h3>
+              <p className="text-xs text-[#A88690] mt-0.5">Selecione quem irá realizar o seu atendimento</p>
             </div>
- 
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {servsDisponiveis.map(s => {
-                const checked = servicosSelecionados.includes(s.id);
+
+            <div className="space-y-2.5">
+              {/* Opção Qualquer Profissional */}
+              <button
+                type="button"
+                onClick={() => {
+                  setProfissionalId('');
+                  setServicosSelecionados([]);
+                  setHorarioSelecionado('');
+                }}
+                className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                  profissionalId === ''
+                    ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-md'
+                    : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${
+                    profissionalId === '' ? 'bg-white/20 text-white' : 'bg-[#FFF0F4] text-[#DB7093]'
+                  }`}>
+                    🌟
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs">Qualquer Profissional Disponível</h4>
+                    <p className={`text-[10px] mt-0.5 ${profissionalId === '' ? 'text-pink-100' : 'text-[#A88690]'}`}>
+                      Maior flexibilidade e horários livres
+                    </p>
+                  </div>
+                </div>
+                {profissionalId === '' && <Check size={18} className="text-white shrink-0" />}
+              </button>
+
+              {/* Lista das Profissionais da Equipe */}
+              {profissionaisAtivas.map(p => {
+                const isSelected = profissionalId === p.id;
+                const totalProcedimentos = p.servicos_habilitados?.length;
                 return (
-                  <label 
-                    key={s.id}
-                    className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
-                      checked 
-                        ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
-                        : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setProfissionalId(p.id);
+                      setServicosSelecionados([]);
+                      setHorarioSelecionado('');
+                    }}
+                    className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-md'
+                        : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <input 
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setServicosSelecionados(prev => [...prev, s.id]);
-                          } else {
-                            setServicosSelecionados(prev => prev.filter(id => id !== s.id));
-                          }
-                        }}
-                        className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
-                      />
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-[#FFF0F4] text-[#DB7093]'
+                      }`}>
+                        💅
+                      </div>
                       <div>
-                        <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
-                        {s.descricao && (
-                          <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
-                            {s.descricao}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
-                        
-                        {/* Se for Pacote, detalha os serviços internos para o cliente */}
-                        {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
-                          <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
-                            <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
-                            {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
-                              const sub = servicos.find(item => item.id === det.servico_id);
-                              return sub ? (
-                                <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
-                                  <div className="flex justify-between font-bold text-[#5A3F45]">
-                                    <span>{det.quantidade}x {sub.nome}</span>
-                                  </div>
-                                  {sub.descricao && (
-                                    <span className="text-[8px] text-[#A88690] leading-snug italic">"{sub.descricao}"</span>
-                                  )}
-                                  <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
-                                    <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
-                                  </span>
-                                </div>
-                              ) : null;
-                            })}
-                          </div>
-                        )}
+                        <h4 className="font-bold text-xs">{p.nome}</h4>
+                        <p className={`text-[10px] mt-0.5 ${isSelected ? 'text-pink-100' : 'text-[#A88690]'}`}>
+                          {p.perfil === 'admin' ? 'Especialista Master' : 'Designer'} · {totalProcedimentos ? `${totalProcedimentos} procedimentos` : 'Todos os procedimentos'}
+                        </p>
                       </div>
                     </div>
-                    <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
-                  </label>
+                    {isSelected && <Check size={18} className="text-white shrink-0" />}
+                  </button>
                 );
               })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setStep(2)}
+              className="w-full mt-4 bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+            >
+              <span>Continuar para Escolha dos Serviços</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* STEP 2: SELEÇÃO DE SERVIÇOS (Filtrados pela profissional escolhida) */}
+        {step === 2 && (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 border-b border-[#FAD0DC]/50 pb-3 mb-2">
+              <button type="button" onClick={() => setStep(1)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
+                <ChevronLeft size={16} />
+              </button>
+              <div>
+                <h3 className="font-serif font-bold text-base text-[#5A3F45]">Selecione os Serviços</h3>
+                <p className="text-xs text-[#A88690] mt-0.5">
+                  Atendente: <strong className="text-[#C71585]">{profSelecionada ? profSelecionada.nome : 'Qualquer Profissional'}</strong>
+                </p>
+              </div>
+            </div>
+ 
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              {servsDisponiveis.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[#A88690] bg-[#FFF5F7]/30 rounded-2xl border border-[#FAD0DC]/50">
+                  Nenhum procedimento cadastrado para esta profissional.
+                </div>
+              ) : (
+                servsDisponiveis.map(s => {
+                  const checked = servicosSelecionados.includes(s.id);
+                  return (
+                    <label 
+                      key={s.id}
+                      className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
+                        checked 
+                          ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
+                          : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input 
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setServicosSelecionados(prev => [...prev, s.id]);
+                            } else {
+                              setServicosSelecionados(prev => prev.filter(id => id !== s.id));
+                            }
+                          }}
+                          className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
+                        />
+                        <div>
+                          <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
+                          {s.descricao && (
+                            <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
+                              {s.descricao}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
+                          
+                          {/* Se for Pacote, detalha os serviços internos para o cliente */}
+                          {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
+                            <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
+                              <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
+                              {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
+                                const sub = servicos.find(item => item.id === det.servico_id);
+                                return sub ? (
+                                  <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
+                                    <div className="flex justify-between font-bold text-[#5A3F45]">
+                                      <span>{det.quantidade}x {sub.nome}</span>
+                                    </div>
+                                    {sub.descricao && (
+                                      <span className="text-[8px] text-[#A88690] leading-snug italic">"{sub.descricao}"</span>
+                                    )}
+                                    <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
+                                      <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
+                                    </span>
+                                  </div>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
+                    </label>
+                  );
+                })
+              )}
             </div>
  
             {/* Sumário */}
@@ -395,7 +505,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             )}
  
             <button
-              onClick={() => setStep(2)}
+              onClick={() => setStep(3)}
               disabled={servicosSelecionados.length === 0}
               className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
@@ -405,69 +515,20 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           </div>
         )}
 
-        {/* STEP 2: DATA E HORA */}
-        {step === 2 && (
+        {/* STEP 3: DATA E HORA */}
+        {step === 3 && (
           <div className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2 border-b border-[#EFECE6] pb-3 mb-2">
-              <button onClick={() => setStep(1)} className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]">
+              <button onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]">
                 <ChevronLeft size={16} />
               </button>
               <div>
                 <h3 className="font-serif font-bold text-base text-[#5A3F45]">Escolha a Data & Horário</h3>
-                <p className="text-xs text-[#A88690] mt-0.5">Selecione o dia e horário que melhor atendem você</p>
+                <p className="text-xs text-[#A88690] mt-0.5">
+                  Profissional: <strong className="text-[#C71585]">{profSelecionada ? profSelecionada.nome : 'Qualquer Profissional'}</strong>
+                </p>
               </div>
             </div>
-
-            {/* Seletor de Profissional */}
-            {profissionaisAptas.length > 1 && (
-              <div>
-                <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1.5">
-                  Profissional de Preferência
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfissionalId('');
-                      setHorarioSelecionado('');
-                    }}
-                    className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col gap-0.5 ${
-                      profissionalId === ''
-                        ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-sm'
-                        : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
-                    }`}
-                  >
-                    <span className="font-bold">🌟 Qualquer uma</span>
-                    <span className={`text-[10px] ${profissionalId === '' ? 'text-pink-100' : 'text-[#A88690]'}`}>
-                      Mais horários livres
-                    </span>
-                  </button>
-                  {profissionaisAptas.map(p => {
-                    const isSelected = profissionalId === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setProfissionalId(p.id);
-                          setHorarioSelecionado('');
-                        }}
-                        className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col gap-0.5 ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-sm'
-                            : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
-                        }`}
-                      >
-                        <span className="font-bold truncate">💅 {p.nome}</span>
-                        <span className={`text-[10px] capitalize ${isSelected ? 'text-pink-100' : 'text-[#A88690]'}`}>
-                          {p.perfil === 'admin' ? 'Especialista Master' : 'Designer'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Input de Data */}
             <div>
@@ -497,7 +558,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   </p>
                   <button
                     type="button"
-                    onClick={() => setStep(5)}
+                    onClick={() => setStep(6)}
                     className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <Users size={14} />
@@ -530,7 +591,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             {horariosDisponiveis.length > 0 && (
               <div className="space-y-3 mt-4">
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(4)}
                   disabled={!horarioSelecionado}
                   className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                 >
@@ -540,7 +601,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 
                 <button
                   type="button"
-                  onClick={() => setStep(5)}
+                  onClick={() => setStep(6)}
                   className="w-full bg-white border border-dashed border-[#DB7093] text-[#C71585] hover:bg-[#FFF0F4]/30 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                 >
                   <Users size={13} />
@@ -551,11 +612,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           </div>
         )}
 
-        {/* STEP 3: IDENTIFICAÇÃO DO CLIENTE */}
-        {step === 3 && (
+        {/* STEP 4: IDENTIFICAÇÃO DO CLIENTE */}
+        {step === 4 && (
           <form onSubmit={handleFinalizarAgendamento} className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2 border-b border-[#FAD0DC]/50 pb-3 mb-2">
-              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
+              <button type="button" onClick={() => setStep(3)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
                 <ChevronLeft size={16} />
               </button>
               <div>
@@ -607,8 +668,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           </form>
         )}
 
-        {/* STEP 4: CONFIRMAÇÃO DO AGENDAMENTO */}
-        {step === 4 && (
+        {/* STEP 5: CONFIRMAÇÃO DO AGENDAMENTO */}
+        {step === 5 && (
           <div className="space-y-5 animate-in fade-in duration-200 text-[#5A3F45]">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center mx-auto">
@@ -624,11 +685,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             <div className="bg-[#FFF5F7]/30 border border-[#FAD0DC]/50 rounded-2xl p-4 text-xs space-y-2">
               <div className="flex justify-between">
                 <span className="text-[#A88690]">Código da Reserva:</span>
-                <span className="font-bold">{codigoReserva}</span>
+                <span className="font-bold tracking-wider text-[#C71585]">{codigoReserva}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#A88690]">Data & Horário:</span>
                 <span className="font-bold">{formatarDataLocal(dataSelecionada)} às {horarioSelecionado}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#A88690]">Atendente:</span>
+                <span className="font-bold">{profSelecionada ? profSelecionada.nome : 'Sheila Santos'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#A88690]">Procedimento(s):</span>
@@ -689,11 +754,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           </div>
         )}
 
-        {/* STEP 5: FORMULÁRIO DE LISTA DE ESPERA (Waitlist Form) */}
-        {step === 5 && (
+        {/* STEP 6: FORMULÁRIO DE LISTA DE ESPERA (Waitlist Form) */}
+        {step === 6 && (
           <form onSubmit={handleFinalizarListaEspera} className="space-y-4 animate-in fade-in duration-200">
             <div className="flex items-center gap-2 border-b border-[#FAD0DC]/50 pb-3 mb-2">
-              <button type="button" onClick={() => setStep(2)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
+              <button type="button" onClick={() => setStep(3)} className="p-1 rounded-full hover:bg-[#FFF0F4]/30 text-[#A88690]">
                 <ChevronLeft size={16} />
               </button>
               <div>
@@ -740,7 +805,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 className="w-full border border-[#FAD0DC]/50 bg-white rounded-xl p-2.5 text-xs text-[#5A3F45] focus:outline-none focus:border-[#DB7093]"
               >
                 <option value="">Qualquer profissional disponível</option>
-                {profissionaisAptas.map(p => (
+                {profissionaisAtivas.map(p => (
                   <option key={p.id} value={p.id}>💅 {p.nome} ({p.perfil === 'admin' ? 'Master' : 'Designer'})</option>
                 ))}
               </select>
@@ -775,8 +840,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           </form>
         )}
 
-        {/* STEP 6: CONFIRMAÇÃO DA LISTA DE ESPERA (Waitlist Confirmation) */}
-        {step === 6 && (
+        {/* STEP 7: CONFIRMAÇÃO DA LISTA DE ESPERA (Waitlist Confirmation) */}
+        {step === 7 && (
           <div className="space-y-5 animate-in fade-in duration-200 text-[#5A3F45] text-center">
             <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center mx-auto">
               <Check size={24} />
