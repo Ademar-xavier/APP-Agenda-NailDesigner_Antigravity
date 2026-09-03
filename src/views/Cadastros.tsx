@@ -179,7 +179,7 @@ export const Cadastros: React.FC = () => {
                 Técnicas Ativas ({tecnicas.length})
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {tecnicas.map((tec) => (
+                {[...tecnicas].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((tec) => (
                   <div 
                     key={tec}
                     className="flex justify-between items-center p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"
@@ -239,7 +239,7 @@ export const Cadastros: React.FC = () => {
                 Formatos Ativos ({formatos.length})
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {formatos.map((form) => (
+                {[...formatos].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((form) => (
                   <div 
                     key={form}
                     className="flex justify-between items-center p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"
@@ -299,7 +299,7 @@ export const Cadastros: React.FC = () => {
                 Categorias de Serviços Ativas ({categoriasServico.length})
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {categoriasServico.map((cat) => (
+                {[...categoriasServico].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((cat) => (
                   <div 
                     key={cat}
                     className="flex justify-between items-center p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"
@@ -359,7 +359,7 @@ export const Cadastros: React.FC = () => {
                 Categorias de Despesas Ativas ({categoriasDespesa.length})
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {categoriasDespesa.map((cat) => (
+                {[...categoriasDespesa].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((cat) => (
                   <div 
                     key={cat}
                     className="flex justify-between items-center p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"

@@ -239,26 +239,38 @@ export const Confirmacoes: React.FC = () => {
   // Filtragem de dados com base nas abas
   const hoje = new Date().toLocaleDateString('en-CA');
   
-  // A confirmar: pendentes e futuros
-  const aConfirmar = agendamentos.filter(a => {
-    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
-    return a.status === 'pendente' && a.inicio >= hoje;
-  });
+  // A confirmar: pendentes e futuros (ordenados por data e hora do menor para o maior)
+  const aConfirmar = agendamentos
+    .filter(a => {
+      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      return a.status === 'pendente' && a.inicio >= hoje;
+    })
+    .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
 
-  // Confirmados: futuros confirmados
-  const confirmados = agendamentos.filter(a => {
-    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
-    return a.status === 'confirmado' && a.inicio >= hoje;
-  });
+  // Confirmados: futuros confirmados (ordenados por data e hora do menor para o maior)
+  const confirmados = agendamentos
+    .filter(a => {
+      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      return a.status === 'confirmado' && a.inicio >= hoje;
+    })
+    .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
 
-  // Lista de espera: ativa (aguardando)
-  const listaEsperaAtiva = listaEspera.filter(w => w.status === 'aguardando');
+  // Lista de espera: ativa (aguardando) (ordenada por data preferida e hora do menor para o maior)
+  const listaEsperaAtiva = listaEspera
+    .filter(w => w.status === 'aguardando')
+    .sort((a, b) => {
+      const cmp = a.data_preferida.localeCompare(b.data_preferida);
+      if (cmp !== 0) return cmp;
+      return new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime();
+    });
 
-  // Cancelados: histórico de cancelamentos
-  const cancelados = agendamentos.filter(a => {
-    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
-    return a.status === 'cancelado';
-  });
+  // Cancelados: histórico de cancelamentos (ordenados por data e hora do menor para o maior)
+  const cancelados = agendamentos
+    .filter(a => {
+      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      return a.status === 'cancelado';
+    })
+    .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
 
   // WhatsApp manual para confirmação rápida
   const handleEnviarMensagemWhatsApp = (a: Agendamento, tipo: 'confirmacao' | 'lembrete') => {
