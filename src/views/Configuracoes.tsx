@@ -77,10 +77,10 @@ export const Configuracoes: React.FC = () => {
   const [novaChaveInput, setNovaChaveInput] = useState('');
   const [licencaFeedback, setLicencaFeedback] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
 
-  const handleAtualizarLicenca = (e: React.FormEvent) => {
+  const handleAtualizarLicenca = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!novaChaveInput.trim()) return;
-    const res = ativarChaveLicenca(novaChaveInput, configSalao.nome);
+    const res = await ativarChaveLicenca(novaChaveInput, configSalao.nome);
     setLicencaFeedback(res);
     if (res.sucesso && res.licenca) {
       setLicencaAtual(res.licenca);

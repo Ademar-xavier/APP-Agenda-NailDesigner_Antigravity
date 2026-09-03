@@ -15,13 +15,22 @@ import { Cadastros } from './views/Cadastros';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { InstalarApp } from './views/InstalarApp';
 import { AtivacaoLicenca } from './views/AtivacaoLicenca';
-import { isLicencaAtiva } from './services/licencaService';
+import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
 
 function AppContent() {
   const { currentUser } = useAppState();
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
   const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());
+
+  // Consulta silenciosa ao banco na nuvem para verificar se a assinatura foi renovada ou bloqueada
+  useEffect(() => {
+    sincronizarLicencaAtualComNuvem().then((info) => {
+      if (info) {
+        setTemLicenca(info.ativa);
+      }
+    });
+  }, []);
   
   // Identifica se está rodando como aplicativo instalado em qualquer plataforma:
   // 1. Electron Desktop

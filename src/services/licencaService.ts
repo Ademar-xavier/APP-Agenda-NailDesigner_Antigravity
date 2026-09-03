@@ -36,6 +36,8 @@ const CHAVES_MESTRAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste';
   'TESTE-GRATIS': { tipo: 'teste', titular: 'Avaliação Gratuita', diasValidade: 7 }
 };
 
+import { supabase } from './supabase';
+
 // Obter dados da licença atual gravada no aparelho
 export const obterLicencaAtual = (): LicencaInfo | null => {
   try {
@@ -64,6 +66,60 @@ export const obterLicencaAtual = (): LicencaInfo | null => {
   }
 };
 
+// Verifica na nuvem (Supabase) se a licença do cliente foi renovada ou cancelada
+export const verificarLicencaNuvem = async (chave: string): Promise<LicencaInfo | null> => {
+  const chaveLimpa = chave.trim().toUpperCase();
+  if (!chaveLimpa) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('licencas')
+      .select('*')
+      .eq('chave', chaveLimpa)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    let diasRestantes: number | undefined;
+    let ativa = data.status === 'ativo';
+
+    if (data.data_expiracao) {
+      const expiraEm = new Date(data.data_expiracao).getTime();
+      const agora = new Date().getTime();
+      const diffMs = expiraEm - agora;
+      diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+      if (diasRestantes <= 0) {
+        ativa = false;
+        diasRestantes = 0;
+      }
+    }
+
+    const infoAtualizada: LicencaInfo = {
+      ativa,
+      tipo: data.tipo || 'mensal',
+      chave: data.chave,
+      titular: data.titular || 'Sheila Santos',
+      dataAtivacao: data.criado_em || new Date().toISOString(),
+      dataExpiracao: data.data_expiracao || null,
+      diasRestantes
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(infoAtualizada));
+    return infoAtualizada;
+  } catch (e) {
+    // Se estiver sem internet momentaneamente, não bloqueia o app imediatamente
+    return null;
+  }
+};
+
+// Sincroniza silenciosamente a licença gravada no aparelho com a nuvem toda vez que o app abre
+export const sincronizarLicencaAtualComNuvem = async (): Promise<LicencaInfo | null> => {
+  const atual = obterLicencaAtual();
+  if (!atual || !atual.chave) return null;
+  return await verificarLicencaNuvem(atual.chave);
+};
+
 // Verifica se a licença está válida e ativa
 export const isLicencaAtiva = (): boolean => {
   const licenca = obterLicencaAtual();
@@ -71,18 +127,40 @@ export const isLicencaAtiva = (): boolean => {
   return licenca.ativa === true;
 };
 
-// Validar e Ativar uma Chave
-export const ativarChaveLicenca = (
+// Validar e Ativar uma Chave (Verifica tanto na Nuvem Supabase quanto no .env local)
+export const ativarChaveLicenca = async (
   chaveDigitada: string, 
   nomeTitular?: string
-): { sucesso: boolean; mensagem: string; licenca?: LicencaInfo } => {
+): Promise<{ sucesso: boolean; mensagem: string; licenca?: LicencaInfo }> => {
   const chaveLimpa = chaveDigitada.trim().toUpperCase();
 
   if (!chaveLimpa) {
     return { sucesso: false, mensagem: 'Por favor, digite a sua Chave de Licença.' };
   }
 
-  // 1. Verifica se é uma chave mestre pré-configurada
+  // 1. Tenta validar primeiro diretamente no banco de dados Supabase na Nuvem
+  try {
+    const licencaNuvem = await verificarLicencaNuvem(chaveLimpa);
+    if (licencaNuvem) {
+      if (!licencaNuvem.ativa) {
+        return {
+          sucesso: false,
+          mensagem: 'Esta assinatura está vencida ou suspensa no sistema. Entre em contato para renovar.'
+        };
+      }
+      return {
+        sucesso: true,
+        mensagem: licencaNuvem.tipo === 'vitalicio'
+          ? 'Licença Vitalícia verificada e ativada na nuvem com sucesso!'
+          : `Assinatura confirmada na nuvem! Válida por ${licencaNuvem.diasRestantes} dias.`,
+        licenca: licencaNuvem
+      };
+    }
+  } catch (e) {
+    console.log('Verificação na nuvem indisponível, usando chaves locais/env.');
+  }
+
+  // 2. Verifica se é uma chave mestre pré-configurada no .env ou de fábrica
   const mestre = CHAVES_MESTRAS[chaveLimpa];
   const agora = new Date();
 
