@@ -106,7 +106,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
   // Cálculo inteligente de horários disponíveis para o dia selecionado
   const obterHorariosDisponiveis = (): string[] => {
-    const diaSemana = new Date(dataSelecionada + 'T00:00:00').getDay();
+    const diaSemana = new Date(dataSelecionada + 'T12:00:00').getDay();
     const expediente = configSalao.horarios_trabalho[diaSemana];
 
     if (!expediente || !expediente.ativo) return [];
@@ -296,9 +296,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         
         {/* Header da Marca (Updated container background to match the black logo) */}
         <div className="text-center mb-6 border-b border-[#FFF0F4] pb-4">
-          <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-md p-0.5">
+          <div className="w-32 h-32 md:w-36 md:h-36 rounded-full bg-white border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-lg p-0.5">
             <img 
-              src="./logo.png" 
+              src="./logo.png?v=3" 
               alt="Logo Sheila Santos Nails Designer" 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
@@ -554,7 +554,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               {horariosDisponiveis.length === 0 ? (
                 <div className="space-y-4">
                   <p className="text-xs text-[#C71585] bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-center font-medium">
-                    Sem horários livres nesta data para os serviços escolhidos.
+                    {(() => {
+                      const diaIdx = dataSelecionada ? new Date(dataSelecionada + 'T12:00:00').getDay() : -1;
+                      const exp = diaIdx >= 0 ? configSalao.horarios_trabalho?.[diaIdx] : null;
+                      const diasNomes = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+                      if (exp && !exp.ativo) {
+                        return `O salão não abre aos ${diasNomes[diaIdx]}s (Fechado). Por favor, escolha um dia útil em que atendemos ou entre na lista de espera.`;
+                      }
+                      return 'Sem horários livres nesta data para os serviços escolhidos.';
+                    })()}
                   </p>
                   <button
                     type="button"

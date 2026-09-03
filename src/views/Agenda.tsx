@@ -798,11 +798,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                                   />
                                   <div>
                                     <span className="font-semibold block text-xs">{s.nome}</span>
-                                    <div className="flex items-center gap-1.5 text-[10px] text-[#8C7A6B] mt-0.5">
-                                      <span>⏱️ {s.duracao_minutos} min</span>
-                                      <span>·</span>
-                                      <span>🔄 Retorno: {(s.intervalo_manutencao_dias || (s as any).retorno_dias) > 0 ? `${s.intervalo_manutencao_dias || (s as any).retorno_dias} dias` : 'Não exige'}</span>
-                                    </div>
                                   </div>
                                 </div>
                                 <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>

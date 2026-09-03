@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BellRing, 
   UserCheck, 
@@ -10,13 +10,14 @@ import {
   Clock,
   X,
   AlertTriangle,
-  Trash2
+  Trash2,
+  RotateCcw
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Agendamento, ListaEspera } from '../types';
+import { Agendamento, ListaEspera, Cliente, Servico } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 
-type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'lista_espera' | 'cancelados';
+type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'manutencao' | 'lista_espera' | 'cancelados';
 
 export const Confirmacoes: React.FC = () => {
   const { 
@@ -30,7 +31,8 @@ export const Confirmacoes: React.FC = () => {
     obterServicosDeAgendamento,
     addAgendamento,
     equipe,
-    currentUser
+    currentUser,
+    obterRecomendacoesManutencao
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -215,8 +217,11 @@ export const Confirmacoes: React.FC = () => {
   };
 
   const formatarDataHora = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    if (!dateStr) return '';
+    const partes = dateStr.split('T');
+    const dataParte = partes[0] ? partes[0].split('-').reverse().join('/') : '';
+    const horaParte = partes[1] ? partes[1].substring(0, 5) : '';
+    return `${dataParte} às ${horaParte}`;
   };
 
   const formatarDataBrasileira = (dataStr: string) => {
@@ -283,6 +288,99 @@ export const Confirmacoes: React.FC = () => {
       return a.status === 'cancelado';
     })
     .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
+
+  // Lista de retornos dispensados localmente
+  const [dispensadosManutencao, setDispensadosManutencao] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('nail_dispensados_manutencao');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Manutenções a Confirmar (ordenadas por data sugerida do menor para o maior)
+  const manutencoesAConfirmar = useMemo(() => {
+    const recs = obterRecomendacoesManutencao();
+    return recs
+      .filter(r => !dispensadosManutencao.includes(`${r.cliente.id}_${r.servico.id}`))
+      .sort((a, b) => a.dataSugerida.localeCompare(b.dataSugerida));
+  }, [obterRecomendacoesManutencao, dispensadosManutencao]);
+
+  const [confirmarManutencaoItem, setConfirmarManutencaoItem] = useState<{
+    cliente: Cliente;
+    servico: Servico;
+    dataSugerida: string;
+    diasAtraso: number;
+  } | null>(null);
+
+  const [manutData, setManutData] = useState<string>('');
+  const [manutHora, setManutHora] = useState<string>('14:00');
+  const [manutProfissionalId, setManutProfissionalId] = useState<string>('u1');
+  const [errorManut, setErrorManut] = useState<string>('');
+
+  const handleDispensarManutencao = (key: string) => {
+    const next = [...dispensadosManutencao, key];
+    setDispensadosManutencao(next);
+    try {
+      localStorage.setItem('nail_dispensados_manutencao', JSON.stringify(next));
+    } catch (e) {}
+  };
+
+  const handleOpenConfirmarManutencao = (rec: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }) => {
+    setConfirmarManutencaoItem(rec);
+    setManutData(rec.dataSugerida || new Date().toLocaleDateString('en-CA'));
+    setManutHora('14:00');
+    setManutProfissionalId(equipe[0]?.id || 'u1');
+    setErrorManut('');
+  };
+
+  const handleConfirmarManutencaoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!confirmarManutencaoItem) return;
+
+    const dataInicioStr = `${manutData}T${manutHora}:00`;
+    const res = addAgendamento({
+      cliente_id: confirmarManutencaoItem.cliente.id,
+      profissional_id: manutProfissionalId,
+      inicio: dataInicioStr,
+      status: 'confirmado',
+      valor_total: confirmarManutencaoItem.servico.preco,
+      valor_sinal: 0,
+      observacoes: `Retorno de Manutenção agendado via Confirmações: ${confirmarManutencaoItem.servico.nome}`,
+      origem: 'admin'
+    }, [confirmarManutencaoItem.servico.id]);
+
+    if (res.success) {
+      handleDispensarManutencao(`${confirmarManutencaoItem.cliente.id}_${confirmarManutencaoItem.servico.id}`);
+      setConfirmarManutencaoItem(null);
+      setActiveTab('confirmados');
+    } else {
+      setErrorManut(res.error || 'Erro ao agendar retorno.');
+    }
+  };
+
+  const handleEnviarWhatsAppManutencao = (rec: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }) => {
+    const fone = rec.cliente.telefone?.replace(/\D/g, '');
+    if (!fone) return;
+
+    const linkAgendamento = `${window.location.origin}${window.location.pathname}?booking=true`;
+    const dataFormatada = formatarDataBrasileira(rec.dataSugerida);
+    const diasTexto = rec.diasAtraso > 0 ? `${rec.servico.intervalo_manutencao_dias + rec.diasAtraso}` : `${rec.servico.intervalo_manutencao_dias}`;
+
+    let msg = configSalao.templates_whatsapp.retorno_manutencao
+      .replace('{cliente}', rec.cliente.nome)
+      .replace('{servico}', rec.servico.nome)
+      .replace('{dias_visita}', diasTexto)
+      .replace('{link_agendamento}', linkAgendamento);
+
+    if (!msg.includes(dataFormatada)) {
+      msg += `\n📅 Sugestão de data para seu retorno: ${dataFormatada}`;
+    }
+
+    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
 
   // WhatsApp manual para confirmação rápida
   const handleEnviarMensagemWhatsApp = (a: Agendamento, tipo: 'confirmacao' | 'lembrete') => {
@@ -376,6 +474,7 @@ export const Confirmacoes: React.FC = () => {
         {[
           { id: 'a_confirmar', label: 'A confirmar', count: aConfirmar.length, icon: BellRing },
           { id: 'confirmados', label: 'Confirmados', count: confirmados.length, icon: UserCheck },
+          { id: 'manutencao', label: 'Manutenção a confirmar', count: manutencoesAConfirmar.length, icon: RotateCcw },
           { id: 'lista_espera', label: 'Lista de espera', count: listaEsperaAtiva.length, icon: Users },
           { id: 'cancelados', label: 'Cancelados', count: cancelados.length, icon: XCircle }
         ].map((tab) => {
@@ -507,6 +606,78 @@ export const Confirmacoes: React.FC = () => {
                         className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
                       >
                         Ver detalhes
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* ABA: MANUTENÇÃO A CONFIRMAR */}
+        {activeTab === 'manutencao' && (
+          <>
+            {manutencoesAConfirmar.length === 0 ? (
+              <div className="text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
+                <RotateCcw size={36} className="mx-auto text-[#E8DEC9] mb-3" />
+                <h4 className="font-semibold text-sm">Nenhuma manutenção pendente</h4>
+                <p className="text-xs mt-1 text-[#C2B7AE]">Clientes com sugestão de retorno aparecerão aqui.</p>
+              </div>
+            ) : (
+              manutencoesAConfirmar.map((rec) => {
+                const key = `${rec.cliente.id}_${rec.servico.id}`;
+                const initials = rec.cliente.nome.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || '?';
+                
+                return (
+                  <div 
+                    key={key} 
+                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#FFF0F4] text-[#DB7093] flex items-center justify-center font-bold text-xs border border-[#FAD0DC]">
+                        {initials}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-[#5A4535]">{rec.cliente.nome}</h4>
+                        <p className="text-xs text-[#8C7A6B] mt-0.5">
+                          {rec.servico.nome} · Previsão de Retorno: <strong>{formatarDataBrasileira(rec.dataSugerida)}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-lg uppercase ${
+                        rec.diasAtraso === 0 
+                          ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]' 
+                          : 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]'
+                      }`}>
+                        {rec.diasAtraso === 0 ? 'Vence hoje' : `Atrasada há ${rec.diasAtraso}d`}
+                      </span>
+
+                      <button
+                        onClick={() => handleEnviarWhatsAppManutencao(rec)}
+                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors"
+                        title="Enviar convite de retorno no WhatsApp"
+                      >
+                        <MessageCircle size={14} className="text-[#25D366]" />
+                        <span>Avisar</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenConfirmarManutencao(rec)}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                      >
+                        <CalendarIcon size={12} />
+                        <span>Agendar retorno</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDispensarManutencao(key)}
+                        className="p-2 text-[#8C7A6B] hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors border border-transparent hover:border-red-100"
+                        title="Dispensar / Cancelar este aviso de retorno"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
@@ -743,6 +914,118 @@ export const Confirmacoes: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* --- MODAL CONFIRMAR HORÁRIO DE RETORNO / MANUTENÇÃO --- */}
+      {confirmarManutencaoItem && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setConfirmarManutencaoItem(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-[#EFECE6] animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
+              <div>
+                <h3 className="font-serif font-bold text-base text-[#5A4535]">Agendar Retorno de Manutenção</h3>
+                <p className="text-xs text-[#8C7A6B] mt-0.5">Defina data e horário para confirmar o atendimento</p>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setConfirmarManutencaoItem(null)}
+                className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarManutencaoSubmit} className="space-y-4">
+              {errorManut && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  <span>{errorManut}</span>
+                </div>
+              )}
+
+              <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs space-y-1">
+                <p className="text-[#8C7A6B]">Cliente: <strong className="text-[#5A4535]">{confirmarManutencaoItem.cliente.nome} ({confirmarManutencaoItem.cliente.telefone})</strong></p>
+                <p className="text-[#8C7A6B]">Serviço: <strong className="text-[#5A4535]">{confirmarManutencaoItem.servico.nome} ({formatarMoeda(confirmarManutencaoItem.servico.preco)})</strong></p>
+                <p className="text-[#8C7A6B]">Previsão de Retorno: <strong className="text-[#5A4535]">{formatarDataBrasileira(confirmarManutencaoItem.dataSugerida)}</strong></p>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Data do Atendimento</label>
+                <div className="flex items-center gap-2 p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6]">
+                  <CalendarIcon size={14} className="text-[#8C6D58]" />
+                  <input 
+                    type="date" required
+                    value={manutData}
+                    onChange={(e) => setManutData(e.target.value)}
+                    className="text-xs font-bold text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Horário</label>
+                  <select
+                    value={manutHora}
+                    onChange={(e) => setManutHora(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                  >
+                    {horasExpediente.map(h => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Profissional</label>
+                  <select
+                    value={manutProfissionalId}
+                    onChange={(e) => setManutProfissionalId(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                  >
+                    {equipe.filter(u => u.ativo).map(u => (
+                      <option key={u.id} value={u.id}>{u.nome}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const key = `${confirmarManutencaoItem.cliente.id}_${confirmarManutencaoItem.servico.id}`;
+                    handleDispensarManutencao(key);
+                    setConfirmarManutencaoItem(null);
+                  }}
+                  className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold rounded-xl transition-all"
+                >
+                  Dispensar Retorno
+                </button>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmarManutencaoItem(null)}
+                    className="px-3 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                  >
+                    Confirmar e Agendar
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- MODAL WIZARD DISPARO EM LOTE --- */}
       {loteModalOpen && loteItens.length > 0 && (() => {

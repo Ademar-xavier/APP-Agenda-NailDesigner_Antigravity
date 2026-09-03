@@ -27,7 +27,8 @@ import {
   deletarMaterialSupabase,
   salvarDespesaSupabase,
   deletarDespesaSupabase,
-  salvarConfiguracoesSupabase
+  salvarConfiguracoesSupabase,
+  salvarUsuarioSupabase
 } from '../services/supabase';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
@@ -305,43 +306,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   });
 
-  // Estado de Equipe e Autenticação (Garante sempre Sheila, Lurdinha e Administrador padrão)
+  // Estado de Equipe e Autenticação (Sincroniza estritamente conforme o banco e armazenamento local)
   const [equipe, setEquipe] = useState<Usuario[]>(() => {
-    const lurdinhaPadrao: Usuario = { 
-      id: 'u2', 
-      nome: 'Lurdinha', 
-      email: 'lurdinha@agenda.com', 
-      telefone: '35 99182-1220', 
-      perfil: 'profissional', 
-      ativo: true, 
-      senha: 'admin',
-      servicos_habilitados: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']
-    };
-
     try {
       const saved = localStorage.getItem('nail_equipe');
       if (saved) {
-        let parsed: Usuario[] = JSON.parse(saved);
-        if (parsed.length > 0) {
-          const temAdmin = parsed.some(u => u.perfil === 'admin' && u.ativo);
-          if (!temAdmin) {
-            const defaultAdmin: Usuario = {
-              id: 'admin_master',
-              nome: 'Administrador',
-              email: 'admin@salao.com',
-              telefone: '',
-              perfil: 'admin',
-              ativo: true,
-              senha: ENV_ADMIN_PASSWORD
-            };
-            parsed.unshift(defaultAdmin);
-          }
-          // Garante que a Lurdinha nunca desapareça da equipe do salão
-          const temLurdinha = parsed.some(u => u.nome.toLowerCase().includes('lurdinha') || u.id === 'u2');
-          if (!temLurdinha) {
-            parsed.push(lurdinhaPadrao);
-            try { localStorage.setItem('nail_equipe', JSON.stringify(parsed)); } catch (e) {}
-          }
+        const parsed: Usuario[] = JSON.parse(saved);
+        if (parsed && parsed.length > 0) {
           return parsed.map(u => ({ 
             ...u, 
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin') 
@@ -389,8 +360,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [materiais, setMateriais] = useState<Material[]>(() => {
-    const saved = localStorage.getItem('nail_materiais');
-    return saved ? JSON.parse(saved) : [
+    const sanitize = (m: any): Material => {
+      const preco = Number(m.preco_compra) || 0;
+      const rend = Number(m.rendimento) || 1;
+      const custo = (typeof m.custo_por_uso === 'number' && !isNaN(m.custo_por_uso) && m.custo_por_uso > 0)
+        ? m.custo_por_uso
+        : (rend > 0 ? Number((preco / rend).toFixed(2)) : 0);
+      return {
+        ...m,
+        preco_compra: preco,
+        rendimento: rend,
+        custo_por_uso: custo
+      };
+    };
+
+    try {
+      const saved = localStorage.getItem('nail_materiais');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(sanitize);
+        }
+      }
+    } catch (e) {}
+
+    return [
       { id: 'm1', nome: 'Gel UV Construtor', marca: 'X&D', preco_compra: 60, rendimento: 15, custo_por_uso: 4 },
       { id: 'm2', nome: 'Tips de Unha (caixa)', marca: 'Gelish', preco_compra: 45, rendimento: 50, custo_por_uso: 0.9 },
       { id: 'm3', nome: 'Esmalte em Gel Nude', marca: 'D&Z', preco_compra: 25, rendimento: 20, custo_por_uso: 1.25 },
@@ -505,43 +499,45 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_lista_espera', JSON.stringify(dados.listaEspera)); } catch (e) {}
       }
 
-      // 4. Serviços da Nuvem
+      // 4. Serviços da Nuvem (com intervalo de manutenção preservado)
       if (dados.servicos && dados.servicos.length > 0) {
-        setServicos(dados.servicos);
-        try { localStorage.setItem('nail_servicos', JSON.stringify(dados.servicos)); } catch (e) {}
+        const servicosFormatados = dados.servicos.map((s: any) => {
+          const dias = Number(s.intervalo_manutencao_dias !== undefined ? s.intervalo_manutencao_dias : (s.retorno_dias ?? 0));
+          return {
+            ...s,
+            duracao_minutos: Number(s.duracao_minutos) || 60,
+            preco: Number(s.preco) || 0,
+            intervalo_manutencao_dias: dias,
+            retorno_dias: dias,
+            sinal_tipo: s.sinal_tipo || 'nenhum',
+            sinal_valor: Number(s.sinal_valor) || 0
+          };
+        });
+        setServicos(servicosFormatados);
+        try { localStorage.setItem('nail_servicos', JSON.stringify(servicosFormatados)); } catch (e) {}
       }
 
-      // 5. Usuários / Equipe da Nuvem (com serviços habilitados)
-      const listaEquipeNuvem = (dados.configuracoes?.equipe && dados.configuracoes.equipe.length > 0)
-        ? dados.configuracoes.equipe
-        : dados.usuarios;
+      // 5. Usuários / Equipe da Nuvem (com serviços habilitados preservados de config_salao e usuarios)
+      const equipeConfigSalao = dados.configuracoes?.config_salao?.equipe;
+      const listaEquipeNuvem = (equipeConfigSalao && equipeConfigSalao.length > 0)
+        ? equipeConfigSalao
+        : (dados.configuracoes?.equipe && dados.configuracoes.equipe.length > 0)
+          ? dados.configuracoes.equipe
+          : dados.usuarios;
 
       if (listaEquipeNuvem && listaEquipeNuvem.length > 0) {
-        let usuariosComSenha = listaEquipeNuvem.map((u: any) => ({
-          ...u,
-          senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
-          servicos_habilitados: u.servicos_habilitados || []
-        }));
+        const usuariosComSenha = listaEquipeNuvem.map((u: any) => {
+          const salvoEmConfig = equipeConfigSalao?.find((c: any) => c.id === u.id);
+          const servsHabilitados = (u.servicos_habilitados && Array.isArray(u.servicos_habilitados) && u.servicos_habilitados.length > 0)
+            ? u.servicos_habilitados
+            : (salvoEmConfig?.servicos_habilitados || []);
 
-        // Se a nuvem não tiver a Lurdinha, restaura e sobe para o Supabase
-        const temLurdinhaNuvem = usuariosComSenha.some((u: any) => u.nome?.toLowerCase().includes('lurdinha') || u.id === 'u2');
-        if (!temLurdinhaNuvem) {
-          const lurdinhaRecuperada: Usuario = {
-            id: 'u2',
-            nome: 'Lurdinha',
-            email: 'lurdinha@agenda.com',
-            telefone: '35 99182-1220',
-            perfil: 'profissional',
-            ativo: true,
-            senha: 'admin',
-            servicos_habilitados: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']
+          return {
+            ...u,
+            senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
+            servicos_habilitados: servsHabilitados
           };
-          usuariosComSenha.push(lurdinhaRecuperada);
-          try {
-            supabase.from('usuarios').upsert(lurdinhaRecuperada).then();
-            salvarConfiguracoesSupabase({ equipe: usuariosComSenha }).then();
-          } catch (e) {}
-        }
+        });
 
         setEquipe(usuariosComSenha);
         try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
@@ -562,10 +558,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(mapaFotos)); } catch (e) {}
       }
 
-      // 7. Materiais da Nuvem
+      // 7. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
       if (dados.materiais && dados.materiais.length > 0) {
-        setMateriais(dados.materiais);
-        try { localStorage.setItem('nail_materiais', JSON.stringify(dados.materiais)); } catch (e) {}
+        const matsFormatados = dados.materiais.map((m: any) => {
+          const preco = Number(m.preco_compra) || 0;
+          const custo = (typeof m.custo_por_uso === 'number' && !isNaN(m.custo_por_uso) && m.custo_por_uso > 0)
+            ? m.custo_por_uso
+            : (rend > 0 ? Number((preco / rend).toFixed(2)) : 0);
+          return {
+            ...m,
+            preco_compra: preco,
+            rendimento: rend,
+            custo_por_uso: custo
+          };
+        });
+        setMateriais(matsFormatados);
+        try { localStorage.setItem('nail_materiais', JSON.stringify(matsFormatados)); } catch (e) {}
       }
 
       // 8. Despesas da Nuvem
@@ -809,7 +817,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Equipe ---
-  const addEquipe = (membro: Omit<Usuario, 'id' | 'ativo'>) => {
+  const addEquipe = async (membro: Omit<Usuario, 'id' | 'ativo'>) => {
     const novo: Usuario = {
       ...membro,
       id: 'u_' + gerarId(),
@@ -819,34 +827,42 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     const nextEquipe = [...equipe, novo];
     setEquipe(nextEquipe);
-    try {
-      supabase.from('usuarios').upsert(novo).then();
-      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
-    } catch (e) {
-      console.error('Erro ao salvar usuario no Supabase:', e);
+    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+    salvarUsuarioSupabase(novo).then();
+    const res = await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal(`✅ Profissional ${novo.nome} salva e confirmada na nuvem!`);
+    } else {
+      mostrarNotificacaoGlobal(`⚠️ Salva localmente. Erro ao sincronizar nuvem: ${res.erro}`);
     }
   };
 
-  const updateEquipe = (id: string, updated: Partial<Usuario>) => {
+  const updateEquipe = async (id: string, updated: Partial<Usuario>) => {
     const nextEquipe = equipe.map(u => u.id === id ? { ...u, ...updated } : u);
     setEquipe(nextEquipe);
-    try {
-      supabase.from('usuarios').update(updated).eq('id', id).then();
-      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
-    } catch (e) {
-      console.error('Erro ao atualizar usuario no Supabase:', e);
+    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+    const membro = nextEquipe.find(u => u.id === id);
+    if (membro) {
+      salvarUsuarioSupabase(membro).then();
+    }
+    const res = await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal(`✅ Alterações de ${membro?.nome || 'profissional'} salvas e confirmadas na nuvem!`);
+    } else {
+      mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao sincronizar nuvem: ${res.erro}`);
     }
   };
 
-  const deleteEquipe = (id: string) => {
+  const deleteEquipe = async (id: string) => {
     const nextEquipe = equipe.filter(u => u.id !== id);
     setEquipe(nextEquipe);
-    try {
-      supabase.from('usuarios').delete().eq('id', id).then();
-      salvarConfiguracoesSupabase({ equipe: nextEquipe }).then();
-    } catch (e) {
-      console.error('Erro ao deletar usuario no Supabase:', e);
-    }
+    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+    try { supabase.from('usuarios').delete().eq('id', id).then(); } catch (e) {}
+    salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe }).then();
+    mostrarNotificacaoGlobal('✅ Profissional removida da nuvem!');
   };
 
   const toggleEquipeAtivo = (id: string) => {
@@ -884,36 +900,58 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Serviços ---
-  const addServico = (newServico: Omit<Servico, 'id' | 'ativo'>) => {
+  const addServico = async (newServico: Omit<Servico, 'id'>) => {
     const servico: Servico = {
       ...newServico,
       id: 's_' + gerarId(),
       ativo: true
     };
-    setServicos(prev => [...prev, servico]);
-    salvarServicoSupabase(servico);
-    mostrarNotificacaoGlobal(`✅ Serviço "${servico.nome}" salvo e sincronizado com a nuvem!`);
+    const next = [...servicos, servico];
+    setServicos(next);
+    try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
+
+    const res = await salvarServicoSupabase(servico);
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal(`✅ Serviço "${servico.nome}" salvo e confirmado na nuvem!`);
+    } else {
+      mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao salvar na nuvem: ${res.erro}`);
+    }
   };
 
-  const updateServico = (id: string, updated: Partial<Servico>) => {
+  const updateServico = async (id: string, updated: Partial<Servico>) => {
+    let servicoSalvo: Servico | undefined;
     setServicos(prev => {
       const next = prev.map(s => s.id === id ? { ...s, ...updated } : s);
-      const serv = next.find(s => s.id === id);
-      if (serv) salvarServicoSupabase(serv);
+      servicoSalvo = next.find(s => s.id === id);
+      try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
       return next;
     });
-    mostrarNotificacaoGlobal('✅ Serviço atualizado e sincronizado com a nuvem!');
+
+    if (servicoSalvo) {
+      const res = await salvarServicoSupabase(servicoSalvo);
+      if (res.sucesso) {
+        mostrarNotificacaoGlobal(`✅ Serviço "${servicoSalvo.nome}" salvo e verificado na nuvem!`);
+      } else {
+        mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro na nuvem: ${res.erro}`);
+      }
+    }
   };
 
-  const deleteServico = (id: string) => {
+  const deleteServico = async (id: string) => {
     limparFocoAtivo();
+    let servicoDesativado: Servico | undefined;
     setServicos(prev => {
       const next = prev.map(s => s.id === id ? { ...s, ativo: false } : s);
-      const serv = next.find(s => s.id === id);
-      if (serv) salvarServicoSupabase(serv);
+      servicoDesativado = next.find(s => s.id === id);
+      try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
       return next;
     });
-    mostrarNotificacaoGlobal('✅ Serviço desativado e atualizado na nuvem!');
+    if (servicoDesativado) {
+      const res = await salvarServicoSupabase(servicoDesativado);
+      if (res.sucesso) {
+        mostrarNotificacaoGlobal('✅ Serviço desativado e verificado na nuvem!');
+      }
+    }
   };
 
   // --- Ações de Despesas ---
@@ -992,57 +1030,95 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Materiais ---
-  const addMaterial = (novo: Omit<Material, 'id' | 'custo_por_uso'>) => {
-    const custo = novo.preco_compra / (novo.rendimento || 1);
+  const addMaterial = async (novo: Omit<Material, 'id' | 'custo_por_uso'>) => {
+    const rend = Number(novo.rendimento) || 1;
+    const preco = Number(novo.preco_compra) || 0;
+    const custo = rend > 0 ? Number((preco / rend).toFixed(2)) : 0;
     const material: Material = {
       ...novo,
       id: 'm_' + gerarId(),
-      custo_por_uso: Number(custo.toFixed(2))
+      preco_compra: preco,
+      rendimento: rend,
+      custo_por_uso: custo
     };
-    setMateriais(prev => [...prev, material]);
-    salvarMaterialSupabase(material);
-    mostrarNotificacaoGlobal(`✅ Material "${material.nome}" salvo e sincronizado com a nuvem!`);
+    const next = [...materiais, material];
+    setMateriais(next);
+    try { localStorage.setItem('nail_materiais', JSON.stringify(next)); } catch (e) {}
+
+    const res = await salvarMaterialSupabase(material);
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal(`✅ Material "${material.nome}" salvo e verificado na nuvem!`);
+    } else {
+      mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao salvar na nuvem: ${res.erro}`);
+    }
   };
 
-  const updateMaterial = (id: string, updated: Partial<Material>) => {
+  const updateMaterial = async (id: string, updated: Partial<Material>) => {
+    let materialSalvo: Material | undefined;
     setMateriais(prev => {
       const next = prev.map(m => {
         if (m.id === id) {
           const merged = { ...m, ...updated };
-          const custo = merged.preco_compra / (merged.rendimento || 1);
+          const rend = Number(merged.rendimento) || 1;
+          const preco = Number(merged.preco_compra) || 0;
+          const custo = rend > 0 ? Number((preco / rend).toFixed(2)) : 0;
           return {
             ...merged,
-            custo_por_uso: Number(custo.toFixed(2))
+            preco_compra: preco,
+            rendimento: rend,
+            custo_por_uso: custo
           };
         }
         return m;
       });
-      const mat = next.find(m => m.id === id);
-      if (mat) salvarMaterialSupabase(mat);
+      materialSalvo = next.find(m => m.id === id);
+      try { localStorage.setItem('nail_materiais', JSON.stringify(next)); } catch (e) {}
       return next;
     });
-    mostrarNotificacaoGlobal('✅ Insumo/Material atualizado e sincronizado com a nuvem!');
+
+    if (materialSalvo) {
+      const res = await salvarMaterialSupabase(materialSalvo);
+      if (res.sucesso) {
+        mostrarNotificacaoGlobal(`✅ Insumo "${materialSalvo.nome}" salvo e verificado na nuvem!`);
+      } else {
+        mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao sincronizar nuvem: ${res.erro}`);
+      }
+    }
   };
 
-  const deleteMaterial = (id: string) => {
+  const deleteMaterial = async (id: string) => {
     limparFocoAtivo();
-    setMateriais(prev => prev.filter(m => m.id !== id));
+    setMateriais(prev => {
+      const next = prev.filter(m => m.id !== id);
+      try { localStorage.setItem('nail_materiais', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     deletarMaterialSupabase(id);
     mostrarNotificacaoGlobal('✅ Material removido da nuvem!');
   };
 
-  // --- Lógica de Conflitos ---
+  // --- Lógica de Conflitos (100% à prova de distorção de fuso horário UTC vs Local) ---
   const checkConflitoHorario = (inicioStr: string, fimStr: string, profissionalId: string, ignorarAgendamentoId?: string) => {
-    const inicio = new Date(inicioStr).getTime();
-    const fim = new Date(fimStr).getTime();
+    const normalizarDataHora = (str: string): number => {
+      if (!str) return 0;
+      const limpo = str.replace('Z', '').split('+')[0];
+      const [data, hora] = limpo.split('T');
+      if (!data || !hora) return 0;
+      const [ano, mes, dia] = data.split('-').map(Number);
+      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
+      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
+    };
+
+    const inicio = normalizarDataHora(inicioStr);
+    const fim = normalizarDataHora(fimStr);
     
     return agendamentos.some(a => {
       if (a.id === ignorarAgendamentoId) return false;
       if (a.status === 'cancelado' || a.status === 'falta') return false;
       if (a.profissional_id !== profissionalId) return false;
       
-      const aInicio = new Date(a.inicio).getTime();
-      const aFim = new Date(a.fim).getTime();
+      const aInicio = normalizarDataHora(a.inicio);
+      const aFim = normalizarDataHora(a.fim);
       
       return Math.max(inicio, aInicio) < Math.min(fim, aFim);
     });

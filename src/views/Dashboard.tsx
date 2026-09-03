@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   DollarSign, 
   Calendar, 
@@ -48,6 +48,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
     year: 'numeric'
   });
   const dataHojeExibicao = dataHojeFormatada.charAt(0).toUpperCase() + dataHojeFormatada.slice(1);
+
+  // Informação dinâmica do expediente configurado pela administradora
+  const infoExpediente = useMemo(() => {
+    const diasNomes = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const hojeIndex = new Date().getDay();
+    const hojeConfig = configSalao.horarios_trabalho?.[hojeIndex];
+
+    if (hojeConfig?.ativo) {
+      return {
+        abertoHoje: true,
+        texto: `Expediente de hoje (${diasNomes[hojeIndex]}): ${hojeConfig.inicio} às ${hojeConfig.fim}`
+      };
+    }
+
+    // Se hoje estiver fechado, busca o próximo dia aberto configurado pela administradora
+    for (let i = 1; i <= 7; i++) {
+      const proxIndex = (hojeIndex + i) % 7;
+      const proxConfig = configSalao.horarios_trabalho?.[proxIndex];
+      if (proxConfig?.ativo) {
+        return {
+          abertoHoje: false,
+          texto: `Hoje o salão está fechado. Próximo expediente: ${diasNomes[proxIndex]} das ${proxConfig.inicio} às ${proxConfig.fim}`
+        };
+      }
+    }
+
+    return {
+      abertoHoje: false,
+      texto: 'Horários de funcionamento a definir nas configurações.'
+    };
+  }, [configSalao.horarios_trabalho]);
 
   // 1. Filtrar agendamentos do profissional se não for administrador
   const agendamentosFiltrados = agendamentos.filter(a => {
@@ -485,10 +516,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span>Dicas do Salão</span>
             </h3>
             <p className="text-xs text-[#8C7A6B] leading-relaxed">
-              Olá, Lurdinha! Lembre-se de sempre marcar seus atendimentos finalizados como **Concluído** na aba **Agenda** para registrar a próxima sugestão de manutenção do cliente.
+              Olá, <strong>{currentUser?.nome || 'Profissional'}</strong>! Lembre-se de sempre marcar seus atendimentos finalizados como <strong>Concluído</strong> na aba <strong>Agenda</strong> para registrar a próxima sugestão de manutenção da cliente.
             </p>
-            <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs text-[#5A4535] font-semibold">
-              Próximo expediente: Segunda 09h às 18h
+            <div className={`p-3 rounded-xl border text-xs font-semibold ${
+              infoExpediente.abertoHoje 
+                ? 'bg-[#F2F8F4] border-[#D1E7D8] text-[#2D6A4F]' 
+                : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
+            }`}>
+              {infoExpediente.texto}
             </div>
           </div>
         )}

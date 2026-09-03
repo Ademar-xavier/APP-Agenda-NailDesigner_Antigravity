@@ -33,8 +33,9 @@ export const Materiais: React.FC = () => {
   const [rendimento, setRendimento] = useState(1);
   const [errorMaterial, setErrorMaterial] = useState('');
 
-  const formatarMoeda = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  const formatarMoeda = (val: any) => {
+    const num = Number(val);
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(isNaN(num) ? 0 : num);
   };
 
   // Keyboard Escape listener to close modal in Materiais.tsx
@@ -245,7 +246,13 @@ export const Materiais: React.FC = () => {
                     </div>
                     <div className="bg-[#FFF9E6] border border-[#FFECB3] rounded-lg p-1">
                       <span className="block text-[8px] font-bold uppercase text-[#B78103]">Custo p/ Uso</span>
-                      <span className="text-xs font-bold text-[#B78103]">{formatarMoeda(mat.custo_por_uso)}</span>
+                      <span className="text-xs font-bold text-[#B78103]">
+                        {formatarMoeda(
+                          (typeof mat.custo_por_uso === 'number' && !isNaN(mat.custo_por_uso) && mat.custo_por_uso > 0)
+                            ? mat.custo_por_uso
+                            : ((mat.rendimento && Number(mat.rendimento) > 0) ? (Number(mat.preco_compra) || 0) / Number(mat.rendimento) : 0)
+                        )}
+                      </span>
                     </div>
                   </div>
                 </div>
