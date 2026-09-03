@@ -16,17 +16,18 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     e.preventDefault();
     setError('');
 
-    const targetId = selectedUserId || 'admin';
-    const pwd = password.trim() || 'admin';
+    const targetId = selectedUserId || equipe[0]?.id || 'admin_master';
+    const pwd = password.trim();
+
+    if (!pwd) {
+      setError('Por favor, digite a sua senha de acesso.');
+      return;
+    }
 
     const success = loginWithCredentials(targetId, pwd);
     if (!success) {
-      setError('Senha incorreta. A senha padrão do sistema é "admin".');
+      setError('Senha incorreta. Verifique suas credenciais de acesso.');
     }
-  };
-
-  const handleQuickAdminLogin = () => {
-    loginWithCredentials('admin', 'admin');
   };
 
   return (
@@ -94,19 +95,14 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
 
           {/* Senha */}
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider">
-                Senha / Código de Acesso
-              </label>
-              <span className="text-[10px] text-[#8C6D58]">
-                Padrão inicial: <strong>admin</strong>
-              </span>
-            </div>
+            <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider mb-2">
+              Senha / Código de Acesso
+            </label>
             <div className="flex items-center bg-[#141414] border border-[#333] hover:border-[#8C6D58] focus-within:border-[#8C6D58] rounded-xl px-4 py-3 transition-colors">
               <Lock size={16} className="text-[#555] shrink-0 mr-3" />
               <input
                 type="password"
-                placeholder="Digite a senha (padrão: admin)"
+                placeholder="Digite a sua senha de acesso"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0"
@@ -121,15 +117,6 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
           >
             <Shield size={14} />
             <span>Acessar Painel</span>
-          </button>
-
-          {/* Botão de Emergência / Primeiro Acesso */}
-          <button
-            type="button"
-            onClick={handleQuickAdminLogin}
-            className="w-full text-center text-[11px] text-[#A19488] hover:text-white transition-colors py-1 block"
-          >
-            Primeiro acesso? <strong className="text-[#C4A482] underline">Entrar com Administrador padrão (admin)</strong>
           </button>
         </form>
 

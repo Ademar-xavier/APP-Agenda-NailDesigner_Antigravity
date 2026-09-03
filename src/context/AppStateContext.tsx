@@ -23,6 +23,8 @@ import {
   carregarDadosNuvemSupabase
 } from '../services/supabase';
 
+export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
+
 interface AppStateContextType {
   clientes: Cliente[];
   servicos: Servico[];
@@ -34,12 +36,14 @@ interface AppStateContextType {
   currentUser: Usuario | null;
   
   // Ações de Autenticação
-  login: (id: string) => void;
+  login: (usuarioId: string) => void;
   loginWithCredentials: (identificador: string, senhaDigitada: string) => boolean;
   logout: () => void;
 
   // Ações de Equipe
   addEquipe: (membro: Omit<Usuario, 'id' | 'ativo'>) => void;
+  updateEquipe: (id: string, updated: Partial<Usuario>) => void;
+  deleteEquipe: (id: string) => void;
   toggleEquipeAtivo: (id: string) => void;
 
   // Ações de Clientes
@@ -345,7 +349,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const parsed: Usuario[] = JSON.parse(saved);
         const temAdmin = parsed.some(u => u.perfil === 'admin' && u.ativo);
         if (parsed.length > 0 && temAdmin) {
-          return parsed.map(u => ({ ...u, senha: u.senha || 'admin' }));
+          return parsed.map(u => ({ 
+            ...u, 
+            senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin') 
+          }));
         }
         if (parsed.length > 0 && !temAdmin) {
           const defaultAdmin: Usuario = {
@@ -355,7 +362,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             telefone: '',
             perfil: 'admin',
             ativo: true,
-            senha: 'admin'
+            senha: ENV_ADMIN_PASSWORD
           };
           return [defaultAdmin, ...parsed];
         }
@@ -363,7 +370,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {
       console.error(e);
     }
-    return equipeInicial;
+    return equipeInicial.map(u => ({
+      ...u,
+      senha: u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : (u.senha || 'admin')
+    }));
   });
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
@@ -583,15 +593,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         telefone: '',
         perfil: 'admin',
         ativo: true,
-        senha: 'admin'
+        senha: ENV_ADMIN_PASSWORD
       };
       setEquipe(prev => [adminDefault, ...prev.filter(u => u.id !== 'admin_master')]);
       user = adminDefault;
     }
 
     if (user) {
-      const senhaValida = user.senha || 'admin';
-      if (senhaDigitada === senhaValida || senhaDigitada === 'admin' || senhaDigitada === '1234') {
+      const senhaValida = user.senha || (user.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin');
+      const isMasterAdminMatch = user.perfil === 'admin' && senhaDigitada === ENV_ADMIN_PASSWORD;
+
+      if (senhaDigitada === senhaValida || isMasterAdminMatch) {
         setCurrentUser(user);
         return true;
       }
@@ -608,9 +620,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const novo: Usuario = {
       ...membro,
       id: 'u_' + gerarId(),
-      ativo: true
+      ativo: true,
+      senha: membro.senha || (membro.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin')
     };
     setEquipe(prev => [...prev, novo]);
+    try {
+      supabase.from('usuarios').upsert(novo).then();
+    } catch (e) {
+      console.error('Erro ao salvar usuario no Supabase:', e);
+    }
+  };
+
+  const updateEquipe = (id: string, updated: Partial<Usuario>) => {
+    setEquipe(prev => prev.map(u => u.id === id ? { ...u, ...updated } : u));
+    try {
+      supabase.from('usuarios').update(updated).eq('id', id).then();
+    } catch (e) {
+      console.error('Erro ao atualizar usuario no Supabase:', e);
+    }
+  };
+
+  const deleteEquipe = (id: string) => {
+    setEquipe(prev => prev.filter(u => u.id !== id));
+    try {
+      supabase.from('usuarios').delete().eq('id', id).then();
+    } catch (e) {
+      console.error('Erro ao deletar usuario no Supabase:', e);
+    }
   };
 
   const toggleEquipeAtivo = (id: string) => {
@@ -1133,6 +1169,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       loginWithCredentials,
       logout,
       addEquipe,
+      updateEquipe,
+      deleteEquipe,
       toggleEquipeAtivo,
       addCliente,
       updateCliente,
