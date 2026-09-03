@@ -305,30 +305,47 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   });
 
-  // Estado de Equipe e Autenticação (Garante sempre Administrador padrão se vazio)
+  // Estado de Equipe e Autenticação (Garante sempre Sheila, Lurdinha e Administrador padrão)
   const [equipe, setEquipe] = useState<Usuario[]>(() => {
+    const lurdinhaPadrao: Usuario = { 
+      id: 'u2', 
+      nome: 'Lurdinha', 
+      email: 'lurdinha@agenda.com', 
+      telefone: '35 99182-1220', 
+      perfil: 'profissional', 
+      ativo: true, 
+      senha: 'admin',
+      servicos_habilitados: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']
+    };
+
     try {
       const saved = localStorage.getItem('nail_equipe');
       if (saved) {
-        const parsed: Usuario[] = JSON.parse(saved);
-        const temAdmin = parsed.some(u => u.perfil === 'admin' && u.ativo);
-        if (parsed.length > 0 && temAdmin) {
+        let parsed: Usuario[] = JSON.parse(saved);
+        if (parsed.length > 0) {
+          const temAdmin = parsed.some(u => u.perfil === 'admin' && u.ativo);
+          if (!temAdmin) {
+            const defaultAdmin: Usuario = {
+              id: 'admin_master',
+              nome: 'Administrador',
+              email: 'admin@salao.com',
+              telefone: '',
+              perfil: 'admin',
+              ativo: true,
+              senha: ENV_ADMIN_PASSWORD
+            };
+            parsed.unshift(defaultAdmin);
+          }
+          // Garante que a Lurdinha nunca desapareça da equipe do salão
+          const temLurdinha = parsed.some(u => u.nome.toLowerCase().includes('lurdinha') || u.id === 'u2');
+          if (!temLurdinha) {
+            parsed.push(lurdinhaPadrao);
+            try { localStorage.setItem('nail_equipe', JSON.stringify(parsed)); } catch (e) {}
+          }
           return parsed.map(u => ({ 
             ...u, 
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin') 
           }));
-        }
-        if (parsed.length > 0 && !temAdmin) {
-          const defaultAdmin: Usuario = {
-            id: 'admin_master',
-            nome: 'Administrador',
-            email: 'admin@salao.com',
-            telefone: '',
-            perfil: 'admin',
-            ativo: true,
-            senha: ENV_ADMIN_PASSWORD
-          };
-          return [defaultAdmin, ...parsed];
         }
       }
     } catch (e) {
@@ -500,11 +517,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : dados.usuarios;
 
       if (listaEquipeNuvem && listaEquipeNuvem.length > 0) {
-        const usuariosComSenha = listaEquipeNuvem.map((u: any) => ({
+        let usuariosComSenha = listaEquipeNuvem.map((u: any) => ({
           ...u,
           senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
           servicos_habilitados: u.servicos_habilitados || []
         }));
+
+        // Se a nuvem não tiver a Lurdinha, restaura e sobe para o Supabase
+        const temLurdinhaNuvem = usuariosComSenha.some((u: any) => u.nome?.toLowerCase().includes('lurdinha') || u.id === 'u2');
+        if (!temLurdinhaNuvem) {
+          const lurdinhaRecuperada: Usuario = {
+            id: 'u2',
+            nome: 'Lurdinha',
+            email: 'lurdinha@agenda.com',
+            telefone: '35 99182-1220',
+            perfil: 'profissional',
+            ativo: true,
+            senha: 'admin',
+            servicos_habilitados: ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']
+          };
+          usuariosComSenha.push(lurdinhaRecuperada);
+          try {
+            supabase.from('usuarios').upsert(lurdinhaRecuperada).then();
+            salvarConfiguracoesSupabase({ equipe: usuariosComSenha }).then();
+          } catch (e) {}
+        }
+
         setEquipe(usuariosComSenha);
         try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
       }
