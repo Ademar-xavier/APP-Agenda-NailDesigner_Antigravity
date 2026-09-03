@@ -60,9 +60,9 @@ interface AppStateContextType {
   deleteCliente: (id: string) => void;
   
   // Ações de Serviços
-  addServico: (servico: Omit<Servico, 'id' | 'ativo'>) => void;
-  updateServico: (id: string, servico: Partial<Servico>) => void;
-  deleteServico: (id: string) => void;
+  addServico: (servico: Omit<Servico, 'id' | 'ativo'> & { ativo?: boolean }) => Promise<void> | void;
+  updateServico: (id: string, servico: Partial<Servico>) => Promise<void> | void;
+  deleteServico: (id: string) => Promise<void> | void;
   
   // Ações de Agendamentos
   addAgendamento: (agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, servicosSelecionados: string[]) => { success: boolean; error?: string; agendamento?: Agendamento };
@@ -901,11 +901,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Serviços ---
-  const addServico = async (newServico: Omit<Servico, 'id'>) => {
+  const addServico = async (newServico: Omit<Servico, 'id' | 'ativo'> & { ativo?: boolean }) => {
     const servico: Servico = {
       ...newServico,
       id: 's_' + gerarId(),
-      ativo: true
+      ativo: newServico.ativo !== undefined ? newServico.ativo : true
     };
     const next = [...servicos, servico];
     setServicos(next);
