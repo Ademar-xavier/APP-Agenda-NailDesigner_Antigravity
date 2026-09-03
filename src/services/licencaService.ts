@@ -12,9 +12,17 @@ export interface LicencaInfo {
 
 const STORAGE_KEY = 'nail_app_licenca_ativa_v1';
 
+// Chaves de Licença configuradas no arquivo .env (você pode alterar no .env quando quiser)
+const ENV_KEY_VITALICIO = (import.meta.env.VITE_LICENSE_KEY_VITALICIO || 'SHEILA-VIP-2026').trim().toUpperCase();
+const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || 'SHEILA-MENSAL-2026').trim().toUpperCase();
+
 // Chaves Oficiais Pré-cadastradas para Entrega Rápida
 const CHAVES_MESTRAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
-  // Chaves Oficiais de Lançamento
+  // Chaves oficiais configuráveis pelo seu arquivo .env
+  [ENV_KEY_VITALICIO]: { tipo: 'vitalicio', titular: 'Sheila Santos' },
+  [ENV_KEY_MENSAL]: { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 },
+
+  // Chaves reservas de fábrica
   'SHEILA-VIP-2026': { tipo: 'vitalicio', titular: 'Sheila Santos' },
   'SHEILA-VITALICIO-2026': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
   'ADEMAR-ADMIN-VITA': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
@@ -22,7 +30,6 @@ const CHAVES_MESTRAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste';
   
   // Chaves de Assinatura Mensal (30 dias a partir da data de ativação)
   'NAIL-MENSAL-30': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 },
-  'SHEILA-MENSAL': { tipo: 'mensal', titular: 'Sheila Santos (Mensal)', diasValidade: 30 },
   
   // Degustação / Teste
   'TESTE-7-DIAS': { tipo: 'teste', titular: 'Período de Degustação', diasValidade: 7 },
