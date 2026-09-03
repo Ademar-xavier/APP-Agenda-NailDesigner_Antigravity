@@ -10,7 +10,8 @@ import {
   MetodoPagamento,
   Usuario,
   Despesa,
-  Material
+  Material,
+  ModalAlertaConfig
 } from '../types';
 import { 
   supabase,
@@ -139,6 +140,9 @@ interface AppStateContextType {
   obterProximoHorarioLivre: (data: string, duracaoMinutos: number) => string | null;
   notificacaoGlobal: { mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null;
   mostrarNotificacaoGlobal: (mensagem: string, tipo?: 'sucesso' | 'info' | 'erro') => void;
+  modalAlerta: ModalAlertaConfig | null;
+  mostrarAlerta: (config: ModalAlertaConfig) => void;
+  fecharAlerta: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -230,6 +234,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setNotificacaoGlobal(null);
     }, 3800);
   };
+
+  // Modal de Alerta / Confirmação Visual Elegante (Substituto para alert e confirm nativos)
+  const [modalAlerta, setModalAlerta] = useState<ModalAlertaConfig | null>(null);
+
+  const mostrarAlerta = (config: ModalAlertaConfig) => {
+    setModalAlerta(config);
+  };
+
+  const fecharAlerta = () => {
+    setModalAlerta(null);
+  };
+
+  // Intercepta window.alert para garantir uma experiência visual elegante e sem caixas nativas do navegador
+  useEffect(() => {
+    (window as any).alert = (msg: any) => {
+      setModalAlerta({
+        titulo: 'Aviso',
+        mensagem: String(msg || ''),
+        tipo: 'info',
+        textoBotao: 'Entendido'
+      });
+    };
+  }, []);
 
   const [clientes, setClientes] = useState<Cliente[]>(() => {
     try {
@@ -1604,7 +1631,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updateMaterial,
       deleteMaterial,
       notificacaoGlobal,
-      mostrarNotificacaoGlobal
+      mostrarNotificacaoGlobal,
+      modalAlerta,
+      mostrarAlerta,
+      fecharAlerta
     }}>
       {children}
     </AppStateContext.Provider>

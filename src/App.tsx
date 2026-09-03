@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud } from 'lucide-react';
+import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy } from 'lucide-react';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -19,7 +19,7 @@ import { AtivacaoLicenca } from './views/AtivacaoLicenca';
 import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
 
 function AppContent() {
-  const { currentUser, notificacaoGlobal } = useAppState();
+  const { currentUser, notificacaoGlobal, modalAlerta, fecharAlerta, mostrarNotificacaoGlobal } = useAppState();
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
   const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());
@@ -368,6 +368,103 @@ function AppContent() {
           }`}>
             <Cloud size={16} className="text-emerald-400 shrink-0" />
             <span>{notificacaoGlobal.mensagem}</span>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GLOBAL ELEGANTE (Substituto dos popups nativos do navegador) */}
+      {modalAlerta && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={fecharAlerta}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#F4ECE1] max-w-sm w-full text-center space-y-4 animate-in zoom-in-95 duration-200 relative overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Barra de destaque colorida no topo */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D37F64] via-[#DB7093] to-[#8C6D58]" />
+
+            {/* Ícone estilizado com badge circular */}
+            <div className="pt-2 flex justify-center">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner ${
+                modalAlerta.tipo === 'sucesso'
+                  ? 'bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]'
+                  : modalAlerta.tipo === 'erro'
+                  ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
+                  : modalAlerta.tipo === 'aviso'
+                  ? 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
+                  : 'bg-[#FFF0F5] text-[#DB7093] border border-[#FBCFE8]'
+              }`}>
+                {modalAlerta.tipo === 'sucesso' ? (
+                  <CheckCircle2 size={32} />
+                ) : modalAlerta.tipo === 'erro' ? (
+                  <AlertTriangle size={32} />
+                ) : modalAlerta.tipo === 'aviso' ? (
+                  <AlertCircle size={32} />
+                ) : (
+                  <Sparkles size={32} />
+                )}
+              </div>
+            </div>
+
+            {/* Título e Mensagem */}
+            <div className="space-y-2">
+              <h3 className="font-serif font-bold text-lg text-[#5A4535]">
+                {modalAlerta.titulo}
+              </h3>
+              <p className="text-xs text-[#8C7A6B] leading-relaxed whitespace-pre-line px-1">
+                {modalAlerta.mensagem}
+              </p>
+            </div>
+
+            {/* Caixa de Link Copiável se houver */}
+            {modalAlerta.link && (
+              <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3 text-left space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-mono text-[#5A4535] truncate select-all flex-1 font-medium">
+                    {modalAlerta.link}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(modalAlerta.link!);
+                      mostrarNotificacaoGlobal('Link copiado com sucesso!', 'sucesso');
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-[11px] font-bold shrink-0 transition-colors shadow-sm"
+                  >
+                    <Copy size={12} />
+                    <span>Copiar</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Botões de Ação */}
+            <div className="pt-2 flex items-center gap-2">
+              {modalAlerta.isConfirm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (modalAlerta.onCancel) modalAlerta.onCancel();
+                    fecharAlerta();
+                  }}
+                  className="flex-1 py-3 px-4 border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-2xl transition-all"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (modalAlerta.onConfirm) modalAlerta.onConfirm();
+                  fecharAlerta();
+                }}
+                className="flex-1 py-3 px-4 bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:opacity-95 text-white text-xs font-bold rounded-2xl transition-all shadow-md active:scale-[0.98]"
+              >
+                {modalAlerta.textoBotao || 'OK, Entendido'}
+              </button>
+            </div>
           </div>
         </div>
       )}

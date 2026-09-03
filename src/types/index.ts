@@ -167,3 +167,14 @@ export interface Material {
   rendimento: number; // quantidade de usos/aplicações
   custo_por_uso: number; // preco_compra / rendimento
 }
+
+export interface ModalAlertaConfig {
+  titulo: string;
+  mensagem: string;
+  link?: string;
+  tipo?: 'sucesso' | 'info' | 'aviso' | 'erro';
+  textoBotao?: string;
+  onConfirm?: () => void;
+  onCancel?: () => void;
+  isConfirm?: boolean;
+}

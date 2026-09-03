@@ -412,9 +412,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           )}
         </div>
 
-        {/* Right Column: Confirmations / Maintenance (Toggles hidden for normal professional) */}
-        {isAdminRole ? (
-          <div className="space-y-6">
+        {/* Right Column: Confirmations / Maintenance / Waitlist (Visível para todos os perfis) */}
+        <div className="space-y-6">
             {/* Actionable Confirmations */}
             <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
               <h3 className="font-serif font-bold text-base text-[#5A4535] mb-3 flex items-center gap-2">
@@ -574,26 +573,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Profissional view side panel: Dicas do Salão */}
+            {!isAdminRole && (
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
+                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-1.5 border-b border-[#FAF9F6] pb-2">
+                  <Sparkles size={18} className="text-[#8C6D58]" />
+                  <span>Dicas do Salão</span>
+                </h3>
+                <p className="text-xs text-[#8C7A6B] leading-relaxed">
+                  Olá, <strong>{currentUser?.nome || 'Profissional'}</strong>! Lembre-se de sempre marcar seus atendimentos finalizados como <strong>Concluído</strong> na aba <strong>Agenda</strong> para registrar a próxima sugestão de manutenção da cliente.
+                </p>
+                <div className={`p-3 rounded-xl border text-xs font-semibold ${
+                  infoExpediente.abertoHoje 
+                    ? 'bg-[#F2F8F4] border-[#D1E7D8] text-[#2D6A4F]' 
+                    : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
+                }`}>
+                  {infoExpediente.texto}
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          // Profissional view side panel: simplified information
-          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
-            <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-1.5 border-b border-[#FAF9F6] pb-2">
-              <Sparkles size={18} className="text-[#8C6D58]" />
-              <span>Dicas do Salão</span>
-            </h3>
-            <p className="text-xs text-[#8C7A6B] leading-relaxed">
-              Olá, <strong>{currentUser?.nome || 'Profissional'}</strong>! Lembre-se de sempre marcar seus atendimentos finalizados como <strong>Concluído</strong> na aba <strong>Agenda</strong> para registrar a próxima sugestão de manutenção da cliente.
-            </p>
-            <div className={`p-3 rounded-xl border text-xs font-semibold ${
-              infoExpediente.abertoHoje 
-                ? 'bg-[#F2F8F4] border-[#D1E7D8] text-[#2D6A4F]' 
-                : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
-            }`}>
-              {infoExpediente.texto}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
