@@ -18,10 +18,14 @@ import {
   Globe,
   RefreshCw,
   Bookmark,
-  Trash2
+  Trash2,
+  Key,
+  Lock,
+  Shield
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
+import { Usuario } from '../types';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -29,6 +33,8 @@ export const Configuracoes: React.FC = () => {
     updateConfigSalao, 
     equipe, 
     addEquipe, 
+    updateEquipe,
+    deleteEquipe,
     toggleEquipeAtivo,
     googleConnected,
     googleUserEmail,
@@ -64,7 +70,13 @@ export const Configuracoes: React.FC = () => {
   const [isEquipeModalOpen, setIsEquipeModalOpen] = useState(false);
   const [novoMembroNome, setNovoMembroNome] = useState('');
   const [novoMembroFone, setNovoMembroFone] = useState('');
+  const [novoMembroSenha, setNovoMembroSenha] = useState('');
   const [novoMembroPerfil, setNovoMembroPerfil] = useState<'admin' | 'profissional'>('profissional');
+
+  // --- ALTERAR SENHA MODAL STATE ---
+  const [isAlterarSenhaModalOpen, setIsAlterarSenhaModalOpen] = useState(false);
+  const [membroParaAlterarSenha, setMembroParaAlterarSenha] = useState<Usuario | null>(null);
+  const [novaSenhaInput, setNovaSenhaInput] = useState('');
 
   const handleSalvarGeral = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,13 +127,29 @@ export const Configuracoes: React.FC = () => {
       nome: novoMembroNome,
       telefone: novoMembroFone,
       email: novoMembroNome.toLowerCase().replace(/\s+/g, '') + '@agenda.com',
-      perfil: novoMembroPerfil
+      perfil: novoMembroPerfil,
+      senha: novoMembroSenha.trim() || (novoMembroPerfil === 'admin' ? 'admin' : '1234')
     });
 
     setNovoMembroNome('');
     setNovoMembroFone('');
+    setNovoMembroSenha('');
     setNovoMembroPerfil('profissional');
     setIsEquipeModalOpen(false);
+    triggerSuccess();
+  };
+
+  const handleSalvarNovaSenha = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!membroParaAlterarSenha || !novaSenhaInput.trim()) return;
+
+    updateEquipe(membroParaAlterarSenha.id, {
+      senha: novaSenhaInput.trim()
+    });
+
+    setIsAlterarSenhaModalOpen(false);
+    setMembroParaAlterarSenha(null);
+    setNovaSenhaInput('');
     triggerSuccess();
   };
 
@@ -513,6 +541,19 @@ export const Configuracoes: React.FC = () => {
                 </button>
               </div>
 
+              {/* Dica de Segurança e .env */}
+              <div className="p-3.5 bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-white text-[#8C6D58] border border-[#EFECE6] shadow-2xs mt-0.5">
+                  <Shield size={16} />
+                </div>
+                <div className="text-xs text-[#5A4535]">
+                  <p className="font-bold">Segurança de Acesso e Comercialização:</p>
+                  <p className="text-[#8C7A6B] mt-0.5">
+                    Você pode alterar a senha de qualquer profissional clicando em <strong>Alterar Senha</strong> abaixo. A senha mestre padrão do Administrador também pode ser personalizada diretamente no arquivo <strong>.env</strong> pela variável <code>VITE_ADMIN_PASSWORD</code>.
+                  </p>
+                </div>
+              </div>
+
               {/* Lista de Membros da Equipe */}
               <div className="space-y-3">
                 {equipe.map((membro) => {
@@ -521,10 +562,10 @@ export const Configuracoes: React.FC = () => {
                   return (
                     <div 
                       key={membro.id} 
-                      className="p-4 border border-[#EFECE6] rounded-2xl flex items-center justify-between gap-3 bg-white hover:border-[#8C6D58] transition-colors"
+                      className="p-4 border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:border-[#8C6D58] transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-xs">
+                        <div className="w-10 h-10 rounded-full bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-xs shrink-0">
                           {iniciais}
                         </div>
                         <div>
@@ -539,24 +580,54 @@ export const Configuracoes: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Toggle Switch Ativo */}
-                      <div className="flex items-center gap-2">
+                      {/* Ações: Alterar Senha + Toggle Ativo */}
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
                         <button
                           type="button"
-                          onClick={() => toggleEquipeAtivo(membro.id)}
-                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                            membro.ativo ? 'bg-[#8C6D58]' : 'bg-gray-200'
-                          }`}
+                          onClick={() => {
+                            setMembroParaAlterarSenha(membro);
+                            setNovaSenhaInput(membro.senha || '');
+                            setIsAlterarSenhaModalOpen(true);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF9F6] border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] rounded-xl text-xs font-bold transition-colors"
                         >
-                          <span
-                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                              membro.ativo ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                          />
+                          <Key size={13} />
+                          <span>Alterar Senha</span>
                         </button>
-                        <span className="text-xs font-semibold text-[#8C7A6B]">
-                          {membro.ativo ? 'Ativo' : 'Inativo'}
-                        </span>
+
+                        <div className="flex items-center gap-2 pl-2 border-l border-[#EFECE6]">
+                          <button
+                            type="button"
+                            onClick={() => toggleEquipeAtivo(membro.id)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                              membro.ativo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                            }`}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                membro.ativo ? 'translate-x-5' : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                          <span className="text-xs font-semibold text-[#8C7A6B]">
+                            {membro.ativo ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </div>
+
+                        {equipe.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Deseja realmente remover o usuário ${membro.nome}?`)) {
+                                deleteEquipe(membro.id);
+                              }
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-1"
+                            title="Remover usuário"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -613,6 +684,17 @@ export const Configuracoes: React.FC = () => {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Senha de acesso inicial</label>
+                <input 
+                  type="text" 
+                  placeholder="Digite a senha (padrão: admin)..."
+                  value={novoMembroSenha} 
+                  onChange={(e) => setNovoMembroSenha(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                />
+              </div>
+
               {/* Footer */}
               <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6] mt-6">
                 <button
@@ -627,6 +709,74 @@ export const Configuracoes: React.FC = () => {
                   className="px-5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
                 >
                   Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL ALTERAR SENHA DE USUÁRIO --- */}
+      {isAlterarSenhaModalOpen && membroParaAlterarSenha && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-[#EFECE6]">
+            <div className="flex justify-between items-center mb-4 border-b border-[#EFECE6] pb-3">
+              <div>
+                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
+                  <Lock size={16} className="text-[#8C6D58]" />
+                  <span>Alterar Senha</span>
+                </h3>
+                <p className="text-xs text-[#8C7A6B] mt-0.5">{membroParaAlterarSenha.nome}</p>
+              </div>
+              <button 
+                onClick={() => setIsAlterarSenhaModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarNovaSenha} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Nova Senha de Acesso</label>
+                <input 
+                  type="text" 
+                  required 
+                  placeholder="Digite a nova senha..."
+                  value={novaSenhaInput} 
+                  onChange={(e) => setNovaSenhaInput(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                />
+                <p className="text-[11px] text-[#A19488] mt-1.5">
+                  Essa senha será exigida na tela de login para este perfil.
+                </p>
+              </div>
+
+              {membroParaAlterarSenha.perfil === 'admin' && (
+                <div className="p-3 bg-[#FAF8F5] border border-[#F3ECE0] rounded-xl text-[11px] text-[#8C7A6B] space-y-1">
+                  <span className="font-bold flex items-center gap-1 text-[#5A4535]">
+                    <Shield size={12} className="text-[#8C6D58]" />
+                    Dica para Comercialização:
+                  </span>
+                  <p>
+                    A senha padrão do Administrador também pode ser personalizada diretamente no arquivo <strong>.env</strong> pela variável <code>VITE_ADMIN_PASSWORD</code>.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-2 justify-end pt-4 border-t border-[#EFECE6]">
+                <button
+                  type="button"
+                  onClick={() => setIsAlterarSenhaModalOpen(false)}
+                  className="px-4 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                >
+                  Salvar Senha
                 </button>
               </div>
             </form>
