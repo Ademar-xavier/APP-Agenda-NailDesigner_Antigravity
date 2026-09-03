@@ -22,7 +22,12 @@ import {
   deletarAgendamentoSupabase,
   salvarListaEsperaSupabase,
   atualizarStatusListaEsperaSupabase,
-  carregarDadosNuvemSupabase
+  carregarDadosNuvemSupabase,
+  salvarMaterialSupabase,
+  deletarMaterialSupabase,
+  salvarDespesaSupabase,
+  deletarDespesaSupabase,
+  salvarConfiguracoesSupabase
 } from '../services/supabase';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
@@ -563,10 +568,46 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(mapaFotos)); } catch (e) {}
       }
 
+      // 7. Materiais da Nuvem
+      if (dados.materiais && dados.materiais.length > 0) {
+        setMateriais(dados.materiais);
+        try { localStorage.setItem('nail_materiais', JSON.stringify(dados.materiais)); } catch (e) {}
+      }
+
+      // 8. Despesas da Nuvem
+      if (dados.despesas && dados.despesas.length > 0) {
+        setDespesas(dados.despesas);
+        try { localStorage.setItem('nail_despesas', JSON.stringify(dados.despesas)); } catch (e) {}
+      }
+
+      // 9. Configurações Gerais do Salão (Técnicas, Formatos, Categorias)
+      if (dados.configuracoes) {
+        if (dados.configuracoes.config_salao) {
+          setConfigSalao(dados.configuracoes.config_salao);
+          try { localStorage.setItem('nail_config_salao', JSON.stringify(dados.configuracoes.config_salao)); } catch (e) {}
+        }
+        if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
+          setTecnicas(dados.configuracoes.tecnicas);
+          try { localStorage.setItem('nail_tecnicas', JSON.stringify(dados.configuracoes.tecnicas)); } catch (e) {}
+        }
+        if (dados.configuracoes.formatos && dados.configuracoes.formatos.length > 0) {
+          setFormatos(dados.configuracoes.formatos);
+          try { localStorage.setItem('nail_formatos', JSON.stringify(dados.configuracoes.formatos)); } catch (e) {}
+        }
+        if (dados.configuracoes.categorias_servico && dados.configuracoes.categorias_servico.length > 0) {
+          setCategoriasServico(dados.configuracoes.categorias_servico);
+          try { localStorage.setItem('nail_categorias_servico', JSON.stringify(dados.configuracoes.categorias_servico)); } catch (e) {}
+        }
+        if (dados.configuracoes.categorias_despesa && dados.configuracoes.categorias_despesa.length > 0) {
+          setCategoriasDespesa(dados.configuracoes.categorias_despesa);
+          try { localStorage.setItem('nail_categorias_despesa', JSON.stringify(dados.configuracoes.categorias_despesa)); } catch (e) {}
+        }
+      }
+
       const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       setLastCloudSyncTime(agora);
       setIsSyncingCloud(false);
-      const totalItens = (dados.clientes?.length || 0) + (dados.agendamentos?.length || 0);
+      const totalItens = (dados.clientes?.length || 0) + (dados.agendamentos?.length || 0) + (dados.servicos?.length || 0);
       return { 
         sucesso: true, 
         mensagem: totalItens > 0 
@@ -587,6 +628,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       let clientesSalvos = 0;
       let agendamentosSalvos = 0;
       let servicosSalvos = 0;
+      let materiaisSalvos = 0;
+      let despesasSalvas = 0;
 
       for (const c of clientes) {
         await salvarClienteSupabase(c);
@@ -597,6 +640,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         await salvarServicoSupabase(s);
         servicosSalvos++;
       }
+
+      for (const m of materiais) {
+        await salvarMaterialSupabase(m);
+        materiaisSalvos++;
+      }
+
+      for (const d of despesas) {
+        await salvarDespesaSupabase(d);
+        despesasSalvas++;
+      }
+
+      await salvarConfiguracoesSupabase({
+        configSalao,
+        tecnicas,
+        formatos,
+        categoriasServico,
+        categoriasDespesa
+      });
 
       for (const a of agendamentos) {
         const sIds = itensAgendamento[a.id] || [];
@@ -613,7 +674,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setIsSyncingCloud(false);
       return {
         sucesso: true,
-        mensagem: `Upload concluído com sucesso às ${agora}! (${clientesSalvos} clientes, ${servicosSalvos} serviços, ${agendamentosSalvos} agendamentos salvos na nuvem)`
+        mensagem: `Upload concluído com sucesso às ${agora}! (${clientesSalvos} clientes, ${servicosSalvos} serviços, ${materiaisSalvos} materiais, ${despesasSalvas} despesas, ${agendamentosSalvos} agendamentos salvos na nuvem)`
       };
     } catch (e: any) {
       console.error('Erro ao enviar dados para a nuvem:', e);
@@ -838,15 +899,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: 'd_' + gerarId()
     };
     setDespesas(prev => [...prev, despesa]);
+    salvarDespesaSupabase(despesa);
   };
 
   const updateDespesa = (id: string, updated: Partial<Despesa>) => {
-    setDespesas(prev => prev.map(d => d.id === id ? { ...d, ...updated } : d));
+    setDespesas(prev => {
+      const next = prev.map(d => d.id === id ? { ...d, ...updated } : d);
+      const desp = next.find(d => d.id === id);
+      if (desp) salvarDespesaSupabase(desp);
+      return next;
+    });
   };
 
   const deleteDespesa = (id: string) => {
     limparFocoAtivo();
     setDespesas(prev => prev.filter(d => d.id !== id));
+    deletarDespesaSupabase(id);
   };
 
   const addCategoriaDespesa = (nome: string) => {
@@ -905,25 +973,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       custo_por_uso: Number(custo.toFixed(2))
     };
     setMateriais(prev => [...prev, material]);
+    salvarMaterialSupabase(material);
   };
 
   const updateMaterial = (id: string, updated: Partial<Material>) => {
-    setMateriais(prev => prev.map(m => {
-      if (m.id === id) {
-        const merged = { ...m, ...updated };
-        const custo = merged.preco_compra / (merged.rendimento || 1);
-        return {
-          ...merged,
-          custo_por_uso: Number(custo.toFixed(2))
-        };
-      }
-      return m;
-    }));
+    setMateriais(prev => {
+      const next = prev.map(m => {
+        if (m.id === id) {
+          const merged = { ...m, ...updated };
+          const custo = merged.preco_compra / (merged.rendimento || 1);
+          return {
+            ...merged,
+            custo_por_uso: Number(custo.toFixed(2))
+          };
+        }
+        return m;
+      });
+      const mat = next.find(m => m.id === id);
+      if (mat) salvarMaterialSupabase(mat);
+      return next;
+    });
   };
 
   const deleteMaterial = (id: string) => {
     limparFocoAtivo();
     setMateriais(prev => prev.filter(m => m.id !== id));
+    deletarMaterialSupabase(id);
   };
 
   // --- Lógica de Conflitos ---
