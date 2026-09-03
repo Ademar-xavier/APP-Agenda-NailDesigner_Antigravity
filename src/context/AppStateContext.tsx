@@ -366,16 +366,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return equipeInicial;
   });
 
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
-    try {
-      localStorage.removeItem('nail_current_user');
-      const saved = sessionStorage.getItem('nail_current_user');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
 
   const [despesas, setDespesas] = useState<Despesa[]>(() => {
     const saved = localStorage.getItem('nail_despesas');
