@@ -109,6 +109,32 @@ export const atualizarStatusListaEsperaSupabase = async (id: string, status: str
   }
 };
 
+// --- SALVAR / ATUALIZAR FOTO CLIENTE ---
+export const salvarFotoClienteSupabase = async (foto: { id: string; cliente_id: string; url: string; tipo: string; criado_em?: string }) => {
+  try {
+    const { error } = await supabase.from('fotos_clientes').upsert({
+      id: foto.id,
+      cliente_id: foto.cliente_id,
+      url: foto.url,
+      tipo: foto.tipo,
+      criado_em: foto.criado_em || new Date().toISOString()
+    });
+    if (error) console.error('Erro ao salvar foto no Supabase:', error);
+  } catch (e) {
+    console.error('Falha em salvarFotoClienteSupabase:', e);
+  }
+};
+
+// --- DELETAR FOTO CLIENTE ---
+export const deletarFotoClienteSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('fotos_clientes').delete().eq('id', id);
+    if (error) console.error('Erro ao deletar foto no Supabase:', error);
+  } catch (e) {
+    console.error('Falha em deletarFotoClienteSupabase:', e);
+  }
+};
+
 // --- BUSCAR DADOS DA NUVEM (SINCRONIZAÇÃO INICIAL) ---
 export const carregarDadosNuvemSupabase = async () => {
   try {

@@ -23,6 +23,50 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
+import { 
+  supabase, 
+  salvarFotoClienteSupabase, 
+  deletarFotoClienteSupabase 
+} from '../services/supabase';
+
+// Compressão e redimensionamento automático de imagens (garante salvamento imediato e evita estouro de cota)
+const comprimirImagem = (file: File, maxDim = 1200, qualidade = 0.75): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', qualidade));
+        } else {
+          resolve((e.target?.result as string) || '');
+        }
+      };
+      img.onerror = () => resolve((e.target?.result as string) || '');
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
 
 interface ClientesProps {
   selectedClienteIdForDetails: string | null;
@@ -90,12 +134,40 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [filtroFotos, setFiltroFotos] = useState<'todas' | 'antes' | 'depois'>('todas');
   const [pendingUploads, setPendingUploads] = useState<string[]>([]);
   const [targetTipoUpload, setTargetTipoUpload] = useState<'antes' | 'depois' | null>(null);
+  const targetTipoUploadRef = useRef<'antes' | 'depois' | null>(null);
+
+  // Carrega fotos salvas do Supabase na inicialização
+  useEffect(() => {
+    try {
+      supabase.from('fotos_clientes').select('*').then(({ data, error }) => {
+        if (!error && data && data.length > 0) {
+          setFotosClientes(prev => {
+            const next = { ...prev };
+            data.forEach((f: any) => {
+              const list = next[f.cliente_id] || [];
+              if (!list.some(existing => existing.id === f.id)) {
+                next[f.cliente_id] = [...list, {
+                  id: f.id,
+                  url: f.url,
+                  tipo: (f.tipo as 'antes' | 'depois') || 'depois',
+                  criado_em: f.criado_em
+                }];
+              }
+            });
+            return next;
+          });
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao buscar fotos do Supabase:', e);
+    }
+  }, []);
 
   useEffect(() => {
     try {
       localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(fotosClientes));
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao salvar no localStorage:', e);
     }
   }, [fotosClientes]);
 
@@ -194,35 +266,51 @@ export const Clientes: React.FC<ClientesProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedClienteIdForDetails) return;
 
+    const currentTipo = targetTipoUploadRef.current || targetTipoUpload;
     const fileArray = Array.from(files);
-    const promises = fileArray.map(file => {
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          resolve((event.target?.result as string) || '');
-        };
-        reader.readAsDataURL(file);
-      });
-    });
 
+    // Comprime as fotos para evitar estouro de cota e garantir persistência imediata
+    const promises = fileArray.map(file => comprimirImagem(file));
     const base64List = await Promise.all(promises);
     const validBase64 = base64List.filter(b => b.length > 0);
 
     if (validBase64.length === 0) return;
 
-    // Se já havia clicado em "+ Antes" ou "+ Depois", salva direto com essa tag
-    if (targetTipoUpload) {
+    // Se o usuário clicou especificamente em "+ Antes" ou "+ Depois", salva imediatamente
+    if (currentTipo) {
       const novasFotos: FotoCliente[] = validBase64.map(url => ({
         id: 'foto_' + Math.random().toString(36).substring(2, 9),
         url,
-        tipo: targetTipoUpload,
+        tipo: currentTipo,
         criado_em: new Date().toISOString()
       }));
 
-      setFotosClientes(prev => ({
-        ...prev,
-        [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), ...novasFotos]
-      }));
+      setFotosClientes(prev => {
+        const fotosExistentes = prev[selectedClienteIdForDetails] || [];
+        const atualizadas = [...fotosExistentes, ...novasFotos];
+        const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
+
+        try {
+          localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
+        } catch (err) {
+          console.error('Erro ao gravar fotos no localStorage:', err);
+        }
+
+        // Sincroniza cada foto no Supabase
+        novasFotos.forEach(f => {
+          salvarFotoClienteSupabase({
+            id: f.id,
+            cliente_id: selectedClienteIdForDetails,
+            url: f.url,
+            tipo: f.tipo,
+            criado_em: f.criado_em
+          });
+        });
+
+        return novoObjeto;
+      });
+
+      targetTipoUploadRef.current = null;
       setTargetTipoUpload(null);
     } else {
       // Abre modal de seleção para o usuário decidir se são fotos do Antes ou do Depois
@@ -244,36 +332,85 @@ export const Clientes: React.FC<ClientesProps> = ({
       criado_em: new Date().toISOString()
     }));
 
-    setFotosClientes(prev => ({
-      ...prev,
-      [selectedClienteIdForDetails]: [...(prev[selectedClienteIdForDetails] || []), ...novasFotos]
-    }));
+    setFotosClientes(prev => {
+      const fotosExistentes = prev[selectedClienteIdForDetails] || [];
+      const atualizadas = [...fotosExistentes, ...novasFotos];
+      const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
+
+      try {
+        localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
+      } catch (err) {
+        console.error('Erro ao gravar fotos no localStorage:', err);
+      }
+
+      novasFotos.forEach(f => {
+        salvarFotoClienteSupabase({
+          id: f.id,
+          cliente_id: selectedClienteIdForDetails,
+          url: f.url,
+          tipo: f.tipo,
+          criado_em: f.criado_em
+        });
+      });
+
+      return novoObjeto;
+    });
+
     setPendingUploads([]);
   };
 
   const handleToggleFotoTipo = (fotoId: string) => {
     if (!selectedClienteIdForDetails) return;
-    setFotosClientes(prev => ({
-      ...prev,
-      [selectedClienteIdForDetails]: (prev[selectedClienteIdForDetails] || []).map(f => 
-        f.id === fotoId ? { ...f, tipo: f.tipo === 'antes' ? 'depois' : 'antes' } : f
-      )
-    }));
+    setFotosClientes(prev => {
+      const atualizadas = (prev[selectedClienteIdForDetails] || []).map(f => {
+        if (f.id === fotoId) {
+          const novoTipo = f.tipo === 'antes' ? 'depois' : 'antes';
+          salvarFotoClienteSupabase({
+            id: f.id,
+            cliente_id: selectedClienteIdForDetails,
+            url: f.url,
+            tipo: novoTipo,
+            criado_em: f.criado_em
+          });
+          return { ...f, tipo: novoTipo as 'antes' | 'depois' };
+        }
+        return f;
+      });
+
+      const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
+      try {
+        localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
+      } catch (err) {
+        console.error(err);
+      }
+      return novoObjeto;
+    });
   };
 
   const handleDeleteFoto = (fotoId: string) => {
     if (!selectedClienteIdForDetails) return;
     if (confirm('Deseja excluir esta foto?')) {
-      setFotosClientes(prev => ({
-        ...prev,
-        [selectedClienteIdForDetails]: (prev[selectedClienteIdForDetails] || []).filter(f => f.id !== fotoId)
-      }));
+      deletarFotoClienteSupabase(fotoId);
+      setFotosClientes(prev => {
+        const atualizadas = (prev[selectedClienteIdForDetails] || []).filter(f => f.id !== fotoId);
+        const novoObjeto = { ...prev, [selectedClienteIdForDetails]: atualizadas };
+        try {
+          localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
+        } catch (err) {
+          console.error(err);
+        }
+        return novoObjeto;
+      });
     }
   };
 
   const triggerFileInput = (tipo?: 'antes' | 'depois') => {
+    targetTipoUploadRef.current = tipo || null;
     setTargetTipoUpload(tipo || null);
-    fileInputRef.current?.click();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
   };
 
   // Filtrar clientes
