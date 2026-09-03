@@ -25,7 +25,8 @@ import {
   Bot,
   Send,
   Smartphone,
-  Copy
+  Copy,
+  Sparkles
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
