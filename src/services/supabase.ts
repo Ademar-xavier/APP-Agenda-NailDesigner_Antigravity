@@ -27,6 +27,36 @@ export const salvarClienteSupabase = async (cliente: Cliente) => {
   }
 };
 
+// --- DELETAR CLIENTE ---
+export const deletarClienteSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('clientes').delete().eq('id', id);
+    if (error) console.error('Erro ao deletar cliente no Supabase:', error);
+  } catch (e) {
+    console.error('Falha na requisição deletarClienteSupabase:', e);
+  }
+};
+
+// --- SALVAR / ATUALIZAR SERVIÇO ---
+export const salvarServicoSupabase = async (servico: any) => {
+  try {
+    const { error } = await supabase.from('servicos').upsert({
+      id: servico.id,
+      nome: servico.nome,
+      categoria: servico.categoria,
+      descricao: servico.descricao || '',
+      duracao_minutos: servico.duracao_minutos,
+      preco: servico.preco,
+      exige_sinal: !!servico.exige_sinal,
+      valor_sinal: servico.valor_sinal || 0,
+      ativo: servico.ativo !== false
+    });
+    if (error) console.error('Erro ao salvar serviço no Supabase:', error);
+  } catch (e) {
+    console.error('Falha na requisição salvarServicoSupabase:', e);
+  }
+};
+
 // --- SALVAR / ATUALIZAR AGENDAMENTOS ---
 export const salvarAgendamentoSupabase = async (agendamento: Agendamento, servicosIds: string[] = []) => {
   try {

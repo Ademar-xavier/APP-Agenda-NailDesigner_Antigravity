@@ -15,6 +15,8 @@ import {
 import { 
   supabase,
   salvarClienteSupabase,
+  deletarClienteSupabase,
+  salvarServicoSupabase,
   salvarAgendamentoSupabase,
   atualizarStatusAgendamentoSupabase,
   deletarAgendamentoSupabase,
@@ -677,6 +679,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteCliente = (id: string) => {
     limparFocoAtivo();
     setClientes(prev => prev.filter(c => c.id !== id));
+    deletarClienteSupabase(id);
   };
 
   // --- Ações de Serviços ---
@@ -687,15 +690,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ativo: true
     };
     setServicos(prev => [...prev, servico]);
+    salvarServicoSupabase(servico);
   };
 
   const updateServico = (id: string, updated: Partial<Servico>) => {
-    setServicos(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
+    setServicos(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, ...updated } : s);
+      const serv = next.find(s => s.id === id);
+      if (serv) salvarServicoSupabase(serv);
+      return next;
+    });
   };
 
   const deleteServico = (id: string) => {
     limparFocoAtivo();
-    setServicos(prev => prev.map(s => s.id === id ? { ...s, ativo: false } : s));
+    setServicos(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, ativo: false } : s);
+      const serv = next.find(s => s.id === id);
+      if (serv) salvarServicoSupabase(serv);
+      return next;
+    });
   };
 
   // --- Ações de Despesas ---
