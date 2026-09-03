@@ -562,6 +562,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (dados.materiais && dados.materiais.length > 0) {
         const matsFormatados = dados.materiais.map((m: any) => {
           const preco = Number(m.preco_compra) || 0;
+          const rend = Number(m.rendimento) || 1;
           const custo = (typeof m.custo_por_uso === 'number' && !isNaN(m.custo_por_uso) && m.custo_por_uso > 0)
             ? m.custo_por_uso
             : (rend > 0 ? Number((preco / rend).toFixed(2)) : 0);

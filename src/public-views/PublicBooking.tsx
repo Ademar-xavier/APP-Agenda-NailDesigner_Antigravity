@@ -11,7 +11,8 @@ import {
   DollarSign, 
   Copy,
   Heart,
-  Users
+  Users,
+  RotateCcw
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
@@ -596,8 +597,66 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               )}
             </div>
 
+            {/* Card de Resumo de Duração, Horário e Retorno (Igual Foto 3) */}
+            {horarioSelecionado && (
+              <div className="bg-[#FFF5F7] border border-[#FAD0DC] rounded-2xl p-3.5 space-y-2.5 shadow-sm text-left animate-in fade-in duration-200 mt-2">
+                <div className="flex items-center justify-between text-xs text-[#5A3F45] border-b border-[#FAD0DC]/60 pb-2">
+                  <span className="flex items-center gap-1.5 font-bold text-[#A88690] uppercase text-[10px]">
+                    <Clock size={14} className="text-[#DB7093]" />
+                    Tempo e Duração do Atendimento
+                  </span>
+                  <span className="font-extrabold text-[#C71585]">
+                    {Math.floor(duracaoTotal / 60) > 0 ? `${Math.floor(duracaoTotal / 60)}h ` : ''}{duracaoTotal % 60 > 0 ? `${duracaoTotal % 60}min ` : ''}({duracaoTotal} min)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#5A3F45]">
+                  <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
+                    <Clock size={14} className="text-[#DB7093] shrink-0" />
+                    <div>
+                      <span className="text-[#A88690] block text-[9px] uppercase font-bold">Horário de Atendimento</span>
+                      <strong className="text-xs text-[#5A3F45]">
+                        {horarioSelecionado} às {(() => {
+                          const [h, m] = horarioSelecionado.split(':').map(Number);
+                          const totalM = h * 60 + m + duracaoTotal;
+                          const hF = String(Math.floor(totalM / 60)).padStart(2, '0');
+                          const mF = String(totalM % 60).padStart(2, '0');
+                          return `${hF}:${mF}`;
+                        })()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
+                    <RotateCcw size={14} className="text-[#DB7093] shrink-0" />
+                    <div>
+                      <span className="text-[#A88690] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
+                      <strong className="text-xs text-[#5A3F45]">
+                        {(() => {
+                          const diasRetornoArr = servicos
+                            .filter(s => servicosSelecionados.includes(s.id))
+                            .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
+                            .filter(d => d > 0);
+                          const menorRetorno = diasRetornoArr.length > 0 ? Math.min(...diasRetornoArr) : 0;
+                          if (menorRetorno > 0 && dataSelecionada) {
+                            const d = new Date(dataSelecionada + 'T12:00:00');
+                            d.setDate(d.getDate() + menorRetorno);
+                            const diaF = String(d.getDate()).padStart(2, '0');
+                            const mesF = String(d.getMonth() + 1).padStart(2, '0');
+                            const anoF = d.getFullYear();
+                            return `${menorRetorno} dias (${diaF}/${mesF}/${anoF})`;
+                          }
+                          return 'Não exige retorno';
+                        })()}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {horariosDisponiveis.length > 0 && (
-              <div className="space-y-3 mt-4">
+              <div className="space-y-3 mt-3">
                 <button
                   onClick={() => setStep(4)}
                   disabled={!horarioSelecionado}
@@ -709,6 +768,30 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   {servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).join(' + ')}
                 </span>
               </div>
+              {(() => {
+                const diasRetornoArr = servicos
+                  .filter(s => servicosSelecionados.includes(s.id))
+                  .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
+                  .filter(d => d > 0);
+                const menorRetorno = diasRetornoArr.length > 0 ? Math.min(...diasRetornoArr) : 0;
+                if (menorRetorno > 0 && dataSelecionada) {
+                  const d = new Date(dataSelecionada + 'T12:00:00');
+                  d.setDate(d.getDate() + menorRetorno);
+                  const diaF = String(d.getDate()).padStart(2, '0');
+                  const mesF = String(d.getMonth() + 1).padStart(2, '0');
+                  const anoF = d.getFullYear();
+                  return (
+                    <div className="flex justify-between text-[#C71585] pt-1">
+                      <span className="font-semibold flex items-center gap-1">
+                        <RotateCcw size={12} />
+                        Sugestão de Retorno:
+                      </span>
+                      <span className="font-bold">{menorRetorno} dias ({diaF}/${mesF}/${anoF})</span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <div className="flex justify-between pt-2 border-t border-[#FAD0DC]/50 text-sm">
                 <span className="font-bold">Total do Atendimento:</span>
                 <span className="font-extrabold text-[#C71585]">{formatarMoeda(valorTotal)}</span>
