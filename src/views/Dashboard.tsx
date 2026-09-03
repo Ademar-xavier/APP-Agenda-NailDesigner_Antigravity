@@ -37,6 +37,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   } = useAppState();
 
   const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
+  const mesAtualStr = dataBaseStr.slice(0, 7); // Mês atual em tempo real (YYYY-MM)
+
+  // Formatação bonita da data de hoje para o topo do Dashboard
+  const hojeDate = new Date();
+  const dataHojeFormatada = hojeDate.toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+  const dataHojeExibicao = dataHojeFormatada.charAt(0).toUpperCase() + dataHojeFormatada.slice(1);
 
   // 1. Filtrar agendamentos do profissional se não for administrador
   const agendamentosFiltrados = agendamentos.filter(a => {
@@ -51,34 +62,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const confirmadosHoje = atendimentosHoje.filter(a => a.status === 'confirmado');
   const pendentesHoje = atendimentosHoje.filter(a => a.status === 'pendente');
 
-  // 2. Cálculos de Faturamento (Apenas Admin)
+  // 2. Cálculos de Faturamento 100% Dinâmicos e Reais (Apenas Admin)
   const faturamentoPrevistoHoje = atendimentosHoje
-    .filter(a => a.status !== 'cancelado')
-    .reduce((acc, a) => acc + a.valor_total, 0);
+    .filter(a => a.status !== 'cancelado' && a.status !== 'falta')
+    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
 
-  const faturamentoRealizadoHoje = pagamentos
-    .filter(p => {
-      const agend = agendamentos.find(a => a.id === p.agendamento_id);
-      if (currentUser?.perfil === 'profissional' && agend?.profissional_id !== currentUser.id) {
-        return false;
-      }
-      return p.data_pagamento.startsWith(dataBaseStr) && (p.status === 'pago' || p.status === 'sinal pago');
-    })
-    .reduce((acc, p) => acc + p.valor, 0);
+  const faturamentoRealizadoHoje = atendimentosHoje
+    .filter(a => a.status === 'concluido')
+    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
 
   const faturamentoPrevistoMes = agendamentosFiltrados
-    .filter(a => a.inicio.startsWith('2026-08') && a.status !== 'cancelado')
-    .reduce((acc, a) => acc + a.valor_total, 0);
+    .filter(a => a.inicio.startsWith(mesAtualStr) && a.status !== 'cancelado' && a.status !== 'falta')
+    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
 
-  const faturamentoRealizadoMes = pagamentos
-    .filter(p => {
-      const agend = agendamentos.find(a => a.id === p.agendamento_id);
-      if (currentUser?.perfil === 'profissional' && agend?.profissional_id !== currentUser.id) {
-        return false;
-      }
-      return p.data_pagamento.startsWith('2026-08') && (p.status === 'pago' || p.status === 'sinal pago');
-    })
-    .reduce((acc, p) => acc + p.valor, 0);
+  const faturamentoRealizadoMes = agendamentosFiltrados
+    .filter(a => a.inicio.startsWith(mesAtualStr) && a.status === 'concluido')
+    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
 
   // Ocupação da Agenda (Horário disponível vs Horário agendado)
   const minutosTotaisExpediente = 540;
@@ -140,7 +139,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div>
           <h2 className="font-serif font-bold text-2xl md:text-3xl text-[#5A4535]">Olá, {currentUser?.nome}!</h2>
           <p className="text-sm text-[#8C7A6B]">
-            Aqui está o seu resumo para hoje, <span className="font-semibold">29 de Agosto de 2026 (Sábado)</span>
+            Aqui está o seu resumo para hoje, <span className="font-semibold">{dataHojeExibicao}</span>
           </p>
         </div>
         <button

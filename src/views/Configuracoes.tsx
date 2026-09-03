@@ -46,6 +46,7 @@ import {
   ativarChaveLicenca, 
   LicencaInfo 
 } from '../services/licencaService';
+import { salvarConfiguracoesSupabase } from '../services/supabase';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -71,6 +72,16 @@ export const Configuracoes: React.FC = () => {
   const [isGoogleSyncModalOpen, setIsGoogleSyncModalOpen] = useState(false);
   const [copiadoLink, setCopiadoLink] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  // Estados de feedback de salvamento na nuvem
+  const [salvandoExpediente, setSalvandoExpediente] = useState(false);
+  const [expedienteSalvoSucesso, setExpedienteSalvoSucesso] = useState(false);
+  const [toastNotificacao, setToastNotificacao] = useState<{ mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null>(null);
+
+  const exibirToast = (mensagem: string, tipo: 'sucesso' | 'info' | 'erro' = 'sucesso') => {
+    setToastNotificacao({ mensagem, tipo });
+    setTimeout(() => setToastNotificacao(null), 4000);
+  };
 
   // --- LICENÇA & ASSINATURA STATE ---
   const [licencaAtual, setLicencaAtual] = useState<LicencaInfo | null>(() => obterLicencaAtual());
@@ -221,9 +232,9 @@ export const Configuracoes: React.FC = () => {
   const [membroParaAlterarSenha, setMembroParaAlterarSenha] = useState<Usuario | null>(null);
   const [novaSenhaInput, setNovaSenhaInput] = useState('');
 
-  const handleSalvarGeral = (e: React.FormEvent) => {
+  const handleSalvarGeral = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateConfigSalao({
+    const updated = {
       nome,
       proprietaria,
       telefone,
@@ -237,28 +248,63 @@ export const Configuracoes: React.FC = () => {
         cancelamento_limite_horas: cancelamentoLimite,
         sinal_obrigatorio_geral: sinalObrigatorio
       }
-    });
+    };
+    updateConfigSalao(updated);
+    try {
+      await salvarConfiguracoesSupabase({ configSalao: { ...configSalao, ...updated } });
+      exibirToast('✅ Dados do salão e chave Pix salvos e sincronizados com a nuvem!');
+    } catch (e) {
+      exibirToast('⚠️ Dados salvos localmente!');
+    }
     triggerSuccess();
   };
 
-  const handleSalvarExpediente = (e: React.FormEvent) => {
+  const handleSalvarExpediente = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSalvandoExpediente(true);
     updateConfigSalao({
       horarios_trabalho: horarios
     });
-    triggerSuccess();
+    try {
+      await salvarConfiguracoesSupabase({
+        configSalao: {
+          ...configSalao,
+          horarios_trabalho: horarios
+        }
+      });
+      setExpedienteSalvoSucesso(true);
+      exibirToast('✅ Horários de funcionamento salvos e sincronizados com a nuvem!');
+      setTimeout(() => setExpedienteSalvoSucesso(false), 3000);
+    } catch (err) {
+      exibirToast('⚠️ Horários salvos localmente!');
+    } finally {
+      setSalvandoExpediente(false);
+      triggerSuccess();
+    }
   };
 
-  const handleSalvarMensagens = (e: React.FormEvent) => {
+  const handleSalvarMensagens = async (e: React.FormEvent) => {
     e.preventDefault();
+    const updatedTemplates = {
+      ...configSalao.templates_whatsapp,
+      confirmacao: templateConfirmacao,
+      lembrete: templateLembrete,
+      retorno_manutencao: templateManutencao
+    };
     updateConfigSalao({
-      templates_whatsapp: {
-        ...configSalao.templates_whatsapp,
-        confirmacao: templateConfirmacao,
-        lembrete: templateLembrete,
-        retorno_manutencao: templateManutencao
-      }
+      templates_whatsapp: updatedTemplates
     });
+    try {
+      await salvarConfiguracoesSupabase({
+        configSalao: {
+          ...configSalao,
+          templates_whatsapp: updatedTemplates
+        }
+      });
+      exibirToast('✅ Mensagens do WhatsApp salvas e sincronizadas com a nuvem!');
+    } catch (e) {
+      exibirToast('⚠️ Mensagens salvas localmente!');
+    }
     triggerSuccess();
   };
 
@@ -678,13 +724,48 @@ export const Configuracoes: React.FC = () => {
                 })}
               </div>
 
-              <div className="flex justify-end pt-4 border-t border-[#EFECE6]">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-[#EFECE6]">
+                <div className="text-xs">
+                  {expedienteSalvoSucesso ? (
+                    <span className="text-emerald-600 font-bold flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                      <Check size={14} /> Horários salvos e sincronizados na nuvem!
+                    </span>
+                  ) : salvandoExpediente ? (
+                    <span className="text-amber-600 font-medium flex items-center gap-1.5 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
+                      <Cloud size={14} className="animate-spin" /> Conectando ao banco de dados...
+                    </span>
+                  ) : (
+                    <span className="text-[#8C7A6B] text-[11px]">
+                      Os horários configurados atualizam a disponibilidade online automaticamente.
+                    </span>
+                  )}
+                </div>
+
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-colors"
+                  disabled={salvandoExpediente}
+                  className={`flex items-center gap-1.5 px-6 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all duration-300 ${
+                    expedienteSalvoSucesso
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-700/20 scale-105'
+                      : 'bg-[#8C6D58] hover:bg-[#725743] text-white'
+                  }`}
                 >
-                  <Save size={14} />
-                  <span>Salvar Agenda</span>
+                  {salvandoExpediente ? (
+                    <>
+                      <Cloud size={15} className="animate-spin" />
+                      <span>Salvando na Nuvem...</span>
+                    </>
+                  ) : expedienteSalvoSucesso ? (
+                    <>
+                      <Check size={15} />
+                      <span>Salvo com Sucesso!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save size={15} />
+                      <span>Salvar Horários de Trabalho</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -1413,6 +1494,20 @@ export const Configuracoes: React.FC = () => {
 
       {isGoogleSyncModalOpen && (
         <GoogleSyncModal onClose={() => setIsGoogleSyncModalOpen(false)} />
+      )}
+
+      {/* TOAST FLUTUANTE DE CONFIRMAÇÃO DE SALVAMENTO NA NUVEM */}
+      {toastNotificacao && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 duration-300 pointer-events-none">
+          <div className={`px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-2.5 text-xs font-bold ${
+            toastNotificacao.tipo === 'sucesso'
+              ? 'bg-[#1C1917] text-emerald-400 border-emerald-500/40 shadow-emerald-950/40'
+              : 'bg-[#1C1917] text-amber-300 border-amber-500/40'
+          }`}>
+            <Cloud size={16} className="text-emerald-400 shrink-0" />
+            <span>{toastNotificacao.mensagem}</span>
+          </div>
+        </div>
       )}
     </div>
   );

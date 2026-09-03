@@ -48,6 +48,20 @@ export const Confirmacoes: React.FC = () => {
   const [loteModalOpen, setLoteModalOpen] = useState(false);
   const [loteIndex, setLoteIndex] = useState(0);
 
+  // Função auxiliar para identificar se o agendamento é hoje, amanhã ou em outra data
+  const formatarDiaRelativo = (dataInicioStr: string): string => {
+    const hojeStr = new Date().toLocaleDateString('en-CA');
+    const dataApenas = dataInicioStr.split('T')[0];
+    if (dataApenas === hojeStr) return 'hoje';
+    
+    const dHoje = new Date(hojeStr + 'T00:00:00');
+    const dAgend = new Date(dataApenas + 'T00:00:00');
+    const diffDias = Math.round((dAgend.getTime() - dHoje.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDias === 1) return 'amanhã';
+    if (diffDias === -1) return 'ontem';
+    return `no dia ${dataApenas.split('-').reverse().join('/')}`;
+  };
+
   const handleIniciarDisparosLote = () => {
     const dataLimite = new Date(hoje);
     dataLimite.setDate(dataLimite.getDate() + 7);
@@ -67,6 +81,7 @@ export const Confirmacoes: React.FC = () => {
       const horaStr = a.inicio.split('T')[1].substring(0, 5);
       const servs = obterServicosDeAgendamento(a.id);
       const servText = servs.map(s => s.nome).join(' + ');
+      const diaRelativo = formatarDiaRelativo(a.inicio);
 
       let msg = '';
       if (tipo === 'confirmacao') {
@@ -81,6 +96,9 @@ export const Confirmacoes: React.FC = () => {
           .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
       } else {
         msg = configSalao.templates_whatsapp.lembrete
+          .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
+          .replace(/\bamanhã\b/gi, diaRelativo)
+          .replace('{dia_relativo}', diaRelativo)
           .replace('{cliente}', clientName)
           .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
           .replace('{hora}', horaStr)
@@ -264,7 +282,11 @@ export const Confirmacoes: React.FC = () => {
         .replace('{chave_pix}', configSalao.chave_pix)
         .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
     } else {
+      const diaRelativo = formatarDiaRelativo(a.inicio);
       msg = configSalao.templates_whatsapp.lembrete
+        .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
+        .replace(/\bamanhã\b/gi, diaRelativo)
+        .replace('{dia_relativo}', diaRelativo)
         .replace('{cliente}', client.nome)
         .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
         .replace('{hora}', horaStr)

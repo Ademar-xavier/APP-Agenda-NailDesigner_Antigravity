@@ -30,10 +30,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
     configSalao,
     obterProximoHorarioLivre,
     checkConflitoHorario,
+    equipe,
     logout
   } = useAppState();
 
   const [step, setStep] = useState<number>(1);
+  
+  // Profissional Selecionada
+  const [profissionalId, setProfissionalId] = useState<string>(''); // Vazio = Qualquer profissional disponível
+  const profissionaisAtivas = (equipe || []).filter(e => e.ativo !== false);
   
   // Agendamento State
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
@@ -106,9 +111,17 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
       const dateFim = new Date(dateInicio.getTime() + duracaoTotal * 60 * 1000);
       const fimAgend = dateFim.toISOString().replace(/\.\d+Z$/, '');
 
-      // Verifica se há conflito
-      const conflito = checkConflitoHorario(inicioAgend, fimAgend, 'u1');
-      if (!conflito) {
+      // Verifica se há vaga para a profissional selecionada ou se qualquer uma está livre
+      let temVaga = false;
+      if (profissionalId) {
+        temVaga = !checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+      } else {
+        temVaga = profissionaisAtivas.length === 0 
+          ? !checkConflitoHorario(inicioAgend, fimAgend, 'u1')
+          : profissionaisAtivas.some(p => !checkConflitoHorario(inicioAgend, fimAgend, p.id));
+      }
+
+      if (temVaga) {
         slots.push(slot);
       }
     }
@@ -137,17 +150,29 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
       cId = novoCli.id;
     }
 
-    // 2. Criar Agendamento
+    // 2. Definir Profissional Atendente
     const dataInicioStr = `${dataSelecionada}T${horarioSelecionado}:00`;
-    
+    const dateInicio = new Date(dataInicioStr);
+    const dateFim = new Date(dateInicio.getTime() + duracaoTotal * 60 * 1000);
+    const dataFimStr = dateFim.toISOString().replace(/\.\d+Z$/, '');
+
+    let profFinalId = profissionalId;
+    if (!profFinalId) {
+      const livre = profissionaisAtivas.find(p => !checkConflitoHorario(dataInicioStr, dataFimStr, p.id));
+      profFinalId = livre ? livre.id : (profissionaisAtivas[0]?.id || 'u1');
+    }
+
+    const profNome = profissionaisAtivas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
+    const obsComProf = observacoes ? `[Atendente: ${profNome}] ${observacoes}` : `[Atendente: ${profNome}]`;
+
     const res = addAgendamento({
       cliente_id: cId,
-      profissional_id: 'u1',
+      profissional_id: profFinalId,
       inicio: dataInicioStr,
       status: sinalTotal > 0 ? 'pendente' : 'confirmado',
       valor_total: precoTotal,
       valor_sinal: sinalTotal,
-      observacoes,
+      observacoes: obsComProf,
       origem: 'cliente'
     }, servicosSelecionados);
 
@@ -186,6 +211,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
     addListaEspera({
       cliente_id: cId,
       servico_id: servicosSelecionados[0] || 's1', // Vincula ao primeiro serviço selecionado
+      profissional_id: profissionalId || undefined,
       data_preferida: dataSelecionada,
       periodo_preferido: periodoPreferido
     });
@@ -370,6 +396,57 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                 <p className="text-xs text-[#A88690] mt-0.5">Selecione o dia e horário que melhor atendem você</p>
               </div>
             </div>
+
+            {/* Seletor de Profissional */}
+            {profissionaisAtivas.length > 1 && (
+              <div>
+                <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1.5">
+                  Profissional de Preferência
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfissionalId('');
+                      setHorarioSelecionado('');
+                    }}
+                    className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col gap-0.5 ${
+                      profissionalId === ''
+                        ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-sm'
+                        : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
+                    }`}
+                  >
+                    <span className="font-bold">🌟 Qualquer uma</span>
+                    <span className={`text-[10px] ${profissionalId === '' ? 'text-pink-100' : 'text-[#A88690]'}`}>
+                      Mais horários livres
+                    </span>
+                  </button>
+                  {profissionaisAtivas.map(p => {
+                    const isSelected = profissionalId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setProfissionalId(p.id);
+                          setHorarioSelecionado('');
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all text-xs flex flex-col gap-0.5 ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-sm'
+                            : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
+                        }`}
+                      >
+                        <span className="font-bold truncate">💅 {p.nome}</span>
+                        <span className={`text-[10px] capitalize ${isSelected ? 'text-pink-100' : 'text-[#A88690]'}`}>
+                          {p.perfil === 'admin' ? 'Especialista Master' : 'Designer'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Input de Data */}
             <div>
@@ -632,6 +709,20 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin }) => {
                   className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Profissional de Preferência</label>
+              <select
+                value={profissionalId}
+                onChange={(e) => setProfissionalId(e.target.value)}
+                className="w-full border border-[#FAD0DC]/50 bg-white rounded-xl p-2.5 text-xs text-[#5A3F45] focus:outline-none focus:border-[#DB7093]"
+              >
+                <option value="">Qualquer profissional disponível</option>
+                {profissionaisAtivas.map(p => (
+                  <option key={p.id} value={p.id}>💅 {p.nome} ({p.perfil === 'admin' ? 'Master' : 'Designer'})</option>
+                ))}
+              </select>
             </div>
 
             <div>
