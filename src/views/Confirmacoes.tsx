@@ -219,6 +219,18 @@ export const Confirmacoes: React.FC = () => {
     return `${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   };
 
+  const formatarDataBrasileira = (dataStr: string) => {
+    if (!dataStr) return '';
+    if (dataStr.includes('-')) {
+      const partes = dataStr.split('T')[0].split('-');
+      if (partes.length === 3) {
+        return `${partes[2]}/${partes[1]}/${partes[0]}`;
+      }
+    }
+    const d = new Date(dataStr);
+    return isNaN(d.getTime()) ? dataStr : d.toLocaleDateString('pt-BR');
+  };
+
   // Keyboard Escape listener to close details and modals in Confirmacoes.tsx
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -531,7 +543,7 @@ export const Confirmacoes: React.FC = () => {
                       <div>
                         <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">
-                          {serv?.nome} · Preferência: {w.data_preferida} ({w.periodo_preferido})
+                          {serv?.nome} · Preferência: {formatarDataBrasileira(w.data_preferida)} ({w.periodo_preferido})
                         </p>
                       </div>
                     </div>
@@ -655,7 +667,7 @@ export const Confirmacoes: React.FC = () => {
                 <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] text-xs space-y-1">
                   <p className="text-[#8C7A6B]">Cliente: <strong className="text-[#5A4535]">{client ? `${client.nome} (${client.telefone})` : 'Cliente não cadastrado'}</strong></p>
                   <p className="text-[#8C7A6B]">Serviço: <strong className="text-[#5A4535]">{serv?.nome} ({formatarMoeda(serv?.preco || 0)})</strong></p>
-                  <p className="text-[#8C7A6B]">Período de preferência: <strong className="text-[#5A4535]">{confirmarVagaItem.periodo_preferido}</strong></p>
+                  <p className="text-[#8C7A6B]">Data de preferência: <strong className="text-[#5A4535]">{formatarDataBrasileira(confirmarVagaItem.data_preferida)} ({confirmarVagaItem.periodo_preferido})</strong></p>
                 </div>
 
                 <div>

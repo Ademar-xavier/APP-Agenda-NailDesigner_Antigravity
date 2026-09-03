@@ -9,7 +9,8 @@ import {
   User, 
   X, 
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  RotateCcw
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
@@ -126,6 +127,57 @@ export const Agenda: React.FC<AgendaProps> = ({
       return profSelecionada.servicos_habilitados.includes(s.id);
     });
   }, [servicos, profSelecionada]);
+
+  // Resumo Inteligente de Tempo Total e Retorno de Manutenção
+  const resumoServicosSelecionados = useMemo(() => {
+    const selecionados = servicos.filter(s => servicosSelecionados.includes(s.id));
+    const duracaoTotal = selecionados.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0);
+    const precoTotal = selecionados.reduce((acc, s) => acc + (s.preco || 0), 0);
+    
+    // Intervalo de manutenção recomendado (pega o menor intervalo positivo entre os serviços selecionados)
+    const intervalos = selecionados
+      .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
+      .filter(d => d > 0);
+    
+    const diasRetorno = intervalos.length > 0 ? Math.min(...intervalos) : 0;
+
+    // Cálculo do horário previsto de término
+    let horaTermino = horaInicio;
+    if (horaInicio && duracaoTotal > 0) {
+      const partes = horaInicio.split(':').map(Number);
+      const h = partes[0] || 0;
+      const m = partes[1] || 0;
+      const totalMin = h * 60 + m + duracaoTotal;
+      const fimH = Math.floor(totalMin / 60) % 24;
+      const fimM = totalMin % 60;
+      horaTermino = `${String(fimH).padStart(2, '0')}:${String(fimM).padStart(2, '0')}`;
+    }
+
+    // Cálculo da data prevista de retorno
+    let dataSugeridaRetorno = '';
+    if (dataSelecionada && diasRetorno > 0) {
+      const d = new Date(dataSelecionada + 'T12:00:00');
+      d.setDate(d.getDate() + diasRetorno);
+      dataSugeridaRetorno = d.toLocaleDateString('pt-BR');
+    }
+
+    // Formatação amigável de horas e minutos (ex: 130 min = 2h 10min)
+    const horasFormatadas = Math.floor(duracaoTotal / 60);
+    const minFormatados = duracaoTotal % 60;
+    const duracaoExtenso = horasFormatadas > 0 
+      ? `${horasFormatadas}h${minFormatados > 0 ? ` ${minFormatados}min` : ''} (${duracaoTotal} min)`
+      : `${duracaoTotal} min`;
+
+    return {
+      selecionados,
+      duracaoTotal,
+      duracaoExtenso,
+      precoTotal,
+      diasRetorno,
+      horaTermino,
+      dataSugeridaRetorno
+    };
+  }, [servicos, servicosSelecionados, horaInicio, dataSelecionada]);
 
   // Local state for modal to prevent rendering lag
   const [localNewAgendamentoOpen, setLocalNewAgendamentoOpen] = useState(isNewAgendamentoModalOpen);
@@ -745,8 +797,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
                                   />
                                   <div>
-                                    <span className="font-semibold block">{s.nome}</span>
-                                    <span className="text-[10px] text-[#8C7A6B]">{s.duracao_minutos} min</span>
+                                    <span className="font-semibold block text-xs">{s.nome}</span>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-[#8C7A6B] mt-0.5">
+                                      <span>⏱️ {s.duracao_minutos} min</span>
+                                      <span>·</span>
+                                      <span>🔄 Retorno: {(s.intervalo_manutencao_dias || (s as any).retorno_dias) > 0 ? `${s.intervalo_manutencao_dias || (s as any).retorno_dias} dias` : 'Não exige'}</span>
+                                    </div>
                                   </div>
                                 </div>
                                 <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
@@ -755,6 +811,43 @@ export const Agenda: React.FC<AgendaProps> = ({
                           })
                         )}
                       </div>
+
+                      {/* Painel Informativo de Tempo e Retorno do Agendamento */}
+                      {resumoServicosSelecionados.selecionados.length > 0 && (
+                        <div className="mt-2.5 p-3 bg-[#FDF9F6] border border-[#F2DFD5] rounded-xl space-y-2 text-xs animate-in fade-in duration-150">
+                          <div className="flex items-center justify-between border-b border-[#F2DFD5]/70 pb-2">
+                            <span className="font-bold text-[#5A4535] flex items-center gap-1.5">
+                              <Clock size={13} className="text-[#8C6D58]" />
+                              <span>Tempo e Duração do Atendimento:</span>
+                            </span>
+                            <span className="font-bold text-[#8C6D58]">
+                              {resumoServicosSelecionados.duracaoExtenso}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#5A4535]">
+                            <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#F2DFD5]/50">
+                              <Clock size={12} className="text-[#8C6D58] shrink-0" />
+                              <div>
+                                <span className="text-[#8C7A6B] block text-[9px] uppercase font-bold">Horário de Atendimento</span>
+                                <strong>{horaInicio} às {resumoServicosSelecionados.horaTermino}</strong>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#F2DFD5]/50">
+                              <RotateCcw size={12} className="text-[#8C6D58] shrink-0" />
+                              <div>
+                                <span className="text-[#8C7A6B] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
+                                <strong>
+                                  {resumoServicosSelecionados.diasRetorno > 0
+                                    ? `${resumoServicosSelecionados.diasRetorno} dias (${resumoServicosSelecionados.dataSugeridaRetorno})`
+                                    : 'Não exige retorno programado'}
+                                </strong>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Cobrar Sinal Toggle */}
