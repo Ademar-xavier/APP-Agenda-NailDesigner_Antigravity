@@ -34,7 +34,8 @@ import {
   Edit2,
   Eye,
   EyeOff,
-  Info
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -66,6 +67,7 @@ export const Configuracoes: React.FC = () => {
     googleUserEmail,
     googleLastSync,
     desconectarGoogleAgenda,
+    limparAgendamentosSimuladosGoogle,
     isSyncingCloud,
     lastCloudSyncTime,
     sincronizarComNuvem,
@@ -703,10 +705,30 @@ export const Configuracoes: React.FC = () => {
                 </div>
               )}
 
-              {/* Developer credentials warning info */}
-              <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl text-[10px] text-amber-800 leading-relaxed space-y-1">
-                <p className="font-bold flex items-center gap-1"><AlertTriangle size={12} /> Nota de Configuração de Produção</p>
-                <p>Por padrão no protótipo, o login usa chaves de API virtuais e importa com sucesso os agendamentos da conta informada. Para vincular chaves oficiais do Google Cloud de produção do seu próprio negócio, acesse a documentação do Google API Console.</p>
+              {/* Modo de Produção Oficial & Ferramenta de Limpeza */}
+              <div className="p-3.5 bg-[#F4F9F5] border border-[#D5EBD9] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#2A5C38]">
+                <div className="space-y-0.5">
+                  <span className="font-bold flex items-center gap-1 text-[#205C38]">
+                    <ShieldCheck size={14} className="text-[#2B7A4B]" />
+                    Modo de Produção Oficial Ativado
+                  </span>
+                  <p className="text-[11px] text-[#4A7855] leading-relaxed">
+                    Sincronização direta com a Google Calendar API oficial ou por arquivo .ics sem dados simulados ou duplicados.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Deseja remover da agenda todos os compromissos antigos gerados pelo teste de simulação?')) {
+                      limparAgendamentosSimuladosGoogle();
+                      exibirToast('🧹 Agendamentos antigos de simulação removidos!');
+                    }
+                  }}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold shrink-0 transition-colors shadow-2xs"
+                >
+                  <Trash2 size={13} />
+                  <span>Limpar Testes Antigos</span>
+                </button>
               </div>
             </div>
           </div>

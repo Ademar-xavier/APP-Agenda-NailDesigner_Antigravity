@@ -11,7 +11,8 @@ import {
   X,
   RefreshCw,
   Package,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
@@ -30,6 +31,10 @@ export const Servicos: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [servicoEdicao, setServicoEdicao] = useState<Servico | null>(null);
+
+  // Filtros de busca
+  const [buscaNome, setBuscaNome] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
   // Form Fields
   const [nome, setNome] = useState('');
@@ -173,10 +178,26 @@ export const Servicos: React.FC = () => {
     setModalOpen(false);
   };
 
+  // Serviços ordenados por nome (A a Z) e filtrados por busca e categoria
+  const servicosFiltrados = useMemo(() => {
+    return servicos
+      .filter(s => s.ativo)
+      .filter(s => {
+        const matchNome = s.nome.toLowerCase().includes(buscaNome.toLowerCase().trim());
+        const matchCat = filtroCategoria === 'todas' || (s.categoria || '').toLowerCase() === filtroCategoria.toLowerCase();
+        return matchNome && matchCat;
+      })
+      .sort((a, b) => {
+        const cmpNome = a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+        if (cmpNome !== 0) return cmpNome;
+        return (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR', { sensitivity: 'base' });
+      });
+  }, [servicos, buscaNome, filtroCategoria]);
+
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-5">
         <div>
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Catálogo de Serviços</h2>
           <p className="text-xs text-[#8C7A6B]">Gerencie preços, durações, depósitos de sinal e recorrência de manutenção</p>
@@ -190,20 +211,71 @@ export const Servicos: React.FC = () => {
         </button>
       </div>
 
-      {/* Grid de Serviços */}
-      <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pr-1 pb-6">
-        {servicos
-          .filter(s => s.ativo)
-          .sort((a, b) => {
-            const cmpNome = a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
-            if (cmpNome !== 0) return cmpNome;
-            return (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR', { sensitivity: 'base' });
-          })
-          .map((s) => (
-            <div 
-              key={s.id} 
-              className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] flex flex-col justify-between gap-4 shadow-sm transition-all"
+      {/* Barra de Filtros */}
+      <div className="flex flex-col sm:flex-row items-center gap-3 mb-5 bg-white p-3 rounded-2xl border border-[#EFECE6] shadow-xs">
+        {/* Busca por Nome */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl w-full sm:flex-1">
+          <Search size={14} className="text-[#8C7A6B]" />
+          <input 
+            type="text"
+            placeholder="Buscar serviço por nome..."
+            value={buscaNome}
+            onChange={(e) => setBuscaNome(e.target.value)}
+            className="text-xs bg-transparent border-none outline-none focus:ring-0 w-full text-[#5A4535]"
+          />
+          {buscaNome && (
+            <button 
+              onClick={() => setBuscaNome('')}
+              className="text-[#8C7A6B] hover:text-[#5A4535] p-0.5"
+              title="Limpar busca"
             >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Filtro por Categoria */}
+        <div className="w-full sm:w-64">
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            className="w-full border border-[#EFECE6] bg-[#FAF9F6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+          >
+            <option value="todas">Todas as Categorias</option>
+            {[...categoriasServico].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        </div>
+
+        {(buscaNome || filtroCategoria !== 'todas') && (
+          <button
+            onClick={() => {
+              setBuscaNome('');
+              setFiltroCategoria('todas');
+            }}
+            className="text-[10px] text-[#8C6D58] hover:underline font-bold whitespace-nowrap px-2"
+          >
+            Limpar Filtros
+          </button>
+        )}
+      </div>
+
+      {/* Grid de Serviços */}
+      <div className="flex-1 overflow-y-auto pr-1 pb-6">
+        {servicosFiltrados.length === 0 ? (
+          <div className="text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
+            <Search size={36} className="mx-auto text-[#E8DEC9] mb-3" />
+            <h4 className="font-semibold text-sm">Nenhum serviço encontrado</h4>
+            <p className="text-xs mt-1 text-[#C2B7AE]">Tente ajustar a busca por nome ou selecionar outra categoria.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {servicosFiltrados.map((s) => (
+              <div 
+                key={s.id} 
+                className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] flex flex-col justify-between gap-4 shadow-sm transition-all"
+              >
               <div>
                 <div className="flex justify-between items-start gap-2">
                   <div className="p-2.5 bg-[#F6ECE8] text-[#8C6D58] rounded-xl h-fit">
@@ -319,6 +391,8 @@ export const Servicos: React.FC = () => {
               </div>
             </div>
           ))}
+          </div>
+        )}
       </div>
 
       {/* --- MODAL ADICIONAR / EDITAR SERVIÇO --- */}
