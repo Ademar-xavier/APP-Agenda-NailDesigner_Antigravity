@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
-import { Lock, Heart, Shield, Sparkles } from 'lucide-react';
+import { Lock, Heart, Shield, Sparkles, User } from 'lucide-react';
 
 interface LoginProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -8,7 +8,7 @@ interface LoginProps {
 
 export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
   const { equipe, loginWithCredentials } = useAppState();
-  const [selectedUserId, setSelectedUserId] = useState<string>(equipe[0]?.id || 'admin');
+  const [usuarioInput, setUsuarioInput] = useState<string>('admin');
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string>('');
 
@@ -16,17 +16,22 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     e.preventDefault();
     setError('');
 
-    const targetId = selectedUserId || equipe[0]?.id || 'admin_master';
+    const targetUser = usuarioInput.trim();
     const pwd = password.trim();
+
+    if (!targetUser) {
+      setError('Por favor, digite o usuário ou e-mail.');
+      return;
+    }
 
     if (!pwd) {
       setError('Por favor, digite a sua senha de acesso.');
       return;
     }
 
-    const success = loginWithCredentials(targetId, pwd);
+    const success = loginWithCredentials(targetUser, pwd);
     if (!success) {
-      setError('Senha incorreta. Verifique suas credenciais de acesso.');
+      setError('Usuário ou senha incorretos. Verifique suas credenciais.');
     }
   };
 
@@ -70,27 +75,53 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
             </div>
           )}
 
-          {/* Selecionar Usuário */}
+          {/* Campo de Usuário digitável */}
           <div>
             <label className="block text-[10px] font-bold text-[#A19488] uppercase tracking-wider mb-2">
-              Profissional / Perfil
+              Usuário ou E-mail
             </label>
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className="w-full bg-[#141414] border border-[#333] hover:border-[#8C6D58] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#8C6D58] transition-colors"
-            >
-              {equipe.length === 0 && (
-                <option value="admin">Administrador (Padrão: admin)</option>
-              )}
+            <div className="flex items-center bg-[#141414] border border-[#333] hover:border-[#8C6D58] focus-within:border-[#8C6D58] rounded-xl px-4 py-3 transition-colors">
+              <User size={16} className="text-[#555] shrink-0 mr-3" />
+              <input
+                type="text"
+                required
+                autoCapitalize="none"
+                placeholder="Digite seu usuário (ex: admin)"
+                value={usuarioInput}
+                onChange={(e) => setUsuarioInput(e.target.value)}
+                className="bg-transparent border-none outline-none text-sm text-white w-full placeholder-[#666] focus:ring-0"
+              />
+            </div>
+            {/* Sugestões rápidas de usuário */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <button
+                type="button"
+                onClick={() => setUsuarioInput('admin')}
+                className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
+                  usuarioInput.toLowerCase() === 'admin'
+                    ? 'bg-[#8C6D58]/30 border-[#8C6D58] text-[#E0C09E] font-bold'
+                    : 'bg-[#141414] border-[#333] text-[#888] hover:text-[#CCC]'
+                }`}
+              >
+                admin
+              </button>
               {equipe
-                .filter(u => u.ativo)
+                .filter(u => u.ativo && u.nome.toLowerCase() !== 'administrador')
                 .map(u => (
-                  <option key={u.id} value={u.id} className="bg-[#1E1E1E]">
-                    {u.nome} ({u.perfil === 'admin' ? 'Administradora' : 'Profissional'})
-                  </option>
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setUsuarioInput(u.nome)}
+                    className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${
+                      usuarioInput.toLowerCase() === u.nome.toLowerCase()
+                        ? 'bg-[#8C6D58]/30 border-[#8C6D58] text-[#E0C09E] font-bold'
+                        : 'bg-[#141414] border-[#333] text-[#888] hover:text-[#CCC]'
+                    }`}
+                  >
+                    {u.nome}
+                  </button>
                 ))}
-            </select>
+            </div>
           </div>
 
           {/* Senha */}
