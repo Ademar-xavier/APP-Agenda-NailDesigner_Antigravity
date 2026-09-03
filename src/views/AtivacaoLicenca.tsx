@@ -27,13 +27,13 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
   const [feedback, setFeedback] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
   const [ativando, setAtivando] = useState(false);
 
-  const handleAtivar = (e?: React.FormEvent) => {
+  const handleAtivar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setAtivando(true);
     setFeedback(null);
 
-    setTimeout(() => {
-      const res = ativarChaveLicenca(chave, titular);
+    try {
+      const res = await ativarChaveLicenca(chave, titular);
       setAtivando(false);
       setFeedback(res);
 
@@ -42,7 +42,10 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
           onLicencaAtivada(res.licenca!);
         }, 1200);
       }
-    }, 600);
+    } catch (err) {
+      setAtivando(false);
+      setFeedback({ sucesso: false, mensagem: 'Erro ao validar chave de ativação.' });
+    }
   };
 
   const preencherChaveDemonstracao = (chaveExemplo: string) => {
