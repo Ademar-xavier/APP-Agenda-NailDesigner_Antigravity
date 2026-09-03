@@ -97,9 +97,21 @@ export const Financeiro: React.FC = () => {
     }
   };
 
-  // --- FILTROS DE PERÍODO (Mês Atual em Tempo Real) ---
-  const mesAtualStr = new Date().toLocaleDateString('en-CA').slice(0, 7);
-  const agendamentosMes = agendamentos.filter(a => a.inicio.startsWith(mesAtualStr));
+  // --- FILTROS DE PERÍODO (Mês Selecionável em Tempo Real) ---
+  const mesHojeStr = new Date().toLocaleDateString('en-CA').slice(0, 7);
+  const [mesSelecionadoStr, setMesSelecionadoStr] = useState<string>(mesHojeStr);
+
+  const alterarMes = (delta: number) => {
+    const partes = mesSelecionadoStr.split('-');
+    const ano = Number(partes[0]);
+    const mes = Number(partes[1]);
+    const d = new Date(ano, mes - 1 + delta, 1);
+    const novoAno = d.getFullYear();
+    const novoMes = String(d.getMonth() + 1).padStart(2, '0');
+    setMesSelecionadoStr(`${novoAno}-${novoMes}`);
+  };
+
+  const agendamentosMes = agendamentos.filter(a => a.inicio.startsWith(mesSelecionadoStr));
   const concluidosMes = agendamentosMes.filter(a => a.status === 'concluido');
 
   // 1. Receitas Realizadas (KPI Box 1 - Atendimentos Concluídos)
@@ -112,7 +124,7 @@ export const Financeiro: React.FC = () => {
 
   // 3. Despesas Totais do Mês (KPI Box 3)
   const totalDespesasMes = despesas
-    .filter(d => d.data.startsWith(mesAtualStr))
+    .filter(d => d.data.startsWith(mesSelecionadoStr))
     .reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
 
   // 4. Lucro Líquido (KPI Box 4)
@@ -131,14 +143,14 @@ export const Financeiro: React.FC = () => {
   const expedienteMinutosMes = 22 * 540; // ~22 dias úteis de 9 horas
   const taxaOcupacao = Math.min(100, Math.round((totalMinutosAgendados / expedienteMinutosMes) * 100));
 
-  // --- GRAFICO: Faturamento realizado por dia no mês atual ---
-  const anoNum = Number(mesAtualStr.split('-')[0]);
-  const mesNum = Number(mesAtualStr.split('-')[1]);
+  // --- GRAFICO: Faturamento realizado por dia no mês selecionado ---
+  const anoNum = Number(mesSelecionadoStr.split('-')[0]);
+  const mesNum = Number(mesSelecionadoStr.split('-')[1]);
   const diasNoMes = new Date(anoNum, mesNum, 0).getDate();
 
   const faturamentoPorDia = Array.from({ length: diasNoMes }, (_, i) => {
     const dia = String(i + 1).padStart(2, '0');
-    const dataDiaStr = `${mesAtualStr}-${dia}`;
+    const dataDiaStr = `${mesSelecionadoStr}-${dia}`;
     const valorDia = concluidosMes
       .filter(a => a.inicio.startsWith(dataDiaStr))
       .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
@@ -175,8 +187,9 @@ export const Financeiro: React.FC = () => {
     .sort((a, b) => b.total - a.total);
 
   // --- PAGAMENTOS PENDENTES ---
-  const pagamentosPendentes = pagamentos.filter((p: any) => p.status === 'pendente' && p.data_pagamento?.startsWith(mesAtualStr));
-  const nomeMesAtual = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const pagamentosPendentes = pagamentos.filter((p: any) => p.status === 'pendente' && p.data_pagamento?.startsWith(mesSelecionadoStr));
+  const dataRef = new Date(anoNum, mesNum - 1, 1);
+  const nomeMesAtual = dataRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
@@ -196,16 +209,34 @@ export const Financeiro: React.FC = () => {
       </div>
 
       {/* Navegação de Período */}
-      <div className="flex items-center gap-3 mb-5">
-        <button className="p-1 text-[#8C7A6B] hover:text-[#5A4535]">
+      <div className="flex items-center gap-2 mb-5">
+        <button 
+          onClick={() => alterarMes(-1)}
+          className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
+          title="Mês anterior"
+        >
           <ChevronLeft size={18} />
         </button>
-        <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-xl shadow-sm capitalize">
+        <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-4 py-1.5 rounded-xl shadow-sm capitalize min-w-40 text-center">
           {nomeMesAtual}
         </span>
-        <button className="p-1 text-[#8C7A6B] hover:text-[#5A4535]">
+        <button 
+          onClick={() => alterarMes(1)}
+          className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
+          title="Próximo mês"
+        >
           <ChevronRight size={18} />
         </button>
+
+        {mesSelecionadoStr !== mesHojeStr && (
+          <button
+            onClick={() => setMesSelecionadoStr(mesHojeStr)}
+            className="text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] hover:bg-[#ebdace] px-2.5 py-1.5 rounded-lg transition-colors ml-1"
+            title="Voltar para o mês corrente"
+          >
+            Mês Atual
+          </button>
+        )}
       </div>
 
       {/* KPIs Grid */}

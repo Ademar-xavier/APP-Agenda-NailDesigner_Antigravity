@@ -194,6 +194,11 @@ export const Servicos: React.FC = () => {
       <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pr-1 pb-6">
         {servicos
           .filter(s => s.ativo)
+          .sort((a, b) => {
+            const cmpNome = a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+            if (cmpNome !== 0) return cmpNome;
+            return (a.categoria || '').localeCompare(b.categoria || '', 'pt-BR', { sensitivity: 'base' });
+          })
           .map((s) => (
             <div 
               key={s.id} 
@@ -384,7 +389,7 @@ export const Servicos: React.FC = () => {
                     }}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   >
-                    {categoriasServico.map(cat => (
+                    {[...categoriasServico].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                     <option value="nova">+ Nova Categoria</option>
@@ -451,7 +456,10 @@ export const Servicos: React.FC = () => {
                       <p className="text-[10px] text-[#8C7A6B] italic">Nenhum serviço individual cadastrado para compor o pacote.</p>
                     ) : (
                       <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                        {servicos.filter(s => !s.is_pacote && s.id !== servicoEdicao?.id).map(s => {
+                        {servicos
+                          .filter(s => !s.is_pacote && s.id !== servicoEdicao?.id)
+                          .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+                          .map(s => {
                           const itemDetalhe = servicosPacoteDetalhes.find(d => d.servico_id === s.id);
                           const checked = !!itemDetalhe;
                           const qtd = itemDetalhe?.quantidade || 1;
@@ -567,7 +575,7 @@ export const Servicos: React.FC = () => {
                         </p>
                       ) : (
                         <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                          {materiais.map(mat => {
+                          {[...materiais].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })).map(mat => {
                             const vinculo = materiaisSelecionados.find(ms => ms.material_id === mat.id);
                             const checked = !!vinculo;
                             
