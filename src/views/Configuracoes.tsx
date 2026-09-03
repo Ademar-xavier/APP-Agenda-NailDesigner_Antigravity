@@ -31,7 +31,10 @@ import {
   UploadCloud,
   ExternalLink,
   Calendar,
-  Edit2
+  Edit2,
+  Eye,
+  EyeOff,
+  Info
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -161,8 +164,9 @@ export const Configuracoes: React.FC = () => {
 
   // --- META WHATSAPP CONFIG STATE ---
   const [metaConfig, setMetaConfig] = useState(obterConfigMetaWhatsApp());
-  const [metaPhoneId, setMetaPhoneId] = useState(metaConfig.phoneNumberId);
-  const [metaToken, setMetaToken] = useState(metaConfig.accessToken);
+  const [metaPhoneId, setMetaPhoneId] = useState(metaConfig.phoneNumberId === 'admin' ? '' : metaConfig.phoneNumberId);
+  const [metaToken, setMetaToken] = useState(metaConfig.phoneNumberId === 'admin' ? '' : metaConfig.accessToken);
+  const [showMetaToken, setShowMetaToken] = useState(false);
   const [metaAtivo, setMetaAtivo] = useState(metaConfig.ativo);
   const [metaNumeroTeste, setMetaNumeroTeste] = useState(configSalao.telefone || '');
   const [metaTestando, setMetaTestando] = useState(false);
@@ -1064,29 +1068,56 @@ export const Configuracoes: React.FC = () => {
                     </label>
                     <input 
                       type="text" 
+                      name="meta_whatsapp_phone_number_id_input"
+                      autoComplete="off"
                       placeholder="Ex: 104829104810294"
                       value={metaPhoneId} 
                       onChange={(e) => setMetaPhoneId(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
                     />
                     <p className="text-[10px] text-[#A19488] mt-1">
-                      Encontrado no painel da Meta em WhatsApp &gt; Configuração da API.
+                      Encontrado no painel da Meta em WhatsApp &gt; Configuração da API (apenas números).
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
-                      Token de Acesso (Access Token)
-                    </label>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="block text-xs font-bold text-[#8C7A6B]">
+                        Token de Acesso (Access Token)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowMetaToken(!showMetaToken)}
+                        className="text-[10px] text-[#8C6D58] hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        {showMetaToken ? <EyeOff size={12} /> : <Eye size={12} />}
+                        <span>{showMetaToken ? 'Ocultar' : 'Visualizar'}</span>
+                      </button>
+                    </div>
                     <input 
-                      type="password" 
-                      placeholder="Cole aqui seu Token permanente ou temporário..."
+                      type={showMetaToken ? 'text' : 'password'}
+                      name="meta_whatsapp_access_token_input"
+                      autoComplete="new-password"
+                      placeholder="Cole aqui seu Token permanente ou temporário (inicia com EAA...)"
                       value={metaToken} 
                       onChange={(e) => setMetaToken(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
                     />
                     <p className="text-[10px] text-[#A19488] mt-1">
                       Token gerado na aba de desenvolvedor da Meta.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nota Esclarecedora sobre o WhatsApp Business Account ID */}
+                <div className="bg-[#FFF9FB] border border-[#FAD0DC] p-3 rounded-xl flex items-start gap-2.5 text-xs text-[#5A4535]">
+                  <Info size={15} className="text-[#DB7093] shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-[#C71585] text-xs block">
+                      Não achou o campo "WhatsApp Business Account ID"?
+                    </span>
+                    <p className="text-[11px] text-[#8C7A6B] leading-relaxed">
+                      Não se preocupe! O seu aplicativo <strong>não precisa do Business Account ID</strong>. Para enviar mensagens oficiais e interativas pela API da Meta, o sistema utiliza <strong>exclusivamente o Phone Number ID e o Token de Acesso</strong>.
                     </p>
                   </div>
                 </div>
