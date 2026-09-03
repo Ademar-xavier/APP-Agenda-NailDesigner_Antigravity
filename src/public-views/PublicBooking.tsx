@@ -786,7 +786,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         <RotateCcw size={12} />
                         Sugestão de Retorno:
                       </span>
-                      <span className="font-bold">{menorRetorno} dias ({diaF}/${mesF}/${anoF})</span>
+                      <span className="font-bold">{menorRetorno} dias ({diaF}/{mesF}/{anoF})</span>
                     </div>
                   );
                 }
