@@ -12,6 +12,16 @@ import {
   Despesa,
   Material
 } from '../types';
+import { 
+  supabase,
+  salvarClienteSupabase,
+  salvarAgendamentoSupabase,
+  atualizarStatusAgendamentoSupabase,
+  deletarAgendamentoSupabase,
+  salvarListaEsperaSupabase,
+  atualizarStatusListaEsperaSupabase,
+  carregarDadosNuvemSupabase
+} from '../services/supabase';
 
 interface AppStateContextType {
   clientes: Cliente[];
@@ -476,6 +486,75 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, [currentUser]);
 
+  // Sincronização em Nuvem (Supabase) + Ouvinte em Tempo Real (Realtime)
+  useEffect(() => {
+    // 1. Carrega dados da nuvem e mescla com dados locais
+    carregarDadosNuvemSupabase().then(dados => {
+      if (!dados) return;
+      if (dados.clientes && dados.clientes.length > 0) {
+        setClientes(prev => {
+          const map = new Map(prev.map(c => [c.id, c]));
+          dados.clientes.forEach((c: any) => map.set(c.id, c));
+          return Array.from(map.values());
+        });
+      }
+      if (dados.agendamentos && dados.agendamentos.length > 0) {
+        setAgendamentos(prev => {
+          const map = new Map(prev.map(a => [a.id, a]));
+          dados.agendamentos.forEach((a: any) => map.set(a.id, a));
+          return Array.from(map.values());
+        });
+      }
+      if (dados.listaEspera && dados.listaEspera.length > 0) {
+        setListaEspera(prev => {
+          const map = new Map(prev.map(l => [l.id, l]));
+          dados.listaEspera.forEach((l: any) => map.set(l.id, l));
+          return Array.from(map.values());
+        });
+      }
+    });
+
+    // 2. Escuta novos agendamentos e lista de espera em tempo real vindos do link da cliente!
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agendamentos' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          setAgendamentos(prev => {
+            if (prev.some(a => a.id === payload.new.id)) return prev;
+            return [payload.new as Agendamento, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setAgendamentos(prev => prev.map(a => a.id === payload.new.id ? { ...a, ...payload.new } : a));
+        } else if (payload.eventType === 'DELETE') {
+          setAgendamentos(prev => prev.filter(a => a.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lista_espera' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          setListaEspera(prev => {
+            if (prev.some(l => l.id === payload.new.id)) return prev;
+            return [payload.new as ListaEspera, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setListaEspera(prev => prev.map(l => l.id === payload.new.id ? { ...l, ...payload.new } : l));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, (payload: any) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          setClientes(prev => {
+            const map = new Map(prev.map(c => [c.id, c]));
+            map.set(payload.new.id, payload.new as Cliente);
+            return Array.from(map.values());
+          });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Auxiliar para gerar ID único
   const gerarId = () => {
     return Math.random().toString(36).substring(2, 11);
@@ -553,11 +632,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       criado_em: new Date().toISOString()
     };
     setClientes(prev => [...prev, cliente]);
+    salvarClienteSupabase(cliente);
     return cliente;
   };
 
   const updateCliente = (id: string, updated: Partial<Cliente>) => {
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+    setClientes(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...updated } : c);
+      const cli = next.find(c => c.id === id);
+      if (cli) salvarClienteSupabase(cli);
+      return next;
+    });
   };
 
   const deleteCliente = (id: string) => {
@@ -758,6 +843,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     setAgendamentos(prev => [...prev, agendamento]);
+    salvarAgendamentoSupabase(agendamento, servicosSelecionados);
 
     if (googleConnected) {
       const cli = clientes.find(c => c.id === agendamento.cliente_id);
@@ -775,6 +861,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const updateAgendamentoStatus = (id: string, status: AgendamentoStatus) => {
     setAgendamentos(prev => prev.map(a => a.id === id ? { ...a, status } : a));
+    atualizarStatusAgendamentoSupabase(id, status);
   };
 
   const cancelAgendamento = (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => {
@@ -790,6 +877,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return a;
     }));
 
+    atualizarStatusAgendamentoSupabase(id, 'cancelado', canceladoPor, motivo);
+
     setPagamentos(prev => prev.map(p => {
       if (p.agendamento_id === id) {
         if (canceladoPor === 'admin') {
@@ -803,6 +892,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteAgendamento = (id: string) => {
     limparFocoAtivo();
     setAgendamentos(prev => prev.filter(a => a.id !== id));
+    deletarAgendamentoSupabase(id);
   };
 
   const confirmarSinal = (agendamentoId: string, valor: number, metodo: MetodoPagamento) => {
@@ -868,14 +958,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       criado_em: new Date().toISOString()
     };
     setListaEspera(prev => [...prev, novoItem]);
+    salvarListaEsperaSupabase(novoItem);
   };
 
   const updateListaEsperaStatus = (id: string, status: ListaEspera['status']) => {
     setListaEspera(prev => prev.map(w => w.id === id ? { ...w, status } : w));
+    atualizarStatusListaEsperaSupabase(id, status);
   };
 
   const atenderListaEspera = (id: string, agendamentoId: string) => {
     setListaEspera(prev => prev.map(w => w.id === id ? { ...w, status: 'atendido' } : w));
+    atualizarStatusListaEsperaSupabase(id, 'atendido');
   };
 
   // --- Configurações ---
