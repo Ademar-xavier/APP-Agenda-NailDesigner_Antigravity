@@ -37,7 +37,8 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
     conectarGoogleAgenda, 
     desconectarGoogleAgenda, 
     sincronizarGoogleAgenda,
-    limparAgendamentosSimuladosGoogle
+    limparAgendamentosSimuladosGoogle,
+    confirmarAcao
   } = useAppState();
 
   const [carregando, setCarregando] = useState(false);
@@ -239,9 +240,13 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
           <button
             type="button"
             onClick={() => {
-              if (confirm('Deseja remover todos os agendamentos antigos gerados pela simulação?')) {
-                limparAgendamentosSimuladosGoogle();
-              }
+              confirmarAcao({
+                titulo: 'Limpar Testes',
+                mensagem: 'Deseja remover todos os agendamentos antigos gerados pela simulação?',
+                tipo: 'aviso',
+                textoConfirmar: 'Remover Testes',
+                onConfirm: () => limparAgendamentosSimuladosGoogle()
+              });
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-[11px] font-bold shrink-0 transition-colors shadow-2xs"
           >

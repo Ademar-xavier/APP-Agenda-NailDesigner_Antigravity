@@ -25,7 +25,8 @@ export const Cadastros: React.FC = () => {
     deleteCategoriaServico,
     categoriasDespesa,
     addCategoriaDespesa,
-    deleteCategoriaDespesa
+    deleteCategoriaDespesa,
+    confirmarAcao
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<TabCadastros>('tecnicas');
@@ -187,9 +188,13 @@ export const Cadastros: React.FC = () => {
                     <span className="font-semibold text-[#5A4535]">{tec}</span>
                     <button
                       onClick={() => {
-                        if (confirm(`Deseja remover a técnica "${tec}"?`)) {
-                          deleteTecnica(tec);
-                        }
+                        confirmarAcao({
+                          titulo: 'Remover Técnica',
+                          mensagem: `Deseja remover a técnica "${tec}"?`,
+                          tipo: 'erro',
+                          textoConfirmar: 'Remover',
+                          onConfirm: () => deleteTecnica(tec)
+                        });
                       }}
                       className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
                     >
@@ -247,9 +252,13 @@ export const Cadastros: React.FC = () => {
                     <span className="font-semibold text-[#5A4535]">{form}</span>
                     <button
                       onClick={() => {
-                        if (confirm(`Deseja remover o formato "${form}"?`)) {
-                          deleteFormato(form);
-                        }
+                        confirmarAcao({
+                          titulo: 'Remover Formato',
+                          mensagem: `Deseja remover o formato "${form}"?`,
+                          tipo: 'erro',
+                          textoConfirmar: 'Remover',
+                          onConfirm: () => deleteFormato(form)
+                        });
                       }}
                       className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
                     >
@@ -307,9 +316,13 @@ export const Cadastros: React.FC = () => {
                     <span className="font-semibold text-[#5A4535]">{cat}</span>
                     <button
                       onClick={() => {
-                        if (confirm(`Deseja remover a categoria de serviço "${cat}"?`)) {
-                          deleteCategoriaServico(cat);
-                        }
+                        confirmarAcao({
+                          titulo: 'Remover Categoria',
+                          mensagem: `Deseja remover a categoria de serviço "${cat}"?`,
+                          tipo: 'erro',
+                          textoConfirmar: 'Remover',
+                          onConfirm: () => deleteCategoriaServico(cat)
+                        });
                       }}
                       className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
                     >
@@ -367,9 +380,13 @@ export const Cadastros: React.FC = () => {
                     <span className="font-semibold text-[#5A4535]">{cat}</span>
                     <button
                       onClick={() => {
-                        if (confirm(`Deseja remover a categoria de despesa "${cat}"?`)) {
-                          deleteCategoriaDespesa(cat);
-                        }
+                        confirmarAcao({
+                          titulo: 'Remover Categoria',
+                          mensagem: `Deseja remover a categoria de despesa "${cat}"?`,
+                          tipo: 'erro',
+                          textoConfirmar: 'Remover',
+                          onConfirm: () => deleteCategoriaDespesa(cat)
+                        });
                       }}
                       className="p-1 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
                     >

@@ -38,7 +38,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     cancelAgendamento,
     confirmarSinal,
     concluirAtendimento,
-    obterServicosDeAgendamento
+    obterServicosDeAgendamento,
+    confirmarAcao,
+    mostrarAlerta
   } = useAppState();
 
   const [acao, setAcao] = useState<Acao>(null);
@@ -106,60 +108,75 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     };
     const diaRelativo = formatarDiaRelativo(agendamento.inicio);
 
+    const enviarWhatsAppConvencional = () => {
+      let msg = '';
+      if (tipo === 'confirmacao') {
+        msg = configSalao.templates_whatsapp.confirmacao
+          .replace('{cliente}', cliente.nome)
+          .replace('{servico}', servText)
+          .replace('{profissional}', prof?.nome || 'Sheila')
+          .replace('{data}', dataFormatada)
+          .replace('{hora}', horaStr)
+          .replace('{sinal}', String(agendamento.valor_sinal))
+          .replace('{chave_pix}', configSalao.chave_pix)
+          .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
+      } else {
+        msg = configSalao.templates_whatsapp.lembrete
+          .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
+          .replace(/\bamanhã\b/gi, diaRelativo)
+          .replace('{dia_relativo}', diaRelativo)
+          .replace('{cliente}', cliente.nome)
+          .replace('{data}', dataFormatada)
+          .replace('{hora}', horaStr)
+          .replace('{servico}', servText)
+          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+      }
+
+      const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+      window.open(url, '_blank');
+    };
+
     // Se a Meta Cloud API estiver ativa, oferece envio oficial com botões clicáveis
     const metaConfig = obterConfigMetaWhatsApp();
     if (metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken) {
-      const usarMeta = confirm(
-        '✨ Deseja enviar esta mensagem com BOTÕES CLICÁVEIS oficiais do WhatsApp?\n\n' +
-        '• A cliente receberá na tela os botões [✅ Confirmar Horário] e [❌ Cancelar].\n' +
-        '• Se preferir abrir no WhatsApp normal, clique em "Cancelar".'
-      );
+      confirmarAcao({
+        titulo: 'Enviar com Botões Oficiais do WhatsApp?',
+        mensagem: 'A cliente receberá uma mensagem interativa com os botões [✅ Confirmar Horário] e [❌ Cancelar]. Se preferir abrir no aplicativo do WhatsApp, escolha "Abrir no WhatsApp".',
+        tipo: 'info',
+        textoConfirmar: 'Enviar Botões Oficiais',
+        textoCancelar: 'Abrir no WhatsApp',
+        onConfirm: async () => {
+          const textoCorpo = tipo === 'confirmacao'
+            ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo:`
+            : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} ${diaRelativo} (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
 
-      if (usarMeta) {
-        const textoCorpo = tipo === 'confirmacao'
-          ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo:`
-          : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} ${diaRelativo} (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
+          const res = await enviarMensagemBotaoMeta({
+            destinatario: fone,
+            headerText: '✨ Sheila Santos Nails',
+            textoCorpo,
+            botoes: [
+              { id: `confirmar_${agendamento.id}`, title: '✅ Confirmar Horário' },
+              { id: `cancelar_${agendamento.id}`, title: '❌ Cancelar / Remarcar' }
+            ]
+          });
 
-        const res = await enviarMensagemBotaoMeta({
-          destinatario: fone,
-          headerText: '✨ Sheila Santos Nails',
-          textoCorpo,
-          botoes: [
-            { id: `confirmar_${agendamento.id}`, title: '✅ Confirmar Horário' },
-            { id: `cancelar_${agendamento.id}`, title: '❌ Cancelar / Remarcar' }
-          ]
-        });
-
-        alert(res.mensagem);
-        if (res.sucesso) return;
-      }
-    }
-    
-    let msg = '';
-    if (tipo === 'confirmacao') {
-      msg = configSalao.templates_whatsapp.confirmacao
-        .replace('{cliente}', cliente.nome)
-        .replace('{servico}', servText)
-        .replace('{profissional}', prof?.nome || 'Sheila')
-        .replace('{data}', dataFormatada)
-        .replace('{hora}', horaStr)
-        .replace('{sinal}', String(agendamento.valor_sinal))
-        .replace('{chave_pix}', configSalao.chave_pix)
-        .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
-    } else {
-      msg = configSalao.templates_whatsapp.lembrete
-        .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
-        .replace(/\bamanhã\b/gi, diaRelativo)
-        .replace('{dia_relativo}', diaRelativo)
-        .replace('{cliente}', cliente.nome)
-        .replace('{data}', dataFormatada)
-        .replace('{hora}', horaStr)
-        .replace('{servico}', servText)
-        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+          mostrarAlerta({
+            titulo: res.sucesso ? 'Mensagem Enviada' : 'Aviso no Envio',
+            mensagem: res.mensagem,
+            tipo: res.sucesso ? 'sucesso' : 'erro'
+          });
+          if (!res.sucesso) {
+            enviarWhatsAppConvencional();
+          }
+        },
+        onCancel: () => {
+          enviarWhatsAppConvencional();
+        }
+      });
+      return;
     }
 
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    enviarWhatsAppConvencional();
   };
 
   // Lógica de ações

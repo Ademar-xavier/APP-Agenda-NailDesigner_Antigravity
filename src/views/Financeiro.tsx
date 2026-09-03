@@ -16,7 +16,8 @@ import {
   Tag,
   Trash2,
   List,
-  FolderPlus
+  FolderPlus,
+  User
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
@@ -34,8 +35,12 @@ export const Financeiro: React.FC = () => {
     deleteDespesa,
     categoriasDespesa,
     addCategoriaDespesa,
-    deleteCategoriaDespesa
+    deleteCategoriaDespesa,
+    equipe,
+    confirmarAcao
   } = useAppState();
+
+  const [profissionalFiltro, setProfissionalFiltro] = useState<string>('todas');
 
   const [busca, setBusca] = useState('');
   const [despesaModal, setDespesaModal] = useState(false);
@@ -92,9 +97,14 @@ export const Financeiro: React.FC = () => {
   };
 
   const handleExcluirDespesa = (id: string) => {
-    if (confirm('Deseja realmente excluir esta despesa?')) {
-      deleteDespesa(id);
-    }
+    confirmarAcao({
+      titulo: 'Excluir Despesa',
+      mensagem: 'Deseja realmente excluir esta despesa?',
+      tipo: 'erro',
+      textoConfirmar: 'Excluir',
+      textoCancelar: 'Cancelar',
+      onConfirm: () => deleteDespesa(id)
+    });
   };
 
   // --- FILTROS DE PERÍODO (Mês Selecionável em Tempo Real) ---
@@ -111,7 +121,14 @@ export const Financeiro: React.FC = () => {
     setMesSelecionadoStr(`${novoAno}-${novoMes}`);
   };
 
-  const agendamentosMes = agendamentos.filter(a => a.inicio.startsWith(mesSelecionadoStr));
+  const agendamentosMes = agendamentos.filter(a => {
+    const matchMes = a.inicio.startsWith(mesSelecionadoStr);
+    if (!matchMes) return false;
+    if (profissionalFiltro !== 'todas') {
+      return a.profissional_id === profissionalFiltro;
+    }
+    return true;
+  });
   const concluidosMes = agendamentosMes.filter(a => a.status === 'concluido');
 
   // 1. Receitas Realizadas (KPI Box 1 - Atendimentos Concluídos)
@@ -187,7 +204,15 @@ export const Financeiro: React.FC = () => {
     .sort((a, b) => b.total - a.total);
 
   // --- PAGAMENTOS PENDENTES ---
-  const pagamentosPendentes = pagamentos.filter((p: any) => p.status === 'pendente' && p.data_pagamento?.startsWith(mesSelecionadoStr));
+  const pagamentosPendentes = pagamentos.filter((p: any) => {
+    const matchMes = p.status === 'pendente' && p.data_pagamento?.startsWith(mesSelecionadoStr);
+    if (!matchMes) return false;
+    if (profissionalFiltro !== 'todas') {
+      const agend = agendamentos.find(a => a.id === p.agendamento_id);
+      return agend?.profissional_id === profissionalFiltro;
+    }
+    return true;
+  });
   const dataRef = new Date(anoNum, mesNum - 1, 1);
   const nomeMesAtual = dataRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
@@ -208,35 +233,55 @@ export const Financeiro: React.FC = () => {
         </button>
       </div>
 
-      {/* Navegação de Período */}
-      <div className="flex items-center gap-2 mb-5">
-        <button 
-          onClick={() => alterarMes(-1)}
-          className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
-          title="Mês anterior"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-4 py-1.5 rounded-xl shadow-sm capitalize min-w-40 text-center">
-          {nomeMesAtual}
-        </span>
-        <button 
-          onClick={() => alterarMes(1)}
-          className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
-          title="Próximo mês"
-        >
-          <ChevronRight size={18} />
-        </button>
-
-        {mesSelecionadoStr !== mesHojeStr && (
-          <button
-            onClick={() => setMesSelecionadoStr(mesHojeStr)}
-            className="text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] hover:bg-[#ebdace] px-2.5 py-1.5 rounded-lg transition-colors ml-1"
-            title="Voltar para o mês corrente"
+      {/* Navegação de Período & Filtro de Profissional */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => alterarMes(-1)}
+            className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
+            title="Mês anterior"
           >
-            Mês Atual
+            <ChevronLeft size={18} />
           </button>
-        )}
+          <span className="text-xs font-bold text-[#5A4535] bg-white border border-[#EFECE6] px-4 py-1.5 rounded-xl shadow-sm capitalize min-w-40 text-center">
+            {nomeMesAtual}
+          </span>
+          <button 
+            onClick={() => alterarMes(1)}
+            className="p-1.5 text-[#8C7A6B] hover:text-[#5A4535] hover:bg-white rounded-lg transition-colors border border-transparent hover:border-[#EFECE6]"
+            title="Próximo mês"
+          >
+            <ChevronRight size={18} />
+          </button>
+
+          {mesSelecionadoStr !== mesHojeStr && (
+            <button
+              onClick={() => setMesSelecionadoStr(mesHojeStr)}
+              className="text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] hover:bg-[#ebdace] px-2.5 py-1.5 rounded-lg transition-colors ml-1"
+              title="Voltar para o mês corrente"
+            >
+              Mês Atual
+            </button>
+          )}
+        </div>
+
+        {/* Filtro por Profissional (Solicitado pelo Usuário) */}
+        <div className="flex items-center gap-2 bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-xl shadow-sm">
+          <User size={15} className="text-[#8C6D58]" />
+          <span className="text-[11px] font-bold text-[#8C7A6B] hidden sm:inline">Profissional:</span>
+          <select
+            value={profissionalFiltro}
+            onChange={(e) => setProfissionalFiltro(e.target.value)}
+            className="text-xs font-bold text-[#5A4535] bg-transparent outline-none cursor-pointer pr-1"
+          >
+            <option value="todas">Todas as Profissionais (Geral)</option>
+            {equipe.map(membro => (
+              <option key={membro.id} value={membro.id}>
+                {membro.nome}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* KPIs Grid */}
@@ -426,9 +471,14 @@ export const Financeiro: React.FC = () => {
                       <span className="font-extrabold text-[#5A4535]">{formatarMoeda(p.valor)}</span>
                       <button
                         onClick={() => {
-                          if (confirm(`Confirmar recebimento do pagamento de ${client?.nome}?`)) {
-                            confirmarSinal(p.agendamento_id, p.valor, 'pix');
-                          }
+                          confirmarAcao({
+                            titulo: 'Confirmar Pagamento',
+                            mensagem: `Confirmar recebimento do pagamento de ${client?.nome || 'Cliente'} no valor de ${formatarMoeda(p.valor)}?`,
+                            tipo: 'sucesso',
+                            textoConfirmar: 'Confirmar',
+                            textoCancelar: 'Voltar',
+                            onConfirm: () => confirmarSinal(p.agendamento_id, p.valor, 'pix')
+                          });
                         }}
                         className="bg-white hover:bg-[#8C6D58] border border-[#8C6D58] text-[#8C6D58] hover:text-white px-2 py-1 rounded-lg text-[9px] font-bold uppercase transition-all shadow-sm"
                       >

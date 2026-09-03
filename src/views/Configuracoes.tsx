@@ -72,7 +72,8 @@ export const Configuracoes: React.FC = () => {
     lastCloudSyncTime,
     sincronizarComNuvem,
     enviarDadosParaNuvem,
-    mostrarAlerta
+    mostrarAlerta,
+    confirmarAcao
   } = useAppState();
   
   const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp' | 'licenca'>('geral');
@@ -109,11 +110,18 @@ export const Configuracoes: React.FC = () => {
   };
 
   const handleRevogarLicenca = () => {
-    if (confirm('Tem certeza que deseja desativar a licença deste aparelho? O aplicativo será bloqueado até que uma nova chave seja inserida.')) {
-      revogarLicenca();
-      setLicencaAtual(null);
-      window.location.reload();
-    }
+    confirmarAcao({
+      titulo: 'Desativar Licença',
+      mensagem: 'Tem certeza que deseja desativar a licença deste aparelho? O aplicativo será bloqueado até que uma nova chave seja inserida.',
+      tipo: 'erro',
+      textoConfirmar: 'Desativar',
+      textoCancelar: 'Cancelar',
+      onConfirm: () => {
+        revogarLicenca();
+        setLicencaAtual(null);
+        window.location.reload();
+      }
+    });
   };
 
   const handleCopiarLink = () => {
@@ -144,37 +152,59 @@ export const Configuracoes: React.FC = () => {
   };
 
   const handleLimparCache = async () => {
-    if (confirm('Deseja limpar os arquivos temporários de cache e recarregar a versão mais recente da nuvem?\n\n(Seus clientes, serviços e agendamentos no banco Supabase NÃO serão perdidos!)')) {
-      try {
-        if ('caches' in window) {
-          const names = await caches.keys();
-          await Promise.all(names.map(name => caches.delete(name)));
-        }
-        if ('serviceWorker' in navigator) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          for (const reg of registrations) {
-            await reg.unregister();
+    confirmarAcao({
+      titulo: 'Limpar Cache do App',
+      mensagem: 'Deseja limpar os arquivos temporários de cache e recarregar a versão mais recente da nuvem?\n\n(Seus clientes, serviços e agendamentos no banco Supabase NÃO serão perdidos!)',
+      tipo: 'aviso',
+      textoConfirmar: 'Limpar e Recarregar',
+      textoCancelar: 'Cancelar',
+      onConfirm: async () => {
+        try {
+          if ('caches' in window) {
+            const names = await caches.keys();
+            await Promise.all(names.map(name => caches.delete(name)));
           }
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const reg of registrations) {
+              await reg.unregister();
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao limpar caches:', e);
         }
-      } catch (e) {
-        console.error('Erro ao limpar caches:', e);
+        window.location.href = window.location.origin + window.location.pathname + '?t=' + Date.now();
       }
-      window.location.href = window.location.origin + window.location.pathname + '?t=' + Date.now();
-    }
+    });
   };
 
   const handleSincronizarNuvem = async () => {
     const res = await sincronizarComNuvem(true);
     setSyncFeedback(res.sucesso ? 'Sincronizado!' : 'Erro');
     setTimeout(() => setSyncFeedback(null), 3000);
-    alert(res.mensagem);
+    mostrarAlerta({
+      titulo: res.sucesso ? 'Sincronização Concluída' : 'Erro de Sincronização',
+      mensagem: res.mensagem,
+      tipo: res.sucesso ? 'sucesso' : 'erro'
+    });
   };
 
   const handleEnviarDadosNuvem = async () => {
-    if (confirm('Deseja enviar todos os clientes, agendamentos e serviços deste aparelho para o banco de dados na nuvem?')) {
-      const res = await enviarDadosParaNuvem();
-      alert(res.mensagem);
-    }
+    confirmarAcao({
+      titulo: 'Enviar Dados para a Nuvem',
+      mensagem: 'Deseja enviar todos os clientes, agendamentos e serviços deste aparelho para o banco de dados na nuvem?',
+      tipo: 'aviso',
+      textoConfirmar: 'Enviar Agora',
+      textoCancelar: 'Cancelar',
+      onConfirm: async () => {
+        const res = await enviarDadosParaNuvem();
+        mostrarAlerta({
+          titulo: res.sucesso ? 'Upload Concluído' : 'Aviso',
+          mensagem: res.mensagem,
+          tipo: res.sucesso ? 'sucesso' : 'erro'
+        });
+      }
+    });
   };
 
   // --- META WHATSAPP CONFIG STATE ---
@@ -201,7 +231,11 @@ export const Configuracoes: React.FC = () => {
 
   const handleTestarEnvioMeta = async () => {
     if (!metaNumeroTeste.trim()) {
-      alert('Por favor, informe o número de WhatsApp com DDD para o teste.');
+      mostrarAlerta({
+        titulo: 'Telefone Obrigatório',
+        mensagem: 'Por favor, informe o número de WhatsApp com DDD para realizar o teste de envio.',
+        tipo: 'aviso'
+      });
       return;
     }
     setMetaTestando(true);
@@ -732,10 +766,16 @@ export const Configuracoes: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm('Deseja remover da agenda todos os compromissos antigos gerados pelo teste de simulação?')) {
-                      limparAgendamentosSimuladosGoogle();
-                      exibirToast('🧹 Agendamentos antigos de simulação removidos!');
-                    }
+                    confirmarAcao({
+                      titulo: 'Limpar Testes',
+                      mensagem: 'Deseja remover da agenda todos os compromissos antigos gerados pelo teste de simulação?',
+                      tipo: 'aviso',
+                      textoConfirmar: 'Remover Testes',
+                      onConfirm: () => {
+                        limparAgendamentosSimuladosGoogle();
+                        exibirToast('🧹 Agendamentos antigos de simulação removidos!');
+                      }
+                    });
                   }}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold shrink-0 transition-colors shadow-2xs"
                 >
@@ -1024,9 +1064,13 @@ export const Configuracoes: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (confirm(`Deseja realmente remover o usuário ${membro.nome}?`)) {
-                                deleteEquipe(membro.id);
-                              }
+                              confirmarAcao({
+                                titulo: 'Remover Usuário',
+                                mensagem: `Deseja realmente remover o usuário ${membro.nome}?`,
+                                tipo: 'erro',
+                                textoConfirmar: 'Remover',
+                                onConfirm: () => deleteEquipe(membro.id)
+                              });
                             }}
                             className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-1"
                             title="Remover usuário"
@@ -1263,7 +1307,7 @@ export const Configuracoes: React.FC = () => {
                         type="button"
                         onClick={() => {
                           navigator.clipboard.writeText('https://sheilasantos-agenda.netlify.app/api/whatsapp-webhook');
-                          alert('URL do Webhook copiada com sucesso!');
+                          exibirToast('URL do Webhook copiada com sucesso!');
                         }}
                         className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
                         title="Copiar URL"
@@ -1289,7 +1333,7 @@ export const Configuracoes: React.FC = () => {
                         type="button"
                         onClick={() => {
                           navigator.clipboard.writeText('sheila_nail_webhook_secret');
-                          alert('Token de verificação copiado com sucesso!');
+                          exibirToast('Token de verificação copiado com sucesso!');
                         }}
                         className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
                         title="Copiar Token"

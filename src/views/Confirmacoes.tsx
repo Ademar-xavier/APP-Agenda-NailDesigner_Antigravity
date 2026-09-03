@@ -32,7 +32,9 @@ export const Confirmacoes: React.FC = () => {
     addAgendamento,
     equipe,
     currentUser,
-    obterRecomendacoesManutencao
+    obterRecomendacoesManutencao,
+    confirmarAcao,
+    mostrarAlerta
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -119,7 +121,11 @@ export const Confirmacoes: React.FC = () => {
     });
 
     if (itens.length === 0) {
-      alert('Nenhum agendamento pendente de confirmação ou lembrete para os próximos 7 dias.');
+      mostrarAlerta({
+        titulo: 'Disparo em Lote',
+        mensagem: 'Nenhum agendamento pendente de confirmação ou lembrete para os próximos 7 dias.',
+        tipo: 'info'
+      });
       return;
     }
 
@@ -139,7 +145,11 @@ export const Confirmacoes: React.FC = () => {
     if (idx < loteItens.length - 1) {
       setLoteIndex(idx + 1);
     } else {
-      alert('Todos os disparos em lote da semana foram concluídos!');
+      mostrarAlerta({
+        titulo: 'Disparos Concluídos',
+        mensagem: 'Todos os disparos em lote da semana foram concluídos com sucesso!',
+        tipo: 'sucesso'
+      });
       setLoteModalOpen(false);
     }
   };
@@ -424,25 +434,35 @@ export const Confirmacoes: React.FC = () => {
     const client = clientes.find(c => c.id === w.cliente_id);
     
     if (!client) {
-      if (confirm('Esta solicitação de lista de espera não possui um cliente associado no sistema (provavelmente foi excluído). Deseja remover este item da lista de espera mesmo assim?')) {
-        updateListaEsperaStatus(w.id, 'cancelado');
-      }
+      confirmarAcao({
+        titulo: 'Remover da Lista de Espera',
+        mensagem: 'Esta solicitação de lista de espera não possui um cliente associado no sistema. Deseja remover este item mesmo assim?',
+        tipo: 'aviso',
+        textoConfirmar: 'Remover',
+        onConfirm: () => updateListaEsperaStatus(w.id, 'cancelado')
+      });
       return;
     }
 
-    if (confirm(`Deseja realmente remover ${client.nome} da lista de espera e enviar o aviso de impossibilidade de encaixe por WhatsApp?`)) {
-      updateListaEsperaStatus(w.id, 'cancelado');
-      
-      const fone = client.telefone.replace(/\D/g, '');
-      const dataFormatada = w.data_preferida.split('-').reverse().join('/');
-      const periodoLabel = w.periodo_preferido === 'manha' ? 'Manhã' : 
-                           w.periodo_preferido === 'tarde' ? 'Tarde' : 
-                           w.periodo_preferido === 'noite' ? 'Noite' : 'Qualquer Período';
-      
-      const msg = `Olá, ${client.nome}! Infelizmente não conseguimos uma vaga para encaixe no dia ${dataFormatada} (${periodoLabel}) como solicitado. Havendo novas oportunidades e desistências futuras, entraremos em contato. Agradecemos muito a sua compreensão! 💕`;
-      
-      window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
-    }
+    confirmarAcao({
+      titulo: 'Remover da Lista de Espera',
+      mensagem: `Deseja realmente remover ${client.nome} da lista de espera e enviar o aviso de impossibilidade de encaixe por WhatsApp?`,
+      tipo: 'aviso',
+      textoConfirmar: 'Remover e Avisar',
+      onConfirm: () => {
+        updateListaEsperaStatus(w.id, 'cancelado');
+        
+        const fone = client.telefone.replace(/\D/g, '');
+        const dataFormatada = w.data_preferida.split('-').reverse().join('/');
+        const periodoLabel = w.periodo_preferido === 'manha' ? 'Manhã' : 
+                             w.periodo_preferido === 'tarde' ? 'Tarde' : 
+                             w.periodo_preferido === 'noite' ? 'Noite' : 'Qualquer Período';
+        
+        const msg = `Olá, ${client.nome}! Infelizmente não conseguimos uma vaga para encaixe no dia ${dataFormatada} (${periodoLabel}) como solicitado. Havendo novas oportunidades e desistências futuras, entraremos em contato. Agradecemos muito a sua compreensão! 💕`;
+        
+        window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+      }
+    });
   };
 
   // Horários disponíveis para seleção na lista de espera (das 08:00 às 20:00)
@@ -789,9 +809,13 @@ export const Confirmacoes: React.FC = () => {
                       </button>
                       <button
                         onClick={() => {
-                          if (confirm('Tem certeza de que deseja excluir permanentemente este registro de cancelamento?')) {
-                            deleteAgendamento(a.id);
-                          }
+                          confirmarAcao({
+                            titulo: 'Excluir Cancelamento',
+                            mensagem: 'Tem certeza de que deseja excluir permanentemente este registro de cancelamento?',
+                            tipo: 'erro',
+                            textoConfirmar: 'Excluir',
+                            onConfirm: () => deleteAgendamento(a.id)
+                          });
                         }}
                         className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl transition-colors"
                         title="Excluir histórico de cancelamento"

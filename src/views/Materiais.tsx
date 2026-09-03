@@ -16,7 +16,8 @@ export const Materiais: React.FC = () => {
     materiais, 
     addMaterial, 
     updateMaterial, 
-    deleteMaterial
+    deleteMaterial,
+    confirmarAcao
   } = useAppState();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -92,9 +93,15 @@ export const Materiais: React.FC = () => {
     setModalOpen(false);
   };
 
-  const handleExcluirMaterial = (id: string) => {    if (confirm('Deseja realmente excluir este material?')) {
-      deleteMaterial(id);
-    }
+  const handleExcluirMaterial = (id: string) => {
+    confirmarAcao({
+      titulo: 'Excluir Material',
+      mensagem: 'Deseja realmente excluir este material do estoque?',
+      tipo: 'erro',
+      textoConfirmar: 'Excluir',
+      textoCancelar: 'Cancelar',
+      onConfirm: () => deleteMaterial(id)
+    });
   };
 
   // Lista de marcas distintas ordenadas

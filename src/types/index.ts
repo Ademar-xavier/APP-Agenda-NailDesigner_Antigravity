@@ -174,6 +174,8 @@ export interface ModalAlertaConfig {
   link?: string;
   tipo?: 'sucesso' | 'info' | 'aviso' | 'erro';
   textoBotao?: string;
+  textoConfirmar?: string;
+  textoCancelar?: string;
   onConfirm?: () => void;
   onCancel?: () => void;
   isConfirm?: boolean;

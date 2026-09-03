@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Apple
 } from 'lucide-react';
+import { useAppState } from '../context/AppStateContext';
 
 interface InstalarAppProps {
   onEntrarAdmin: () => void;
@@ -21,6 +22,7 @@ interface InstalarAppProps {
 type PlatformType = 'android' | 'windows' | 'ios' | 'outro';
 
 export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAgendar }) => {
+  const { mostrarAlerta } = useAppState();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [instalando, setInstalando] = useState(false);
@@ -94,12 +96,11 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
     // Se for Android
     if (!deferredPrompt) {
-      alert(
-        'Como instalar no seu celular Android:\n\n' +
-        '1. Toque nos 3 pontinhos (⋮) do Google Chrome no topo direito.\n' +
-        '2. Toque em "Instalar aplicativo" ou "Adicionar à tela inicial".\n' +
-        '3. O ícone oficial da Agenda Nails Designer será fixado na sua tela inicial!'
-      );
+      mostrarAlerta({
+        titulo: 'Como instalar no Android',
+        mensagem: '1. Toque nos 3 pontinhos (⋮) do Google Chrome no topo direito.\n2. Toque em "Instalar aplicativo" ou "Adicionar à tela inicial".\n3. O ícone oficial da Agenda Nails Designer será fixado na sua tela inicial!',
+        tipo: 'info'
+      });
       return;
     }
 
@@ -141,13 +142,11 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
     }
 
     // Se estiver no Windows:
-    alert(
-      'Instalação no Windows:\n\n' +
-      'Para instalar o aplicativo no seu computador Windows:\n' +
-      '1. No Google Chrome ou Edge, clique no ícone de computador que aparece no lado direito da barra de endereços.\n' +
-      '2. Ou clique nos 3 pontinhos do navegador ➔ "Instalar aplicativo Agenda Nails Designer".\n' +
-      '3. Um ícone exclusivo na Área de Trabalho será criado com abertura ultrarrápida!'
-    );
+    mostrarAlerta({
+      titulo: 'Instalação no Windows',
+      mensagem: 'Para instalar o aplicativo no seu computador Windows:\n\n1. No Google Chrome ou Edge, clique no ícone de computador que aparece no lado direito da barra de endereços.\n2. Ou clique nos 3 pontinhos do navegador ➔ "Instalar aplicativo Agenda Nails Designer".\n3. Um ícone exclusivo na Área de Trabalho será criado com abertura ultrarrápida!',
+      tipo: 'info'
+    });
   };
 
   // 3. Ação para iPhone (iOS)
@@ -174,13 +173,11 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
       return;
     }
 
-    alert(
-      'Como instalar no seu iPhone / iPad:\n\n' +
-      '1. Abra este link no navegador Safari do seu iPhone.\n' +
-      '2. Toque no botão Compartilhar (o quadradinho com uma seta para cima na barra inferior).\n' +
-      '3. Role um pouco para baixo e toque em "Adicionar à Tela de Início".\n' +
-      '4. Toque em "Adicionar" no topo direito. Pronto! O app aparecerá na sua tela de apps.'
-    );
+    mostrarAlerta({
+      titulo: 'Como instalar no iPhone / iPad',
+      mensagem: '1. Abra este link no navegador Safari do seu iPhone.\n2. Toque no botão Compartilhar (o quadradinho com uma seta para cima na barra inferior).\n3. Role um pouco para baixo e toque em "Adicionar à Tela de Início".\n4. Toque em "Adicionar" no topo direito. Pronto! O app aparecerá na sua tela de apps.',
+      tipo: 'info'
+    });
   };
 
   return (
