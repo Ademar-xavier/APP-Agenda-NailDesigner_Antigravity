@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
-import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
 interface DashboardProps {
   setCurrentView: (view: string) => void;
@@ -137,41 +137,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const handleEnviarMensagemWhatsApp = (cliente: Cliente, tipo: 'confirmacao' | 'lembrete' | 'retorno_manutencao', extra?: any) => {
     let msg = '';
     const linkReserva = extra?.agendamentoId ? getConfirmationUrl(extra.agendamentoId) : getBookingUrl();
-    const fone = cliente.telefone.replace(/\D/g, '');
 
     if (tipo === 'confirmacao') {
-      msg = configSalao.templates_whatsapp.confirmacao
-        .replace('{cliente}', cliente.nome)
-        .replace('{servico}', extra?.servico || 'serviço')
-        .replace('{profissional}', currentUser?.nome || 'Sheila')
-        .replace('{data}', extra?.data || 'data')
-        .replace('{hora}', extra?.hora || 'hora')
-        .replace('{sinal}', String(extra?.sinal || 0))
-        .replace('{chave_pix}', configSalao.chave_pix)
-        .replace('{link_reserva}', linkReserva)
-        .replace('{link_confirmacao}', linkReserva);
+      msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
+        cliente: cliente.nome,
+        servico: extra?.servico || 'serviço',
+        profissional: currentUser?.nome || 'Sheila',
+        data: extra?.data || 'data',
+        hora: extra?.hora || 'hora',
+        sinal: String(extra?.sinal || 0),
+        chave_pix: configSalao.chave_pix,
+        link_reserva: linkReserva,
+        link_confirmacao: linkReserva,
+        salao: configSalao.nome || 'Sheila Santos Nails'
+      });
 
       if (extra?.agendamentoId && !msg.includes(linkReserva)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkReserva}`;
       }
     } else if (tipo === 'lembrete') {
-      msg = configSalao.templates_whatsapp.lembrete
-        .replace('{cliente}', cliente.nome)
-        .replace('{data}', extra?.data || 'amanhã')
-        .replace('{hora}', extra?.hora || '')
-        .replace('{servico}', extra?.servico || '')
-        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
-        .replace('{link_confirmacao}', linkReserva);
+      msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.lembrete, {
+        cliente: cliente.nome,
+        data: extra?.data || 'amanhã',
+        dia_relativo: extra?.data ? `no dia ${extra.data}` : 'amanhã',
+        hora: extra?.hora || '',
+        servico: extra?.servico || '',
+        limite_horas: String(configSalao.regras.cancelamento_limite_horas),
+        link_confirmacao: linkReserva,
+        link_reserva: linkReserva,
+        salao: configSalao.nome || 'Sheila Santos Nails'
+      });
 
       if (extra?.agendamentoId && !msg.includes(linkReserva)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkReserva}`;
       }
     } else if (tipo === 'retorno_manutencao') {
-      msg = configSalao.templates_whatsapp.retorno_manutencao
-        .replace('{cliente}', cliente.nome)
-        .replace('{dias_visita}', String(extra?.dias || 20))
-        .replace('{servico}', extra?.servico || 'Alongamento')
-        .replace('{link_agendamento}', getBookingUrl());
+      msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.retorno_manutencao, {
+        cliente: cliente.nome,
+        dias_visita: String(extra?.dias || 20),
+        servico: extra?.servico || 'Alongamento',
+        link_agendamento: getBookingUrl(),
+        salao: configSalao.nome || 'Sheila Santos Nails'
+      });
     }
 
     const url = gerarLinkWhatsApp(cliente.telefone, msg);

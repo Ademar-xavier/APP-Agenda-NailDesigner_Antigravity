@@ -53,6 +53,7 @@ import {
   LicencaInfo 
 } from '../services/licencaService';
 import { salvarConfiguracoesSupabase } from '../services/supabase';
+import { getBookingUrl } from '../utils/urlHelper';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -126,7 +127,7 @@ export const Configuracoes: React.FC = () => {
   };
 
   const handleCopiarLink = () => {
-    const url = 'https://sheilasantos-agenda.netlify.app';
+    const url = getBookingUrl();
     navigator.clipboard.writeText(url).then(() => {
       setCopiadoLink(true);
       setTimeout(() => setCopiadoLink(false), 2500);
@@ -289,6 +290,10 @@ export const Configuracoes: React.FC = () => {
   });
 
   const [templateManutencao, setTemplateManutencao] = useState(configSalao.templates_whatsapp.retorno_manutencao);
+  const [templateContatoGeral, setTemplateContatoGeral] = useState(() => {
+    return configSalao.templates_whatsapp.contato_geral || 
+      'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no Sheila Santos Nails? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}';
+  });
 
   // --- EQUIPE MODAL STATE ---
   const [isEquipeModalOpen, setIsEquipeModalOpen] = useState(false);
@@ -401,7 +406,8 @@ export const Configuracoes: React.FC = () => {
       ...configSalao.templates_whatsapp,
       confirmacao: templateConfirmacao,
       lembrete: templateLembrete,
-      retorno_manutencao: templateManutencao
+      retorno_manutencao: templateManutencao,
+      contato_geral: templateContatoGeral
     };
     updateConfigSalao({
       templates_whatsapp: updatedTemplates
@@ -933,6 +939,7 @@ export const Configuracoes: React.FC = () => {
                     setTemplateConfirmacao('Olá, {cliente}! Seu agendamento para {servico} com {profissional} no dia {data} às {hora} foi recebido. Para confirmar, efetue o pagamento do sinal de R$ {sinal} na chave Pix {chave_pix} e envie o comprovante aqui.\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}');
                     setTemplateLembrete('Olá, {cliente}! Passando para lembrar do seu atendimento {dia_relativo} ({data}) às {hora} ({servico}).\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}\n\nTe espero!');
                     setTemplateManutencao('Olá, {cliente}! Faz {dias_visita} dias desde o seu último {servico}. Está na hora de fazer sua manutenção para manter suas unhas lindas e saudáveis! Agende pelo link: {link_agendamento}');
+                    setTemplateContatoGeral('Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no Sheila Santos Nails? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}');
                     exibirToast('✨ Modelos padrão com link de 1 toque restaurados!');
                   }}
                   className="text-[11px] text-[#8C6D58] hover:text-[#5A4535] font-semibold underline flex items-center gap-1 cursor-pointer"
@@ -1021,6 +1028,34 @@ export const Configuracoes: React.FC = () => {
                     value={templateManutencao} 
                     onChange={(e) => setTemplateManutencao(e.target.value)}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] resize-none"
+                  />
+                </div>
+
+                {/* Template Contato / Chamar Cliente */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">
+                      Mensagem de Contato / Chamar Cliente (Ficha da Cliente)
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {['{cliente}', '{salao}', '{link_agendamento}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTemplateContatoGeral(prev => prev + ' ' + tag)}
+                        className="text-[10px] bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] px-1.5 py-0.5 rounded cursor-pointer font-mono"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea 
+                    rows={4} 
+                    value={templateContatoGeral} 
+                    onChange={(e) => setTemplateContatoGeral(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] resize-none"
+                    placeholder="Mensagem disparada pelo botão [Chamar] na ficha da cliente..."
                   />
                 </div>
               </div>

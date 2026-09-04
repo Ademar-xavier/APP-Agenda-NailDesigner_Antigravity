@@ -148,6 +148,7 @@ export interface ConfigSalao {
     lembrete: string;
     retorno_manutencao: string;
     lista_espera: string;
+    contato_geral?: string;
   };
 }
 

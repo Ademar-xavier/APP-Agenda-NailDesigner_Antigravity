@@ -397,8 +397,15 @@ export const PublicConfirmacao: React.FC = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center p-4">
-        <div className="w-16 h-16 rounded-3xl bg-[#F6ECE8] flex items-center justify-center text-[#8C6D58] animate-pulse mb-4 shadow-sm border border-[#EFECE6]">
-          <Sparkles size={30} className="animate-spin" />
+        <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5 animate-pulse">
+          <img 
+            src="./logo.png?v=3" 
+            alt="Sheila Santos Nails" 
+            className="w-full h-full object-cover rounded-full"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
         </div>
         <h2 className="text-base font-serif font-bold text-[#5A4535]">Carregando agendamento...</h2>
         <p className="text-xs text-[#8C7A6B] mt-1">Conectando ao sistema Sheila Santos Nails</p>
@@ -411,8 +418,15 @@ export const PublicConfirmacao: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center p-6 text-center">
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-[#EFECE6] shadow-sm space-y-5">
-          <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
-            <AlertCircle size={32} />
+          <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto border-2 border-[#FCE4EC] overflow-hidden shadow-sm p-0.5">
+            <img 
+              src="./logo.png?v=3" 
+              alt="Sheila Santos Nails" 
+              className="w-full h-full object-cover rounded-full"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
           </div>
           <div>
             <h2 className="text-lg font-serif font-bold text-[#5A4535]">Agendamento não encontrado</h2>
@@ -454,8 +468,22 @@ export const PublicConfirmacao: React.FC = () => {
         
         {/* CABEÇALHO DO SALÃO */}
         <div className="text-center space-y-1.5 pb-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#8C6D58] text-white shadow-md mb-1">
-            <Sparkles size={22} />
+          <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-2 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
+            <img 
+              src="./logo.png?v=3" 
+              alt={dadosSalao.nome || "Sheila Santos Nails Designer"} 
+              className="w-full h-full object-cover rounded-full"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const parent = e.currentTarget.parentElement;
+                if (parent) {
+                  const span = document.createElement('span');
+                  span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
+                  span.innerText = 'SS';
+                  parent.appendChild(span);
+                }
+              }}
+            />
           </div>
           <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#5A4535] tracking-tight">
             {dadosSalao.nome}

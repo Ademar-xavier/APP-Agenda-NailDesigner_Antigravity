@@ -81,3 +81,24 @@ export const gerarLinkWhatsApp = (telefone?: string, mensagem: string = ''): str
   if (!numero || numero.length < 12) return '';
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
 };
+
+/**
+ * Preenche templates de WhatsApp substituindo TODAS as ocorrências de tags dinâmicas ({cliente}, {servico}, etc.)
+ */
+export const preencherTemplateWhatsApp = (
+  template: string,
+  variaveis: Record<string, string | number | undefined | null>
+): string => {
+  if (!template) return '';
+  let resultado = template;
+
+  // Substitui cada variável em todas as posições do texto
+  for (const [chave, valor] of Object.entries(variaveis)) {
+    if (valor !== undefined && valor !== null) {
+      const regex = new RegExp(`\\{${chave}\\}`, 'gi');
+      resultado = resultado.replace(regex, String(valor));
+    }
+  }
+
+  return resultado;
+};

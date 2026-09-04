@@ -637,7 +637,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                       </div>
                       <div>
                         {a.cliente_id === 'bloqueado' ? (
-                          <h4 className="font-bold text-sm text-[#786150]">Bloqueio: {a.observacoes || 'Sem detalhes'}</h4>
+                          <h4 className="font-bold text-sm text-[#786150]">
+                            Bloqueio: {a.observacoes 
+                              ? a.observacoes.replace(/\[Google Agenda Oficial\]/gi, 'Google Agenda: ').replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '').trim() 
+                              : 'Sem detalhes'}
+                          </h4>
                         ) : (
                           <>
                             <h4 className="font-bold text-sm">{client?.nome}</h4>

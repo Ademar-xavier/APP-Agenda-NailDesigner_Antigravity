@@ -28,7 +28,7 @@ import {
   salvarFotoClienteSupabase, 
   deletarFotoClienteSupabase 
 } from '../services/supabase';
-import { getBookingUrl } from '../utils/urlHelper';
+import { getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 // Compressão e redimensionamento automático de imagens (garante salvamento imediato e evita estouro de cota)
 const comprimirImagem = (file: File, maxDim = 1200, qualidade = 0.75): Promise<string> => {
@@ -454,19 +454,33 @@ export const Clientes: React.FC<ClientesProps> = ({
   // Enviar Lembrete / Mensagem no WhatsApp
   const handleEnviarMensagemWhatsApp = (cliente: Cliente, tipo: 'retorno_manutencao' | 'geral', extra?: any) => {
     let msg = '';
-    const fone = cliente.telefone.replace(/\D/g, '');
+    const linkAgendamento = getBookingUrl();
 
     if (tipo === 'retorno_manutencao') {
       msg = configSalao.templates_whatsapp.retorno_manutencao
-        .replace('{cliente}', cliente.nome)
-        .replace('{dias_visita}', String(extra?.dias || 20))
-        .replace('{servico}', extra?.servico || 'Alongamento')
-        .replace('{link_agendamento}', getBookingUrl());
+        .replace(/{cliente}/g, cliente.nome)
+        .replace(/{dias_visita}/g, String(extra?.dias || 20))
+        .replace(/{servico}/g, extra?.servico || 'Alongamento')
+        .replace(/{link_agendamento}/g, linkAgendamento);
     } else {
-      msg = `Olá, ${cliente.nome}! Tudo bem? Gostaria de agendar seu horário conosco?`;
+      const templateGeral = configSalao.templates_whatsapp.contato_geral || 
+        'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no {salao}? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}';
+
+      msg = templateGeral
+        .replace(/{cliente}/g, cliente.nome)
+        .replace(/{salao}/g, configSalao.nome || 'Sheila Santos Nails')
+        .replace(/{link_agendamento}/g, linkAgendamento);
+
+      if (!msg.includes(linkAgendamento)) {
+        msg += `\n\n📅 Agende seu horário online em 1 toque:\n${linkAgendamento}`;
+      }
     }
 
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+    const url = gerarLinkWhatsApp(cliente.telefone, msg);
+    if (!url) {
+      alert(`A cliente "${cliente.nome}" não possui um número de WhatsApp válido cadastrado. Por favor, edite o cadastro e inclua o DDD.`);
+      return;
+    }
     window.open(url, '_blank');
   };
 
