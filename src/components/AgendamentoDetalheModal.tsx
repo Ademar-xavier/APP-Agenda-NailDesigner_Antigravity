@@ -55,6 +55,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const prof = equipe.find(u => u.id === agendamento?.profissional_id);
   const servs = agendamento ? obterServicosDeAgendamento(agendamento.id) : [];
 
+  const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
+
+  useEffect(() => {
+    setAcao(null);
+    if (agendamento?.status) {
+      setStatusVisual(agendamento.status);
+    }
+  }, [agendamento?.id, agendamento?.status]);
+
   useEffect(() => {
     if (agendamento) {
       // Por padrão, sugere o valor total a receber na conclusão
@@ -321,9 +330,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           </div>
           <div className="flex items-center gap-2">
             <select
-              value={agendamento.status}
+              value={statusVisual}
               onChange={(e) => {
                 const novoStatus = e.target.value as AgendamentoStatus;
+                setStatusVisual(novoStatus);
                 if (novoStatus === 'cancelado') {
                   setAcao('cancelar');
                 } else if (novoStatus === 'falta') {
@@ -331,10 +341,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 } else if (novoStatus === 'concluido') {
                   setAcao('concluir');
                 } else {
-                  updateAgendamentoStatus(agendamento.id, novoStatus);
+                  // Ao mudar para 'pendente' ou 'confirmado', fecha imediatamente qualquer caixa de motivo/ação aberta
+                  setAcao(null);
+                  if (novoStatus !== agendamento.status) {
+                    updateAgendamentoStatus(agendamento.id, novoStatus);
+                  }
                 }
               }}
-              className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[agendamento.status] || ''}`}
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
               title="Clique para alterar o status deste agendamento"
             >
               <option value="pendente">⏳ Pendente (A Confirmar)</option>
@@ -469,7 +483,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </div>
             <div className="flex justify-end gap-2 text-xs">
               <button 
-                type="button" onClick={() => setAcao(null)}
+                type="button" onClick={() => { setAcao(null); setStatusVisual(agendamento.status); }}
                 className="px-3 py-1.5 text-red-700 hover:bg-red-100 rounded-lg font-semibold"
               >
                 Voltar
@@ -514,7 +528,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </div>
             <div className="flex justify-end gap-2 text-xs">
               <button 
-                type="button" onClick={() => setAcao(null)}
+                type="button" onClick={() => { setAcao(null); setStatusVisual(agendamento.status); }}
                 className="px-3 py-1.5 text-[#8C6D58] hover:bg-[#F3ECE0] rounded-lg font-semibold"
               >
                 Voltar
@@ -537,7 +551,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </p>
             <div className="flex justify-end gap-2 text-xs">
               <button 
-                type="button" onClick={() => setAcao(null)}
+                type="button" onClick={() => { setAcao(null); setStatusVisual(agendamento.status); }}
                 className="px-3 py-1.5 text-red-700 hover:bg-red-100 rounded-lg font-semibold"
               >
                 Voltar
@@ -549,63 +563,6 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 Registrar falta
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Action Row at the very bottom (Only visible when no action is active) */}
-        {!acao && agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
-          <div className="flex flex-wrap gap-2 border-t border-[#EFECE6] pt-4 justify-end">
-            
-            {/* Mover para A Confirmar (se estiver confirmado) */}
-            {agendamento.status === 'confirmado' && (
-              <button
-                onClick={() => updateAgendamentoStatus(agendamento.id, 'pendente')}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#FFF9E6] hover:bg-[#FFF3CD] border border-[#FFECB3] text-[#B78103] rounded-xl text-xs font-bold transition-all shadow-xs"
-                title="Mudar status para Pendente e enviar para a lista A Confirmar"
-              >
-                <Clock size={14} />
-                <span>Mover para A Confirmar</span>
-              </button>
-            )}
-
-            {/* Confirmar Presença (se estiver pendente) */}
-            {agendamento.status === 'pendente' && (
-              <button
-                onClick={handleConfirmar}
-                className="flex items-center gap-1.5 px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-              >
-                <CalendarCheck size={14} />
-                <span>Confirmar Presença</span>
-              </button>
-            )}
-
-            {/* Concluir (Pink) */}
-            <button
-              onClick={() => setAcao('concluir')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
-            >
-              <CheckCircle size={14} />
-              <span>Concluir</span>
-            </button>
-
-            {/* Marcar Falta */}
-            <button
-              onClick={() => setAcao('falta')}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-red-50 border border-[#EFECE6] hover:border-red-200 text-[#8C7A6B] hover:text-red-700 rounded-xl text-xs font-semibold transition-all"
-            >
-              <UserX size={14} />
-              <span>Marcar falta</span>
-            </button>
-
-            {/* Cancelar */}
-            <button
-              onClick={() => setAcao('cancelar')}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-red-50 border border-[#EFECE6] hover:border-red-200 text-[#8C7A6B] hover:text-red-700 rounded-xl text-xs font-semibold transition-all"
-            >
-              <XCircle size={14} />
-              <span>Cancelar</span>
-            </button>
-
           </div>
         )}
 
