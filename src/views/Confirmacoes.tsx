@@ -35,7 +35,8 @@ export const Confirmacoes: React.FC = () => {
     currentUser,
     obterRecomendacoesManutencao,
     confirmarAcao,
-    mostrarAlerta
+    mostrarAlerta,
+    updateAgendamentoStatus
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -620,13 +621,22 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </button>
                     
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       <button
                         onClick={() => handleEnviarMensagemWhatsApp(a, 'confirmacao')}
                         className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors"
+                        title="Enviar mensagem no WhatsApp solicitando confirmação"
                       >
                         <MessageCircle size={14} className="text-[#25D366]" />
-                        <span>Enviar lembrete</span>
+                        <span>Pedir confirmação</span>
+                      </button>
+                      <button
+                        onClick={() => updateAgendamentoStatus(a.id, 'confirmado')}
+                        className="flex items-center gap-1 px-3.5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                        title="Confirmar este agendamento e mover para Confirmados"
+                      >
+                        <UserCheck size={14} />
+                        <span>Confirmar</span>
                       </button>
                       <button
                         onClick={() => setSelectedAgendamentoId(a.id)}
