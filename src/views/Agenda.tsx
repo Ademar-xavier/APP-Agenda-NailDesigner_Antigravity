@@ -115,7 +115,8 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [isBloqueio, setIsBloqueio] = useState<boolean>(false);
   const [profissionalId, setProfissionalId] = useState<string>('u1');
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
-  const [cobrarSinal, setCobrarSinal] = useState<boolean>(true);
+  const [cobrarSinal, setCobrarSinal] = useState<boolean>(false);
+  const [valorSinalManual, setValorSinalManual] = useState<number | ''>('');
 
   // Serviços habilitados da profissional selecionada
   const profSelecionada = equipe.find(u => u.id === profissionalId);
@@ -179,6 +180,23 @@ export const Agenda: React.FC<AgendaProps> = ({
       dataSugeridaRetorno
     };
   }, [servicos, servicosSelecionados, horaInicio, dataSelecionada]);
+
+  // Sinal sugerido dos serviços selecionados
+  const sinalSugeridoServicos = useMemo(() => {
+    const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
+    return servs.reduce((acc, s) => {
+      if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
+      if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * (s.sinal_valor || 0) / 100);
+      return acc;
+    }, 0);
+  }, [servicos, servicosSelecionados]);
+
+  // Atualiza o valor do sinal sugerido quando troca o serviço
+  useEffect(() => {
+    if (sinalSugeridoServicos > 0) {
+      setValorSinalManual(sinalSugeridoServicos);
+    }
+  }, [sinalSugeridoServicos]);
 
   // Local state for modal to prevent rendering lag
   const [localNewAgendamentoOpen, setLocalNewAgendamentoOpen] = useState(isNewAgendamentoModalOpen);
@@ -440,20 +458,22 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
     }
 
-    // Sinal total (soma)
-    const sinal = (isBloqueio || !cobrarSinal) ? 0 : servs.reduce((acc, s) => {
-      if (s.sinal_tipo === 'fixo') return acc + s.sinal_valor;
-      if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * s.sinal_valor / 100);
-      return acc;
-    }, 0);
+    // Sinal e Status: se cobrarSinal estiver marcado, o agendamento VAI como 'pendente' (A confirmar)
+    const valorSinalFinal = (isBloqueio || !cobrarSinal)
+      ? 0
+      : (valorSinalManual !== '' ? Number(valorSinalManual) : sinalSugeridoServicos);
+
+    const statusFinal: 'bloqueado' | 'pendente' | 'confirmado' = isBloqueio
+      ? 'bloqueado'
+      : (cobrarSinal ? 'pendente' : 'confirmado');
 
     const res = addAgendamento({
       cliente_id: cId,
       profissional_id: profissionalId,
       inicio: dataInicioStr,
-      status: isBloqueio ? 'bloqueado' : (sinal > 0 ? 'pendente' : 'confirmado'),
+      status: statusFinal,
       valor_total: total,
-      valor_sinal: sinal,
+      valor_sinal: valorSinalFinal,
       observacoes: obsAgendamento,
       origem: 'admin'
     }, isBloqueio ? [] : servicosSelecionados);
@@ -466,6 +486,8 @@ export const Agenda: React.FC<AgendaProps> = ({
       setServicosSelecionados([]);
       setObsAgendamento('');
       setIsBloqueio(false);
+      setCobrarSinal(false);
+      setValorSinalManual('');
       handleCloseLocalModal();
     } else {
       setErrorAgendamento(res.error || 'Erro desconhecido');
@@ -982,17 +1004,53 @@ export const Agenda: React.FC<AgendaProps> = ({
                     </div>
 
                     {/* Cobrar Sinal Toggle */}
-                    <div className="flex items-center gap-2 mt-2 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6]">
-                      <input 
-                        type="checkbox" 
-                        id="cobrar_sinal_agend" 
-                        checked={cobrarSinal} 
-                        onChange={(e) => setCobrarSinal(e.target.checked)}
-                        className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
-                      />
-                      <label htmlFor="cobrar_sinal_agend" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
-                        Cobrar sinal para este agendamento
-                      </label>
+                    <div className="mt-2 bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="cobrar_sinal_agend" className="flex items-center gap-2 cursor-pointer select-none">
+                          <input 
+                            type="checkbox" 
+                            id="cobrar_sinal_agend" 
+                            checked={cobrarSinal} 
+                            onChange={(e) => {
+                              const marcado = e.target.checked;
+                              setCobrarSinal(marcado);
+                              if (marcado && (valorSinalManual === '' || valorSinalManual === 0)) {
+                                setValorSinalManual(sinalSugeridoServicos > 0 ? sinalSugeridoServicos : 20);
+                              }
+                            }}
+                            className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
+                          />
+                          <span className="text-xs text-[#5A4535] font-semibold">
+                            Cobrar sinal / Deixar como "A confirmar"
+                          </span>
+                        </label>
+                        {cobrarSinal && (
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                            ⏳ Entra em "A confirmar"
+                          </span>
+                        )}
+                      </div>
+
+                      {cobrarSinal && (
+                        <div className="flex items-center gap-2 pt-1.5 border-t border-[#EFECE6] animate-in fade-in duration-150">
+                          <label className="text-[11px] font-bold text-[#8C7A6B] uppercase">Valor do Sinal:</label>
+                          <div className="relative w-28">
+                            <span className="absolute left-2.5 top-1.5 text-xs text-[#8C7A6B] font-bold">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={valorSinalManual}
+                              onChange={(e) => setValorSinalManual(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="0,00"
+                              className="w-full border border-[#EFECE6] rounded-lg pl-8 pr-2 py-1 text-xs text-[#5A4535] bg-white font-bold focus:outline-none focus:border-[#8C6D58]"
+                            />
+                          </div>
+                          <span className="text-[10px] text-[#8C7A6B]">
+                            {sinalSugeridoServicos > 0 ? `(Configurado no serviço: R$ ${sinalSugeridoServicos.toFixed(2)})` : '(O agendamento aguardará confirmação)'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </>
                 ) : (
