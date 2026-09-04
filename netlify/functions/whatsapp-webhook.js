@@ -1,13 +1,32 @@
 // Netlify Serverless Function: Webhook Oficial da Meta Cloud API (WhatsApp Business)
 // Recebe as respostas de cliques dos botões enviados para as clientes e atualiza o Supabase em tempo real!
 
-import { createClient } from '@supabase/supabase-js';
-
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://skdvaxezhskfsfhmvajt.supabase.co';
 const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_sdzeLBdQeUgfY-7sHwPW5g_2UqZ3Rap';
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'sheila_nail_webhook_secret';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseRest = async (path, options = {}) => {
+  const url = `${SUPABASE_URL}/rest/v1/${path}`;
+  const headers = {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation',
+    ...(options.headers || {})
+  };
+  try {
+    const res = await fetch(url, { ...options, headers });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      console.error(`Erro Supabase REST ${res.status}:`, txt);
+      return null;
+    }
+    return await res.json().catch(() => null);
+  } catch (err) {
+    console.error('Erro na chamada Supabase REST:', err);
+    return null;
+  }
+};
 
 export const handler = async (event) => {
   // 1. Verificação inicial da Meta (GET Request com hub.mode, hub.verify_token e hub.challenge)
@@ -21,7 +40,8 @@ export const handler = async (event) => {
       console.log('Webhook da Meta verificado com sucesso!');
       return {
         statusCode: 200,
-        body: challenge || 'OK'
+        headers: { 'Content-Type': 'text/plain' },
+        body: String(challenge || 'OK')
       };
     }
     return { statusCode: 403, body: 'Token de verificação inválido' };
@@ -45,39 +65,33 @@ export const handler = async (event) => {
           console.log(`Cliente ${fromNumber} clicou no botão: ${buttonId}`);
 
           if (buttonId?.includes('confirmar')) {
-            // Se o ID tiver o agendamento embutido (ex: confirmar_ag123)
             const agendamentoId = buttonId.replace('confirmar_', '').replace('btn_', '');
 
             if (agendamentoId && agendamentoId !== 'teste') {
-              await supabase
-                .from('agendamentos')
-                .update({ status: 'confirmado' })
-                .eq('id', agendamentoId);
+              await supabaseRest(`agendamentos?id=eq.${agendamentoId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'confirmado' })
+              });
             } else {
-              // Se não tiver ID explícito, procura o agendamento pendente mais recente desta cliente
-              const { data: clientes } = await supabase
-                .from('clientes')
-                .select('id')
-                .ilike('telefone', `%${fromNumber.slice(-8)}%`);
-
+              const ultimos8 = fromNumber.slice(-8);
+              const clientes = await supabaseRest(`clientes?telefone=ilike.*${ultimos8}*&select=id`);
               if (clientes && clientes.length > 0) {
-                await supabase
-                  .from('agendamentos')
-                  .update({ status: 'confirmado' })
-                  .eq('cliente_id', clientes[0].id)
-                  .eq('status', 'pendente');
+                await supabaseRest(`agendamentos?cliente_id=eq.${clientes[0].id}&status=eq.pendente`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'confirmado' })
+                });
               }
             }
           } else if (buttonId?.includes('cancelar')) {
             const agendamentoId = buttonId.replace('cancelar_', '').replace('btn_', '');
             if (agendamentoId && agendamentoId !== 'teste') {
-              await supabase
-                .from('agendamentos')
-                .update({ 
+              await supabaseRest(`agendamentos?id=eq.${agendamentoId}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ 
                   status: 'cancelado', 
                   motivo_cancelamento: 'Cancelado pela cliente via WhatsApp Oficial' 
                 })
-                .eq('id', agendamentoId);
+              });
             }
           }
         }
@@ -90,7 +104,7 @@ export const handler = async (event) => {
     } catch (e) {
       console.error('Erro no processamento do webhook Meta:', e);
       return {
-        statusCode: 200, // Meta exige retorno 200 para confirmação de entrega
+        statusCode: 200,
         body: JSON.stringify({ status: 'ERROR_LOGGED', error: e.message })
       };
     }
