@@ -15,7 +15,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { MetodoPagamento } from '../types';
+import { MetodoPagamento, AgendamentoStatus } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
@@ -319,15 +319,37 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               <p className="text-xs text-[#8C7A6B] mt-0.5">{cliente?.telefone}</p>
             </div>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border uppercase ${statusStyles[agendamento.status] || ''}`}>
-            {statusLabels[agendamento.status] || agendamento.status}
-          </span>
-          <button 
-            onClick={onClose}
-            className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B] ml-2"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              value={agendamento.status}
+              onChange={(e) => {
+                const novoStatus = e.target.value as AgendamentoStatus;
+                if (novoStatus === 'cancelado') {
+                  setAcao('cancelar');
+                } else if (novoStatus === 'falta') {
+                  setAcao('falta');
+                } else if (novoStatus === 'concluido') {
+                  setAcao('concluir');
+                } else {
+                  updateAgendamentoStatus(agendamento.id, novoStatus);
+                }
+              }}
+              className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[agendamento.status] || ''}`}
+              title="Clique para alterar o status deste agendamento"
+            >
+              <option value="pendente">⏳ Pendente (A Confirmar)</option>
+              <option value="confirmado">✅ Confirmado</option>
+              <option value="concluido">🎉 Concluído</option>
+              <option value="falta">⚠️ Falta</option>
+              <option value="cancelado">❌ Cancelar</option>
+            </select>
+            <button 
+              onClick={onClose}
+              className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Details Grid */}
@@ -534,14 +556,26 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         {!acao && agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
           <div className="flex flex-wrap gap-2 border-t border-[#EFECE6] pt-4 justify-end">
             
-            {/* Confirmar (Purple) */}
+            {/* Mover para A Confirmar (se estiver confirmado) */}
+            {agendamento.status === 'confirmado' && (
+              <button
+                onClick={() => updateAgendamentoStatus(agendamento.id, 'pendente')}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#FFF9E6] hover:bg-[#FFF3CD] border border-[#FFECB3] text-[#B78103] rounded-xl text-xs font-bold transition-all shadow-xs"
+                title="Mudar status para Pendente e enviar para a lista A Confirmar"
+              >
+                <Clock size={14} />
+                <span>Mover para A Confirmar</span>
+              </button>
+            )}
+
+            {/* Confirmar Presença (se estiver pendente) */}
             {agendamento.status === 'pendente' && (
               <button
                 onClick={handleConfirmar}
                 className="flex items-center gap-1.5 px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
               >
                 <CalendarCheck size={14} />
-                <span>Confirmar</span>
+                <span>Confirmar Presença</span>
               </button>
             )}
 
