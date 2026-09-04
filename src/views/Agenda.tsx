@@ -10,7 +10,8 @@ import {
   X, 
   AlertTriangle,
   Sparkles,
-  RotateCcw
+  RotateCcw,
+  CheckCircle
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
@@ -264,27 +265,104 @@ export const Agenda: React.FC<AgendaProps> = ({
   const expedienteDoDia = configSalao.horarios_trabalho?.[diaSemanaSelecionado];
   const diaFechado = !expedienteDoDia || !expedienteDoDia.ativo;
 
-  // Gerar slots horários respeitando o expediente do dia selecionado
-  const horasExpediente = useMemo(() => {
-    if (diaFechado || !expedienteDoDia) return [];
+  // Duração necessária para o atendimento em minutos
+  const duracaoMinutosAtual = isBloqueio 
+    ? 30 
+    : (resumoServicosSelecionados.duracaoTotal > 0 ? resumoServicosSelecionados.duracaoTotal : 30);
+
+  // Análise completa de disponibilidade de horários (Livres vs Ocupados)
+  const analiseHorarios = useMemo(() => {
+    if (diaFechado || !expedienteDoDia) {
+      return {
+        livres: [] as string[],
+        ocupados: [] as { hora: string; motivo: string }[]
+      };
+    }
+
     const [hIni, mIni] = (expedienteDoDia.inicio || '08:00').split(':').map(Number);
     const [hFim, mFim] = (expedienteDoDia.fim || '20:00').split(':').map(Number);
     const minInicio = hIni * 60 + mIni;
     const minFim = hFim * 60 + mFim;
-    const slots: string[] = [];
-    for (let m = minInicio; m < minFim; m += 30) {
+
+    const livres: string[] = [];
+    const ocupados: { hora: string; motivo: string }[] = [];
+
+    // Avalia cada intervalo de 30 em 30 minutos dentro do expediente
+    for (let m = minInicio; m <= minFim - duracaoMinutosAtual; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
-      slots.push(`${hStr}:${mStr}`);
-    }
-    return slots;
-  }, [diaFechado, expedienteDoDia]);
+      const slot = `${hStr}:${mStr}`;
 
-  useEffect(() => {
-    if (horasExpediente.length > 0 && !horasExpediente.includes(horaInicio)) {
-      setHoraInicio(horasExpediente[0]);
+      const inicioAgend = `${dataSelecionada}T${slot}:00`;
+      const dateInicio = new Date(`${dataSelecionada}T${slot}:00`);
+      const dateFim = new Date(dateInicio.getTime() + duracaoMinutosAtual * 60 * 1000);
+      const anoF = dateFim.getFullYear();
+      const mesF = String(dateFim.getMonth() + 1).padStart(2, '0');
+      const diaF = String(dateFim.getDate()).padStart(2, '0');
+      const horaF = String(dateFim.getHours()).padStart(2, '0');
+      const minF = String(dateFim.getMinutes()).padStart(2, '0');
+      const segF = String(dateFim.getSeconds()).padStart(2, '0');
+      const fimAgend = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
+
+      let conflito = false;
+      let motivoConflito = '';
+
+      if (!isBloqueio) {
+        conflito = checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+
+        if (conflito) {
+          const normalizarDataHora = (str: string): number => {
+            if (!str) return 0;
+            const limpo = str.replace('Z', '').split('+')[0];
+            const [dStr, tStr] = limpo.split('T');
+            if (!dStr || !tStr) return 0;
+            const [ano, mes, dia] = dStr.split('-').map(Number);
+            const [h, min] = (tStr || '00:00').split(':').map(Number);
+            return Date.UTC(ano, mes - 1, dia, h || 0, min || 0, 0);
+          };
+
+          const testIni = normalizarDataHora(inicioAgend);
+          const testFim = normalizarDataHora(fimAgend);
+
+          const agConflitante = agendamentos.find(a => {
+            if (a.status === 'cancelado' || a.status === 'falta') return false;
+            if (a.profissional_id !== profissionalId) return false;
+            const aIni = normalizarDataHora(a.inicio);
+            const aFim = normalizarDataHora(a.fim);
+            return Math.max(testIni, aIni) < Math.min(testFim, aFim);
+          });
+
+          if (agConflitante) {
+            if (agConflitante.cliente_id === 'bloqueado') {
+              motivoConflito = `Bloqueio: ${agConflitante.observacoes || 'Pessoal'}`;
+            } else {
+              const cli = clientes.find(c => c.id === agConflitante.cliente_id);
+              motivoConflito = cli?.nome ? `Agendado: ${cli.nome}` : 'Horário Ocupado';
+            }
+          } else {
+            motivoConflito = 'Horário Ocupado';
+          }
+        }
+      }
+
+      if (conflito) {
+        ocupados.push({ hora: slot, motivo: motivoConflito });
+      } else {
+        livres.push(slot);
+      }
     }
-  }, [horasExpediente]);
+
+    return { livres, ocupados };
+  }, [diaFechado, expedienteDoDia, dataSelecionada, duracaoMinutosAtual, isBloqueio, profissionalId, agendamentos, clientes, checkConflitoHorario]);
+
+  const horasExpediente = analiseHorarios.livres;
+
+  // Atualiza automaticamente o horário para o primeiro livre ao trocar de data ou serviço
+  useEffect(() => {
+    if (analiseHorarios.livres.length > 0 && !analiseHorarios.livres.includes(horaInicio)) {
+      setHoraInicio(analiseHorarios.livres[0]);
+    }
+  }, [analiseHorarios.livres]);
 
   // Salvar agendamento
   const handleCriarAgendamento = (e: React.FormEvent) => {
@@ -308,6 +386,14 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
       if (servicosSelecionados.length === 0) {
         setErrorAgendamento('Selecione pelo menos um serviço.');
+        return;
+      }
+      if (analiseHorarios.livres.length === 0) {
+        setErrorAgendamento('Não há horários disponíveis para a duração selecionada neste dia. Escolha outra data.');
+        return;
+      }
+      if (!analiseHorarios.livres.includes(horaInicio)) {
+        setErrorAgendamento('O horário selecionado não está disponível. Por favor, escolha um dos horários livres.');
         return;
       }
     }
@@ -946,9 +1032,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Horário de Início</label>
-                    {horasExpediente.length === 0 ? (
-                      <div className="border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#8C7A6B] bg-[#FAF9F6]">
-                        Sem horários disponíveis
+                    {analiseHorarios.livres.length === 0 ? (
+                      <div className="border border-[#F2DFD5] rounded-xl px-3 py-2 text-xs text-[#C81E1E] bg-[#FDF9F6] font-medium">
+                        Nenhum horário livre nesta data
                       </div>
                     ) : (
                       <select
@@ -957,15 +1043,89 @@ export const Agenda: React.FC<AgendaProps> = ({
                           setHoraInicio(e.target.value);
                           setErrorAgendamento('');
                         }}
-                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none font-medium"
                       >
-                        {horasExpediente.map(h => (
-                          <option key={h} value={h}>{h}</option>
+                        {analiseHorarios.livres.map(h => (
+                          <option key={h} value={h}>{h} (Disponível)</option>
                         ))}
                       </select>
                     )}
                   </div>
                 </div>
+
+                {/* Painel Visual de Horários Disponíveis e Ocupados */}
+                {!diaFechado && (
+                  <div className="space-y-3 bg-[#FAF9F6] p-3.5 rounded-xl border border-[#EFECE6]">
+                    {/* Horários Livres */}
+                    {analiseHorarios.livres.length > 0 ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold text-[#5A4535] flex items-center gap-1.5">
+                            <CheckCircle size={13} className="text-emerald-600" />
+                            <span>Horários Livres Disponíveis ({analiseHorarios.livres.length})</span>
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B]">Toque para selecionar</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
+                          {analiseHorarios.livres.map(h => {
+                            const isSelected = horaInicio === h;
+                            return (
+                              <button
+                                key={h}
+                                type="button"
+                                onClick={() => {
+                                  setHoraInicio(h);
+                                  setErrorAgendamento('');
+                                }}
+                                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border ${
+                                  isSelected
+                                    ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-xs ring-2 ring-[#8C6D58]/20'
+                                    : 'bg-white text-[#5A4535] border-[#EFECE6] hover:border-[#8C6D58] hover:bg-[#FDFBF7]'
+                                }`}
+                              >
+                                {isSelected && <CheckCircle size={12} className="text-white shrink-0" />}
+                                {h}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                        <AlertTriangle size={15} className="shrink-0 text-amber-600 mt-0.5" />
+                        <div>
+                          <strong className="block">Agenda cheia para este dia ou duração</strong>
+                          <span>
+                            Não há horários suficientes para comportar a duração total ({resumoServicosSelecionados.duracaoExtenso}). Escolha outra data ou profissional.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Horários Ocupados / Indisponíveis no dia */}
+                    {analiseHorarios.ocupados.length > 0 && (
+                      <div className="pt-2 border-t border-[#EFECE6]">
+                        <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block mb-1.5">
+                          Horários Indisponíveis neste dia ({analiseHorarios.ocupados.length}):
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                          {analiseHorarios.ocupados.map((item, idx) => (
+                            <span
+                              key={idx}
+                              title={item.motivo}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] bg-white text-[#A8988B] border border-[#EFECE6] line-through cursor-default"
+                            >
+                              <span>{item.hora}</span>
+                              <span className="no-underline text-[9px] text-[#8C7A6B] font-normal">
+                                ({item.motivo.length > 18 ? item.motivo.substring(0, 18) + '...' : item.motivo})
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {!isBloqueio && (
                   <div>
@@ -1000,8 +1160,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                   </button>
                   <button
                     type="submit"
-                    disabled={diaFechado}
-                    className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                    disabled={diaFechado || (!isBloqueio && analiseHorarios.livres.length === 0)}
+                    className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
                   >
                     {isBloqueio ? 'Bloquear Horário' : 'Salvar'}
                   </button>
