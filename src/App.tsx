@@ -9,6 +9,7 @@ import { Servicos } from './views/Servicos';
 import { Financeiro } from './views/Financeiro';
 import { Configuracoes } from './views/Configuracoes';
 import { PublicBooking } from './public-views/PublicBooking';
+import { PublicConfirmacao } from './public-views/PublicConfirmacao';
 import { Login } from './views/Login';
 import { Confirmacoes } from './views/Confirmacoes';
 import { Materiais } from './views/Materiais';
@@ -52,6 +53,12 @@ function AppContent() {
     return false;
   });
 
+  const [isConfirmarRoute, setIsConfirmarRoute] = useState<boolean>(() => {
+    return window.location.hash.toLowerCase().includes('confirmar') || 
+           window.location.search.toLowerCase().includes('confirmar') ||
+           window.location.pathname.toLowerCase().includes('confirmar');
+  });
+
   const [isInstalarRoute, setIsInstalarRoute] = useState<boolean>(() => {
     return window.location.hash.toLowerCase().includes('instalar') || 
            window.location.search.toLowerCase().includes('instalar') ||
@@ -61,7 +68,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<string>('dashboard');
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
 
-  // Sincroniza com navegação por hash (#admin, #instalar ou #agendar)
+  // Sincroniza com navegação por hash (#admin, #instalar, #agendar ou #confirmar)
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
@@ -73,12 +80,18 @@ function AppContent() {
         isStandalone ||
         window.location.search.includes('app=1');
 
-      if (hash.includes('instalar')) {
+      if (hash.includes('confirmar') || window.location.search.toLowerCase().includes('confirmar')) {
+        setIsConfirmarRoute(true);
+        setIsInstalarRoute(false);
+      } else if (hash.includes('instalar')) {
+        setIsConfirmarRoute(false);
         setIsInstalarRoute(true);
       } else if (hash.includes('admin')) {
+        setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsAdmin(true);
       } else if (hash.includes('agendar') || hash === '' || hash === '#') {
+        setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         // Se for aplicativo instalado (Desktop, Android ou PWA), NUNCA perde o modo admin!
         if (!isNative) {
@@ -260,6 +273,11 @@ function AppContent() {
 
   // Verifica se o usuário solicitou explicitamente a tela de agendamento (via link, botão ou hash #agendar)
   const isExplicitAgendamento = window.location.hash.toLowerCase().includes('agendar');
+
+  // 0. Se for rota pública de confirmação de agendamento em 1 toque (#confirmar?id=...)
+  if (isConfirmarRoute) {
+    return <PublicConfirmacao />;
+  }
 
   // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública
   if (isExplicitAgendamento) {

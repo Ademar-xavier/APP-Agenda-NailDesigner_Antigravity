@@ -16,6 +16,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
+import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -108,6 +109,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     };
     const diaRelativo = formatarDiaRelativo(agendamento.inicio);
 
+    const linkConfirmacao = getConfirmationUrl(agendamento.id);
+
     const enviarWhatsAppConvencional = () => {
       let msg = '';
       if (tipo === 'confirmacao') {
@@ -119,7 +122,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           .replace('{hora}', horaStr)
           .replace('{sinal}', String(agendamento.valor_sinal))
           .replace('{chave_pix}', configSalao.chave_pix)
-          .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
+          .replace('{link_reserva}', linkConfirmacao)
+          .replace('{link_confirmacao}', linkConfirmacao);
+
+        if (!msg.includes(linkConfirmacao)) {
+          msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+        }
       } else {
         msg = configSalao.templates_whatsapp.lembrete
           .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
@@ -129,7 +137,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           .replace('{data}', dataFormatada)
           .replace('{hora}', horaStr)
           .replace('{servico}', servText)
-          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
+          .replace('{link_confirmacao}', linkConfirmacao);
+
+        if (!msg.includes(linkConfirmacao)) {
+          msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+        }
       }
 
       const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
@@ -147,8 +160,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         textoCancelar: 'Abrir no WhatsApp',
         onConfirm: async () => {
           const textoCorpo = tipo === 'confirmacao'
-            ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo:`
-            : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} ${diaRelativo} (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?`;
+            ? `Olá ${cliente.nome}! ✨ Seu agendamento de ${servText} está reservado para ${dataFormatada} às ${horaStr}.\n\nPor favor, confirme sua presença tocando em um dos botões abaixo ou pelo link:\n${linkConfirmacao}`
+            : `Olá ${cliente.nome}! ⏰ Lembrando do seu horário de ${servText} ${diaRelativo} (${dataFormatada}) às ${horaStr}.\n\nConfirma seu comparecimento?\n👉 ${linkConfirmacao}`;
 
           const res = await enviarMensagemBotaoMeta({
             destinatario: fone,
@@ -193,7 +206,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       const fone = cliente.telefone.replace(/\D/g, '');
       const dataStr = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
       const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
-      const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoCancelamento}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕`;
+      const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoCancelamento}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕\n\n📅 Escolha um novo horário online:\n${getBookingUrl()}`;
       window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
     }
 

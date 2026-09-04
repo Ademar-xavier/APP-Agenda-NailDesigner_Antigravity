@@ -1,0 +1,751 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  CheckCircle2, 
+  XCircle, 
+  Calendar as CalendarIcon, 
+  Clock, 
+  User, 
+  MapPin, 
+  Sparkles, 
+  Phone, 
+  AlertCircle, 
+  CalendarPlus, 
+  MessageCircle, 
+  RefreshCw, 
+  ExternalLink,
+  ChevronRight,
+  ShieldCheck,
+  Heart
+} from 'lucide-react';
+import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
+import { useAppState } from '../context/AppStateContext';
+import { gerarLinkGoogleCalendar, getBookingUrl } from '../utils/urlHelper';
+
+interface AgendamentoPublico {
+  id: string;
+  cliente_id: string;
+  profissional_id: string;
+  inicio: string;
+  fim: string;
+  status: 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';
+  valor_total: number;
+  valor_sinal: number;
+  observacoes?: string;
+  itens_servicos?: string[];
+  motivo_cancelamento?: string;
+  cancelado_por?: string;
+}
+
+interface ClientePublico {
+  id: string;
+  nome: string;
+  telefone: string;
+}
+
+interface ServicoPublico {
+  id: string;
+  nome: string;
+  duracao_minutos: number;
+  preco: number;
+}
+
+export const PublicConfirmacao: React.FC = () => {
+  const { updateAgendamentoStatus, cancelAgendamento, configSalao: configSalaoContext, equipe: equipeContext } = useAppState();
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [agendamentoId, setAgendamentoId] = useState<string>('');
+  const [agendamento, setAgendamento] = useState<AgendamentoPublico | null>(null);
+  const [cliente, setCliente] = useState<ClientePublico | null>(null);
+  const [servicos, setServicos] = useState<ServicoPublico[]>([]);
+  const [profissionalNome, setProfissionalNome] = useState<string>('Sheila Santos');
+  const [dadosSalao, setDadosSalao] = useState({
+    nome: 'Sheila Santos Nails',
+    proprietaria: 'Sheila Santos',
+    telefone: '3597141856',
+    endereco: 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
+    instagram: '@sheilasantos_nails'
+  });
+
+  const [processandoAcao, setProcessandoAcao] = useState<boolean>(false);
+  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
+
+  // Modal de Cancelamento
+  const [modalCancelarAberto, setModalCancelarAberto] = useState<boolean>(false);
+  const [motivoSelecionado, setMotivoSelecionado] = useState<string>('Imprevisto pessoal ou profissional');
+  const [motivoPersonalizado, setMotivoPersonalizado] = useState<string>('');
+
+  // 1. Extração do ID do Agendamento da URL
+  useEffect(() => {
+    const extrairId = (): string => {
+      try {
+        const hash = window.location.hash;
+        const search = window.location.search;
+
+        const searchParams = new URLSearchParams(search);
+        if (searchParams.get('id')) return searchParams.get('id')!.trim();
+        if (searchParams.get('confirmar')) return searchParams.get('confirmar')!.trim();
+
+        if (hash.includes('?')) {
+          const hashQuery = hash.substring(hash.indexOf('?') + 1);
+          const hashParams = new URLSearchParams(hashQuery);
+          if (hashParams.get('id')) return hashParams.get('id')!.trim();
+          if (hashParams.get('confirmar')) return hashParams.get('confirmar')!.trim();
+        }
+
+        if (hash.includes('/')) {
+          const parts = hash.split('/');
+          if (parts[1]) return parts[1].split('?')[0].split('&')[0].trim();
+        }
+
+        if (hash.includes('=')) {
+          const parts = hash.split('=');
+          if (parts[1]) return parts[1].split('&')[0].trim();
+        }
+      } catch (e) {
+        console.error('Erro ao ler URL:', e);
+      }
+      return '';
+    };
+
+    const id = extrairId();
+    setAgendamentoId(id);
+  }, []);
+
+  // 2. Busca dos dados completos no Supabase
+  useEffect(() => {
+    if (!agendamentoId) {
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const carregarDados = async () => {
+      setLoading(true);
+      try {
+        // A. Buscar agendamento
+        const { data: agendamentoData, error: agendamentoError } = await supabase
+          .from('agendamentos')
+          .select('*')
+          .eq('id', agendamentoId)
+          .maybeSingle();
+
+        if (agendamentoError || !agendamentoData) {
+          console.warn('Agendamento não encontrado na nuvem:', agendamentoError);
+          if (isMounted) setLoading(false);
+          return;
+        }
+
+        if (!isMounted) return;
+        setAgendamento(agendamentoData);
+
+        // B. Buscar cliente
+        if (agendamentoData.cliente_id) {
+          const { data: clienteData } = await supabase
+            .from('clientes')
+            .select('id, nome, telefone')
+            .eq('id', agendamentoData.cliente_id)
+            .maybeSingle();
+          if (clienteData && isMounted) {
+            setCliente(clienteData);
+          }
+        }
+
+        // C. Buscar serviços
+        const servicosIds = Array.isArray(agendamentoData.itens_servicos) 
+          ? agendamentoData.itens_servicos 
+          : [];
+
+        if (servicosIds.length > 0) {
+          const { data: servicosData } = await supabase
+            .from('servicos')
+            .select('id, nome, duracao_minutos, preco')
+            .in('id', servicosIds);
+          if (servicosData && isMounted) {
+            setServicos(servicosData);
+          }
+        }
+
+        // D. Buscar profissional responsável
+        if (agendamentoData.profissional_id) {
+          const profLocal = (equipeContext || []).find(e => e.id === agendamentoData.profissional_id);
+          if (profLocal) {
+            setProfissionalNome(profLocal.nome);
+          } else {
+            const { data: profData } = await supabase
+              .from('usuarios')
+              .select('nome')
+              .eq('id', agendamentoData.profissional_id)
+              .maybeSingle();
+            if (profData?.nome && isMounted) {
+              setProfissionalNome(profData.nome);
+            }
+          }
+        }
+
+        // E. Dados de contato do Salão
+        if (configSalaoContext?.nome) {
+          setDadosSalao({
+            nome: configSalaoContext.nome || 'Sheila Santos Nails',
+            proprietaria: configSalaoContext.proprietaria || 'Sheila Santos',
+            telefone: (configSalaoContext.telefone || '3597141856').replace(/\D/g, ''),
+            endereco: configSalaoContext.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
+            instagram: configSalaoContext.instagram || '@sheilasantos_nails'
+          });
+        } else {
+          const { data: configData } = await supabase
+            .from('configuracoes')
+            .select('config_salao')
+            .eq('id', 'salao_principal')
+            .maybeSingle();
+          if (configData?.config_salao && isMounted) {
+            const cs = configData.config_salao;
+            setDadosSalao({
+              nome: cs.nome || 'Sheila Santos Nails',
+              proprietaria: cs.proprietaria || 'Sheila Santos',
+              telefone: (cs.telefone || '3597141856').replace(/\D/g, ''),
+              endereco: cs.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
+              instagram: cs.instagram || '@sheilasantos_nails'
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar confirmação:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    carregarDados();
+
+    // Inscrição Realtime no Supabase para refletir alterações instantaneamente
+    const canal = supabase
+      .channel(`public_agendamento_${agendamentoId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'agendamentos',
+        filter: `id=eq.${agendamentoId}`
+      }, (payload: any) => {
+        if (payload.new && isMounted) {
+          setAgendamento(prev => prev ? { ...prev, ...payload.new } : payload.new);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(canal);
+    };
+  }, [agendamentoId]);
+
+  // Ação: Confirmar Presença
+  const handleConfirmarPresenca = async () => {
+    if (!agendamento) return;
+    setProcessandoAcao(true);
+
+    try {
+      await atualizarStatusAgendamentoSupabase(agendamento.id, 'confirmado');
+      
+      // Atualiza estado local no contexto caso esteja aberto no mesmo app
+      if (updateAgendamentoStatus) {
+        updateAgendamentoStatus(agendamento.id, 'confirmado');
+      }
+
+      setAgendamento(prev => prev ? { ...prev, status: 'confirmado' } : null);
+      setMensagemSucesso('🎉 Presença confirmada com sucesso! Seu horário está 100% garantido.');
+    } catch (e) {
+      console.error('Erro ao confirmar:', e);
+      alert('Não foi possível confirmar no momento. Por favor, tente novamente ou entre em contato pelo WhatsApp.');
+    } finally {
+      setProcessandoAcao(false);
+    }
+  };
+
+  // Ação: Cancelar Presença
+  const handleConfirmarCancelamento = async () => {
+    if (!agendamento) return;
+    setProcessandoAcao(true);
+
+    const motivoFinal = motivoSelecionado === 'Outro' && motivoPersonalizado.trim()
+      ? motivoPersonalizado.trim()
+      : motivoSelecionado;
+
+    try {
+      await atualizarStatusAgendamentoSupabase(agendamento.id, 'cancelado', 'cliente', motivoFinal);
+
+      if (cancelAgendamento) {
+        cancelAgendamento(agendamento.id, motivoFinal, 'cliente');
+      }
+
+      setAgendamento(prev => prev ? { 
+        ...prev, 
+        status: 'cancelado', 
+        cancelado_por: 'cliente',
+        motivo_cancelamento: motivoFinal 
+      } : null);
+
+      setModalCancelarAberto(false);
+      setMensagemSucesso('Seu cancelamento foi registrado com sucesso. Agradecemos pelo aviso!');
+    } catch (e) {
+      console.error('Erro ao cancelar:', e);
+      alert('Não foi possível registrar o cancelamento. Por favor, avise-nos pelo WhatsApp.');
+    } finally {
+      setProcessandoAcao(false);
+    }
+  };
+
+  // Formatadores de data e hora
+  const formatarDataCompleta = (dataIso?: string) => {
+    if (!dataIso) return '';
+    const d = new Date(dataIso);
+    const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const meses = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    
+    return `${diasSemana[d.getDay()]}, ${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+  };
+
+  const formatarHorario = (dataIso?: string) => {
+    if (!dataIso) return '';
+    const partes = dataIso.split('T');
+    if (partes[1]) {
+      return partes[1].substring(0, 5);
+    }
+    const d = new Date(dataIso);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const formatarMoeda = (val: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
+
+  const servicosTexto = servicos.map(s => s.nome).join(' + ') || 'Atendimento Personalizado de Unhas';
+  const duracaoTotal = servicos.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0) || 60;
+  const valorTotalExibicao = agendamento?.valor_total || servicos.reduce((acc, s) => acc + (s.preco || 0), 0);
+
+  // Link do Google Agenda
+  const linkGoogleCalendar = agendamento ? gerarLinkGoogleCalendar({
+    titulo: `✨ Unhas no ${dadosSalao.nome}`,
+    dataInicioIso: agendamento.inicio,
+    duracaoMinutos: duracaoTotal,
+    descricao: `Procedimento: ${servicosTexto}\nProfissional: ${profissionalNome}\nSalão: ${dadosSalao.nome}\nTelefone: ${dadosSalao.telefone}`,
+    local: dadosSalao.endereco
+  }) : '#';
+
+  // Link do WhatsApp com mensagem pronta
+  const linkWhatsAppSalao = agendamento ? `https://wa.me/55${dadosSalao.telefone}?text=${encodeURIComponent(
+    `Olá, Sheila! Meu nome é ${cliente?.nome || 'Cliente'} (Agendamento #${agendamento.id}). Gostaria de tirar uma dúvida sobre meu horário de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
+  )}` : `https://wa.me/55${dadosSalao.telefone}`;
+
+  // Link para Google Maps
+  const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dadosSalao.endereco)}`;
+
+  // TELA DE CARREGAMENTO
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center p-4">
+        <div className="w-16 h-16 rounded-3xl bg-[#F6ECE8] flex items-center justify-center text-[#8C6D58] animate-pulse mb-4 shadow-sm border border-[#EFECE6]">
+          <Sparkles size={30} className="animate-spin" />
+        </div>
+        <h2 className="text-base font-serif font-bold text-[#5A4535]">Carregando agendamento...</h2>
+        <p className="text-xs text-[#8C7A6B] mt-1">Conectando ao sistema Sheila Santos Nails</p>
+      </div>
+    );
+  }
+
+  // TELA DE AGENDAMENTO NÃO ENCONTRADO
+  if (!agendamento) {
+    return (
+      <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-[#EFECE6] shadow-sm space-y-5">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200">
+            <AlertCircle size={32} />
+          </div>
+          <div>
+            <h2 className="text-lg font-serif font-bold text-[#5A4535]">Agendamento não encontrado</h2>
+            <p className="text-xs text-[#8C7A6B] mt-2 leading-relaxed">
+              O link de confirmação pode estar incorreto, expirado ou o agendamento não consta mais em nossa base.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-col gap-2.5">
+            <a 
+              href={getBookingUrl()}
+              className="w-full py-3 px-4 rounded-xl bg-[#8C6D58] hover:bg-[#725743] text-white font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+            >
+              <CalendarIcon size={15} />
+              <span>Ver Horários Disponíveis para Agendar</span>
+            </a>
+            <a 
+              href={linkWhatsAppSalao}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 rounded-xl bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#5A4535] font-bold text-xs transition-colors flex items-center justify-center gap-2"
+            >
+              <MessageCircle size={15} className="text-emerald-600" />
+              <span>Falar no WhatsApp do Salão</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isConfirmado = agendamento.status === 'confirmado';
+  const isCancelado = agendamento.status === 'cancelado';
+  const isPendente = agendamento.status === 'pendente';
+  const isConcluido = agendamento.status === 'concluido';
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] text-[#2D2D2D] py-6 sm:py-10 px-4 flex flex-col justify-between">
+      <div className="max-w-md mx-auto w-full space-y-4">
+        
+        {/* CABEÇALHO DO SALÃO */}
+        <div className="text-center space-y-1.5 pb-2">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#8C6D58] text-white shadow-md mb-1">
+            <Sparkles size={22} />
+          </div>
+          <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#5A4535] tracking-tight">
+            {dadosSalao.nome}
+          </h1>
+          <p className="text-xs text-[#8C7A6B] font-medium">
+            Confirmação de Atendimento Exclusivo
+          </p>
+        </div>
+
+        {/* FEEDBACK DE SUCESSO TEMPORÁRIO */}
+        {mensagemSucesso && (
+          <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span>{mensagemSucesso}</span>
+            </div>
+          </div>
+        )}
+
+        {/* CARD PRINCIPAL COM STATUS */}
+        <div className="bg-white rounded-3xl p-6 border border-[#EFECE6] shadow-sm space-y-5">
+          
+          {/* BADGE DE STATUS */}
+          <div className="flex items-center justify-between border-b border-[#FAF9F6] pb-4">
+            <div>
+              <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                Agendamento #{agendamento.id}
+              </span>
+              <h2 className="text-sm font-bold text-[#5A4535] mt-0.5">
+                Olá, {cliente?.nome ? cliente.nome.split(' ')[0] : 'Cliente'}! ✨
+              </h2>
+            </div>
+
+            <div>
+              {isConfirmado && (
+                <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-bold shadow-2xs">
+                  <CheckCircle2 size={14} className="text-emerald-600" />
+                  Presença Confirmada
+                </span>
+              )}
+              {isPendente && (
+                <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse">
+                  <Clock size={14} className="text-amber-600" />
+                  Aguardando Confirmação
+                </span>
+              )}
+              {isCancelado && (
+                <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-800 border border-rose-200 px-3 py-1.5 rounded-full text-xs font-bold">
+                  <XCircle size={14} className="text-rose-600" />
+                  Horário Cancelado
+                </span>
+              )}
+              {isConcluido && (
+                <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1.5 rounded-full text-xs font-bold">
+                  <ShieldCheck size={14} className="text-blue-600" />
+                  Atendimento Concluído
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* DETALHES DE DATA E HORA EM DESTAQUE */}
+          <div className="bg-gradient-to-br from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-4.5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white border border-[#EFECE6] flex items-center justify-center text-[#8C6D58] shrink-0 shadow-2xs">
+                <CalendarIcon size={20} />
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wide">Data Marcada</span>
+                <p className="text-sm font-bold text-[#5A4535] capitalize">
+                  {formatarDataCompleta(agendamento.inicio)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 pt-2 border-t border-[#E8DEC9]/50">
+              <div className="w-10 h-10 rounded-xl bg-white border border-[#EFECE6] flex items-center justify-center text-[#8C6D58] shrink-0 shadow-2xs">
+                <Clock size={20} />
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wide">Horário de Início</span>
+                <p className="text-sm font-bold text-[#5A4535]">
+                  {formatarHorario(agendamento.inicio)} <span className="text-xs font-normal text-[#8C7A6B]">({duracaoTotal} minutos estimados)</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* SERVIÇOS E PROFISSIONAL */}
+          <div className="space-y-3 pt-1">
+            <div className="flex items-start justify-between text-xs">
+              <span className="text-[#8C7A6B] flex items-center gap-1.5">
+                <Sparkles size={14} className="text-[#8C6D58]" />
+                Procedimento(s):
+              </span>
+              <span className="font-bold text-[#5A4535] text-right max-w-[65%]">
+                {servicosTexto}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#8C7A6B] flex items-center gap-1.5">
+                <User size={14} className="text-[#8C6D58]" />
+                Profissional:
+              </span>
+              <span className="font-bold text-[#5A4535]">
+                {profissionalNome}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between text-xs pt-1 border-t border-[#FAF9F6]">
+              <span className="text-[#8C7A6B]">Valor Estimado:</span>
+              <span className="font-bold text-sm text-[#5A4535]">
+                {formatarMoeda(valorTotalExibicao)}
+              </span>
+            </div>
+
+            {agendamento.valor_sinal > 0 && (
+              <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/60">
+                <span>Sinal de Reserva:</span>
+                <span className="font-bold">
+                  {formatarMoeda(agendamento.valor_sinal)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* BOTÕES PRINCIPAIS DE AÇÃO */}
+          <div className="pt-3 space-y-3">
+            {isPendente && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleConfirmarPresenca}
+                  disabled={processandoAcao}
+                  className="w-full py-3.5 px-4 bg-[#8C6D58] hover:bg-[#725743] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#8C6D58]/20 flex items-center justify-center gap-2"
+                >
+                  {processandoAcao ? (
+                    <>
+                      <RefreshCw size={17} className="animate-spin" />
+                      <span>Confirmando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={18} />
+                      <span>✅ Confirmar Minha Presença</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalCancelarAberto(true)}
+                  disabled={processandoAcao}
+                  className="w-full py-2.5 px-4 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <XCircle size={15} />
+                  <span>Não Poderei Comparecer</span>
+                </button>
+              </>
+            )}
+
+            {isConfirmado && (
+              <div className="space-y-2.5 animate-in fade-in duration-300">
+                <a
+                  href={linkGoogleCalendar}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#5A4535] rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs"
+                >
+                  <CalendarPlus size={16} className="text-[#8C6D58]" />
+                  <span>Adicionar à Minha Agenda (Google / Celular)</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setModalCancelarAberto(true)}
+                  className="w-full py-2 px-4 text-[#8C7A6B] hover:text-rose-700 text-xs font-semibold transition-colors flex items-center justify-center gap-1"
+                >
+                  <span>Precisa cancelar ou remarcar? Toque aqui</span>
+                </button>
+              </div>
+            )}
+
+            {isCancelado && (
+              <div className="space-y-2.5 pt-1 animate-in fade-in duration-300">
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-900 leading-relaxed">
+                  <p className="font-bold mb-0.5">Seu horário foi liberado com sucesso.</p>
+                  <p className="text-[11px] text-rose-800">
+                    Quando desejar um novo momento de autocuidado, estaremos de portas abertas para te receber!
+                  </p>
+                </div>
+
+                <a
+                  href={getBookingUrl()}
+                  className="w-full py-3 px-4 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <CalendarIcon size={15} />
+                  <span>Escolher Novo Horário Online</span>
+                </a>
+              </div>
+            )}
+          </div>
+
+          {/* LOCALIZAÇÃO E CONTATO DO SALÃO */}
+          <div className="pt-4 border-t border-[#EFECE6] space-y-2.5 text-xs text-[#8C7A6B]">
+            <a 
+              href={linkGoogleMaps}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-start gap-2 p-2.5 rounded-xl hover:bg-[#FAF9F6] transition-colors border border-transparent hover:border-[#EFECE6] group"
+            >
+              <MapPin size={16} className="text-[#8C6D58] shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <span className="font-bold text-[#5A4535] group-hover:text-[#8C6D58] transition-colors block">
+                  Endereço do Salão
+                </span>
+                <span className="text-[11px] leading-snug block">
+                  {dadosSalao.endereco}
+                </span>
+                <span className="text-[10px] text-[#8C6D58] font-semibold mt-0.5 inline-flex items-center gap-1">
+                  Abrir no Google Maps <ExternalLink size={10} />
+                </span>
+              </div>
+            </a>
+
+            <a 
+              href={linkWhatsAppSalao}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100 text-emerald-900 transition-colors"
+            >
+              <span className="flex items-center gap-2 font-bold text-xs">
+                <MessageCircle size={16} className="text-emerald-600" />
+                Dúvidas? Fale com Sheila no WhatsApp
+              </span>
+              <ChevronRight size={14} className="text-emerald-600" />
+            </a>
+          </div>
+
+        </div>
+
+        {/* RODAPÉ DISCRETO */}
+        <div className="text-center pt-2 pb-6 space-y-2">
+          <p className="text-[11px] text-[#8C7A6B] flex items-center justify-center gap-1">
+            <span>Desenvolvido com carinho para clientes</span>
+            <Heart size={12} className="text-[#8C6D58] fill-[#8C6D58]" />
+          </p>
+          <div>
+            <a 
+              href="#admin" 
+              className="text-[10px] text-[#A69B91] hover:text-[#5A4535] transition-colors"
+            >
+              Acesso Profissional / Área da Equipe
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      {/* MODAL DE CANCELAMENTO COM MOTIVO AMIGÁVEL */}
+      {modalCancelarAberto && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-xl border border-[#EFECE6]">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 mb-2">
+                <XCircle size={24} />
+              </div>
+              <h3 className="font-serif font-bold text-base text-[#5A4535]">
+                Deseja cancelar o horário?
+              </h3>
+              <p className="text-xs text-[#8C7A6B]">
+                Compreendemos que imprevistos acontecem. Se puder, nos conte o motivo para podermos melhorar nosso atendimento:
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {[
+                'Imprevisto pessoal ou profissional',
+                'Problema de saúde ou indisposição',
+                'Desejo remarcar para outra data',
+                'Outro'
+              ].map((motivo) => (
+                <label 
+                  key={motivo}
+                  className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-colors ${
+                    motivoSelecionado === motivo 
+                      ? 'border-[#8C6D58] bg-[#F6ECE8]/50 text-[#5A4535] font-bold' 
+                      : 'border-[#EFECE6] bg-white text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="motivo_cancelamento_opcao"
+                    checked={motivoSelecionado === motivo}
+                    onChange={() => setMotivoSelecionado(motivo)}
+                    className="accent-[#8C6D58]"
+                  />
+                  <span>{motivo}</span>
+                </label>
+              ))}
+
+              {motivoSelecionado === 'Outro' && (
+                <textarea
+                  rows={2}
+                  value={motivoPersonalizado}
+                  onChange={(e) => setMotivoPersonalizado(e.target.value)}
+                  placeholder="Conte brevemente o motivo..."
+                  className="w-full text-xs p-2.5 rounded-xl border border-[#EFECE6] focus:border-[#8C6D58] outline-none resize-none text-[#5A4535]"
+                />
+              )}
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleConfirmarCancelamento}
+                disabled={processandoAcao}
+                className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {processandoAcao ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Registrando...</span>
+                  </>
+                ) : (
+                  <span>Sim, Confirmar Cancelamento</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalCancelarAberto(false)}
+                disabled={processandoAcao}
+                className="w-full py-2 px-4 bg-white border border-[#EFECE6] hover:bg-[#FAF9F6] text-[#8C7A6B] font-semibold text-xs rounded-xl transition-colors"
+              >
+                Voltar (Manter Meu Horário)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
+import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
 
 interface DashboardProps {
   setCurrentView: (view: string) => void;
@@ -135,7 +136,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const handleEnviarMensagemWhatsApp = (cliente: Cliente, tipo: 'confirmacao' | 'lembrete' | 'retorno_manutencao', extra?: any) => {
     let msg = '';
-    const link = `https://agenda-sheila.com.br/reserva`;
+    const linkReserva = extra?.agendamentoId ? getConfirmationUrl(extra.agendamentoId) : getBookingUrl();
     const fone = cliente.telefone.replace(/\D/g, '');
 
     if (tipo === 'confirmacao') {
@@ -147,20 +148,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .replace('{hora}', extra?.hora || 'hora')
         .replace('{sinal}', String(extra?.sinal || 0))
         .replace('{chave_pix}', configSalao.chave_pix)
-        .replace('{link_reserva}', link);
+        .replace('{link_reserva}', linkReserva)
+        .replace('{link_confirmacao}', linkReserva);
+
+      if (extra?.agendamentoId && !msg.includes(linkReserva)) {
+        msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkReserva}`;
+      }
     } else if (tipo === 'lembrete') {
       msg = configSalao.templates_whatsapp.lembrete
         .replace('{cliente}', cliente.nome)
         .replace('{data}', extra?.data || 'amanhã')
         .replace('{hora}', extra?.hora || '')
         .replace('{servico}', extra?.servico || '')
-        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
+        .replace('{link_confirmacao}', linkReserva);
+
+      if (extra?.agendamentoId && !msg.includes(linkReserva)) {
+        msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkReserva}`;
+      }
     } else if (tipo === 'retorno_manutencao') {
       msg = configSalao.templates_whatsapp.retorno_manutencao
         .replace('{cliente}', cliente.nome)
         .replace('{dias_visita}', String(extra?.dias || 20))
         .replace('{servico}', extra?.servico || 'Alongamento')
-        .replace('{link_agendamento}', `https://agenda-sheila.com.br/agendar`);
+        .replace('{link_agendamento}', getBookingUrl());
     }
 
     const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;

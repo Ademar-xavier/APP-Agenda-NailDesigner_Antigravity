@@ -16,6 +16,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Agendamento, ListaEspera, Cliente, Servico } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
+import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
 
 type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'manutencao' | 'lista_espera' | 'cancelados';
 
@@ -87,6 +88,7 @@ export const Confirmacoes: React.FC = () => {
       const servText = servs.map(s => s.nome).join(' + ');
       const diaRelativo = formatarDiaRelativo(a.inicio);
 
+      const linkConfirmacao = getConfirmationUrl(a.id);
       let msg = '';
       if (tipo === 'confirmacao') {
         msg = configSalao.templates_whatsapp.confirmacao
@@ -97,7 +99,12 @@ export const Confirmacoes: React.FC = () => {
           .replace('{hora}', horaStr)
           .replace('{sinal}', String(a.valor_sinal))
           .replace('{chave_pix}', configSalao.chave_pix)
-          .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
+          .replace('{link_reserva}', linkConfirmacao)
+          .replace('{link_confirmacao}', linkConfirmacao);
+
+        if (!msg.includes(linkConfirmacao)) {
+          msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+        }
       } else {
         msg = configSalao.templates_whatsapp.lembrete
           .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
@@ -107,7 +114,12 @@ export const Confirmacoes: React.FC = () => {
           .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
           .replace('{hora}', horaStr)
           .replace('{servico}', servText)
-          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
+          .replace('{link_confirmacao}', linkConfirmacao);
+
+        if (!msg.includes(linkConfirmacao)) {
+          msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+        }
       }
 
       return {
@@ -374,7 +386,7 @@ export const Confirmacoes: React.FC = () => {
     const fone = rec.cliente.telefone?.replace(/\D/g, '');
     if (!fone) return;
 
-    const linkAgendamento = `${window.location.origin}${window.location.pathname}?booking=true`;
+    const linkAgendamento = getBookingUrl();
     const dataFormatada = formatarDataBrasileira(rec.dataSugerida);
     const diasTexto = rec.diasAtraso > 0 ? `${rec.servico.intervalo_manutencao_dias + rec.diasAtraso}` : `${rec.servico.intervalo_manutencao_dias}`;
 
@@ -401,6 +413,7 @@ export const Confirmacoes: React.FC = () => {
     const horaStr = a.inicio.split('T')[1].substring(0, 5);
     const servs = obterServicosDeAgendamento(a.id);
     const servText = servs.map(s => s.nome).join(' + ');
+    const linkConfirmacao = getConfirmationUrl(a.id);
     
     let msg = '';
     if (tipo === 'confirmacao') {
@@ -412,7 +425,12 @@ export const Confirmacoes: React.FC = () => {
         .replace('{hora}', horaStr)
         .replace('{sinal}', String(a.valor_sinal))
         .replace('{chave_pix}', configSalao.chave_pix)
-        .replace('{link_reserva}', `https://agenda-sheila.com.br/reserva`);
+        .replace('{link_reserva}', linkConfirmacao)
+        .replace('{link_confirmacao}', linkConfirmacao);
+
+      if (!msg.includes(linkConfirmacao)) {
+        msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+      }
     } else {
       const diaRelativo = formatarDiaRelativo(a.inicio);
       msg = configSalao.templates_whatsapp.lembrete
@@ -423,7 +441,12 @@ export const Confirmacoes: React.FC = () => {
         .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
         .replace('{hora}', horaStr)
         .replace('{servico}', servText)
-        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas));
+        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
+        .replace('{link_confirmacao}', linkConfirmacao);
+
+      if (!msg.includes(linkConfirmacao)) {
+        msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
+      }
     }
 
     const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
