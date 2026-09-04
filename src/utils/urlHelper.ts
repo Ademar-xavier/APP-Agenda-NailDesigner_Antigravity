@@ -8,7 +8,7 @@ export const getBaseAppUrl = (): string => {
     return window.location.origin;
   }
   // Fallback para aplicativos instalados nativos (Capacitor / Electron com file://)
-  return 'https://sheilasantos-agenda.netlify.app';
+  return 'https://sheilasantos-agenda.vercel.app';
 };
 
 /**
