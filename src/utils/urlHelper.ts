@@ -38,12 +38,32 @@ export const gerarLinkGoogleCalendar = (params: {
   local?: string;
 }): string => {
   try {
-    const dataInicio = new Date(params.dataInicioIso);
+    let ano = 0, mes = 0, dia = 0, hora = 0, minuto = 0;
+
+    // Extrai ano, mês, dia, hora e minuto diretamente dos dígitos para garantir o horário nominal do salão
+    const match = params.dataInicioIso.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (match) {
+      ano = parseInt(match[1], 10);
+      mes = parseInt(match[2], 10) - 1;
+      dia = parseInt(match[3], 10);
+      hora = parseInt(match[4], 10);
+      minuto = parseInt(match[5], 10);
+    } else {
+      const d = new Date(params.dataInicioIso);
+      ano = d.getFullYear();
+      mes = d.getMonth();
+      dia = d.getDate();
+      hora = d.getHours();
+      minuto = d.getMinutes();
+    }
+
+    const dataInicio = new Date(ano, mes, dia, hora, minuto, 0);
     const duracao = params.duracaoMinutos || 60;
     const dataFim = new Date(dataInicio.getTime() + duracao * 60 * 1000);
 
+    const pad = (n: number) => String(n).padStart(2, '0');
     const formatGCalDate = (d: Date) => {
-      return d.toISOString().replace(/-|:|\.\d+/g, '');
+      return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
     };
 
     const inicioStr = formatGCalDate(dataInicio);
@@ -53,7 +73,7 @@ export const gerarLinkGoogleCalendar = (params: {
     const detalhes = encodeURIComponent(params.descricao || 'Atendimento agendado com Sheila Santos Nails.');
     const local = encodeURIComponent(params.local || 'Sheila Santos Nails');
 
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${inicioStr}/${fimStr}&details=${detalhes}&location=${local}`;
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${inicioStr}/${fimStr}&details=${detalhes}&location=${local}&ctz=America/Sao_Paulo`;
   } catch (e) {
     return 'https://calendar.google.com';
   }
