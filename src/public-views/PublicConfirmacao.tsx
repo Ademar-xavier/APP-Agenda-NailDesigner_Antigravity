@@ -50,7 +50,16 @@ interface ServicoPublico {
 }
 
 export const PublicConfirmacao: React.FC = () => {
-  const { updateAgendamentoStatus, cancelAgendamento, configSalao: configSalaoContext, equipe: equipeContext } = useAppState();
+  const { 
+    agendamentos: agendamentosContext,
+    clientes: clientesContext,
+    servicos: servicosContext,
+    itensAgendamento: itensAgendamentoContext,
+    updateAgendamentoStatus, 
+    cancelAgendamento, 
+    configSalao: configSalaoContext, 
+    equipe: equipeContext 
+  } = useAppState();
 
   const [loading, setLoading] = useState<boolean>(true);
   const [agendamentoId, setAgendamentoId] = useState<string>('');
@@ -74,7 +83,7 @@ export const PublicConfirmacao: React.FC = () => {
   const [motivoSelecionado, setMotivoSelecionado] = useState<string>('Imprevisto pessoal ou profissional');
   const [motivoPersonalizado, setMotivoPersonalizado] = useState<string>('');
 
-  // 1. Extração do ID do Agendamento da URL
+  // 1. Extração do ID do Agendamento da URL (com suporte a hashchange em tempo real)
   useEffect(() => {
     const extrairId = (): string => {
       try {
@@ -92,14 +101,14 @@ export const PublicConfirmacao: React.FC = () => {
           if (hashParams.get('confirmar')) return hashParams.get('confirmar')!.trim();
         }
 
-        if (hash.includes('/')) {
-          const parts = hash.split('/');
-          if (parts[1]) return parts[1].split('?')[0].split('&')[0].trim();
-        }
-
         if (hash.includes('=')) {
           const parts = hash.split('=');
           if (parts[1]) return parts[1].split('&')[0].trim();
+        }
+
+        if (hash.includes('/')) {
+          const parts = hash.split('/');
+          if (parts[1]) return parts[1].split('?')[0].split('&')[0].trim();
         }
       } catch (e) {
         console.error('Erro ao ler URL:', e);
@@ -107,11 +116,21 @@ export const PublicConfirmacao: React.FC = () => {
       return '';
     };
 
-    const id = extrairId();
-    setAgendamentoId(id);
+    const atualizar = () => {
+      const id = extrairId();
+      setAgendamentoId(id);
+    };
+
+    atualizar();
+    window.addEventListener('hashchange', atualizar);
+    window.addEventListener('popstate', atualizar);
+    return () => {
+      window.removeEventListener('hashchange', atualizar);
+      window.removeEventListener('popstate', atualizar);
+    };
   }, []);
 
-  // 2. Busca dos dados completos no Supabase
+  // 2. Busca dos dados completos no Supabase (com busca flexível e fallback)
   useEffect(() => {
     if (!agendamentoId) {
       setLoading(false);
@@ -123,15 +142,39 @@ export const PublicConfirmacao: React.FC = () => {
     const carregarDados = async () => {
       setLoading(true);
       try {
-        // A. Buscar agendamento
-        const { data: agendamentoData, error: agendamentoError } = await supabase
+        // A. Buscar agendamento: primeiro por ID exato, depois case-insensitive, depois fallback local
+        let agendamentoData: any = null;
+
+        const { data: resExato } = await supabase
           .from('agendamentos')
           .select('*')
           .eq('id', agendamentoId)
           .maybeSingle();
 
-        if (agendamentoError || !agendamentoData) {
-          console.warn('Agendamento não encontrado na nuvem:', agendamentoError);
+        if (resExato) {
+          agendamentoData = resExato;
+        } else {
+          const { data: resIlike } = await supabase
+            .from('agendamentos')
+            .select('*')
+            .ilike('id', agendamentoId)
+            .maybeSingle();
+          if (resIlike) {
+            agendamentoData = resIlike;
+          } else {
+            const localAg = (agendamentosContext || []).find(a => a.id.toLowerCase() === agendamentoId.toLowerCase());
+            if (localAg) {
+              const servsIds = (itensAgendamentoContext && itensAgendamentoContext[localAg.id]) || ['s1'];
+              agendamentoData = {
+                ...localAg,
+                itens_servicos: servsIds
+              };
+            }
+          }
+        }
+
+        if (!agendamentoData) {
+          console.warn('Agendamento não encontrado para ID:', agendamentoId);
           if (isMounted) setLoading(false);
           return;
         }
@@ -148,6 +191,11 @@ export const PublicConfirmacao: React.FC = () => {
             .maybeSingle();
           if (clienteData && isMounted) {
             setCliente(clienteData);
+          } else {
+            const localCli = (clientesContext || []).find(c => c.id === agendamentoData.cliente_id);
+            if (localCli && isMounted) {
+              setCliente(localCli);
+            }
           }
         }
 
@@ -161,8 +209,13 @@ export const PublicConfirmacao: React.FC = () => {
             .from('servicos')
             .select('id, nome, duracao_minutos, preco')
             .in('id', servicosIds);
-          if (servicosData && isMounted) {
+          if (servicosData && servicosData.length > 0 && isMounted) {
             setServicos(servicosData);
+          } else {
+            const localServs = (servicosContext || []).filter(s => servicosIds.includes(s.id));
+            if (localServs.length > 0 && isMounted) {
+              setServicos(localServs);
+            }
           }
         }
 

@@ -271,8 +271,22 @@ export const Configuracoes: React.FC = () => {
   const [horarios, setHorarios] = useState(configSalao.horarios_trabalho);
 
   // Templates
-  const [templateConfirmacao, setTemplateConfirmacao] = useState(configSalao.templates_whatsapp.confirmacao);
-  const [templateLembrete, setTemplateLembrete] = useState(configSalao.templates_whatsapp.lembrete);
+  const [templateConfirmacao, setTemplateConfirmacao] = useState(() => {
+    const atual = configSalao.templates_whatsapp.confirmacao;
+    if (atual && (!atual.includes('{link_confirmacao}') || atual.includes('{link_reserva}'))) {
+      return atual.replace('{link_reserva}', '{link_confirmacao}');
+    }
+    return atual || 'Olá, {cliente}! Seu agendamento para {servico} com {profissional} no dia {data} às {hora} foi recebido. Para confirmar, efetue o pagamento do sinal de R$ {sinal} na chave Pix {chave_pix} e envie o comprovante aqui.\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}';
+  });
+
+  const [templateLembrete, setTemplateLembrete] = useState(() => {
+    const atual = configSalao.templates_whatsapp.lembrete;
+    if (atual && (atual.includes('1 - Para Confirmar') || !atual.includes('{link_confirmacao}'))) {
+      return 'Olá, {cliente}! Passando para lembrar do seu atendimento {dia_relativo} ({data}) às {hora} ({servico}).\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}\n\nTe espero!';
+    }
+    return atual || 'Olá, {cliente}! Passando para lembrar do seu atendimento {dia_relativo} ({data}) às {hora} ({servico}).\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}\n\nTe espero!';
+  });
+
   const [templateManutencao, setTemplateManutencao] = useState(configSalao.templates_whatsapp.retorno_manutencao);
 
   // --- EQUIPE MODAL STATE ---
@@ -910,12 +924,43 @@ export const Configuracoes: React.FC = () => {
                 </p>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs font-bold text-[#5A4535]">Personalize os Textos:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTemplateConfirmacao('Olá, {cliente}! Seu agendamento para {servico} com {profissional} no dia {data} às {hora} foi recebido. Para confirmar, efetue o pagamento do sinal de R$ {sinal} na chave Pix {chave_pix} e envie o comprovante aqui.\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}');
+                    setTemplateLembrete('Olá, {cliente}! Passando para lembrar do seu atendimento {dia_relativo} ({data}) às {hora} ({servico}).\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}\n\nTe espero!');
+                    setTemplateManutencao('Olá, {cliente}! Faz {dias_visita} dias desde o seu último {servico}. Está na hora de fazer sua manutenção para manter suas unhas lindas e saudáveis! Agende pelo link: {link_agendamento}');
+                    exibirToast('✨ Modelos padrão com link de 1 toque restaurados!');
+                  }}
+                  className="text-[11px] text-[#8C6D58] hover:text-[#5A4535] font-semibold underline flex items-center gap-1 cursor-pointer"
+                >
+                  <RotateCcw size={12} />
+                  <span>Restaurar Modelos Padrão (com Link de 1 Toque)</span>
+                </button>
+              </div>
+
+              <div className="space-y-5">
                 {/* Template Confirmação */}
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">
-                    Confirmação de Agendamento (Sinal Pix)
-                  </label>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">
+                      Confirmação de Agendamento (Sinal Pix)
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {['{cliente}', '{servico}', '{profissional}', '{data}', '{hora}', '{sinal}', '{chave_pix}', '{link_confirmacao}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTemplateConfirmacao(prev => prev + ' ' + tag)}
+                        className="text-[10px] bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] px-1.5 py-0.5 rounded cursor-pointer font-mono"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
                   <textarea 
                     rows={4} 
                     value={templateConfirmacao} 
@@ -925,10 +970,24 @@ export const Configuracoes: React.FC = () => {
                 </div>
 
                 {/* Template Lembrete */}
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">
-                    Lembrete de Horário (24 horas antes)
-                  </label>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">
+                      Lembrete de Horário (24 horas antes)
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {['{cliente}', '{servico}', '{dia_relativo}', '{data}', '{hora}', '{link_confirmacao}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTemplateLembrete(prev => prev + ' ' + tag)}
+                        className="text-[10px] bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] px-1.5 py-0.5 rounded cursor-pointer font-mono"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
                   <textarea 
                     rows={4} 
                     value={templateLembrete} 
@@ -938,10 +997,24 @@ export const Configuracoes: React.FC = () => {
                 </div>
 
                 {/* Template Retorno Manutenção */}
-                <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">
-                    Aviso de Retorno / Manutenção Vencida
-                  </label>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">
+                      Aviso de Retorno / Manutenção Vencida
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {['{cliente}', '{servico}', '{dias_visita}', '{link_agendamento}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTemplateManutencao(prev => prev + ' ' + tag)}
+                        className="text-[10px] bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] px-1.5 py-0.5 rounded cursor-pointer font-mono"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
                   <textarea 
                     rows={4} 
                     value={templateManutencao} 
