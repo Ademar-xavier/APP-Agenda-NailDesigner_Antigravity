@@ -76,7 +76,9 @@ export const PublicConfirmacao: React.FC = () => {
     endereco: 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
     instagram: '@sheilasantos_nails',
     chave_pix: '',
-    instrucoes_pix: ''
+    instrucoes_pix: '',
+    regra_devolucao_sinal: '',
+    cancelamento_limite_horas: 24
   });
   const [pixCopiado, setPixCopiado] = useState<boolean>(false);
 
@@ -250,7 +252,9 @@ export const PublicConfirmacao: React.FC = () => {
             endereco: configSalaoContext.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
             instagram: configSalaoContext.instagram || '@sheilasantos_nails',
             chave_pix: configSalaoContext.chave_pix || '',
-            instrucoes_pix: configSalaoContext.instrucoes_pix || ''
+            instrucoes_pix: configSalaoContext.instrucoes_pix || '',
+            regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || '',
+            cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24
           });
         } else {
           const { data: configData } = await supabase
@@ -267,7 +271,9 @@ export const PublicConfirmacao: React.FC = () => {
               endereco: cs.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
               instagram: cs.instagram || '@sheilasantos_nails',
               chave_pix: cs.chave_pix || '',
-              instrucoes_pix: cs.instrucoes_pix || ''
+              instrucoes_pix: cs.instrucoes_pix || '',
+              regra_devolucao_sinal: cs.regra_devolucao_sinal || '',
+              cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24
             });
           }
         }
@@ -750,6 +756,12 @@ export const PublicConfirmacao: React.FC = () => {
                             <p className="text-[10px] text-[#8C7A6B] italic">
                               {dadosSalao.instrucoes_pix}
                             </p>
+                          )}
+                          {dadosSalao.regra_devolucao_sinal && (
+                            <div className="pt-2 border-t border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
+                              <span className="font-bold text-amber-950 block mb-0.5">📌 Política de Devolução do Sinal:</span>
+                              {dadosSalao.regra_devolucao_sinal.replace('{horas}', String(dadosSalao.cancelamento_limite_horas || 24))}
+                            </div>
                           )}
                         </div>
                       )}

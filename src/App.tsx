@@ -103,12 +103,33 @@ function AppContent() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
   
-  // Efeito para scrollar APENAS o conteúdo da direita para o topo ao trocar de aba (mantendo o menu lateral 100% fixo)
+  // Efeito para scrollar todo o conteúdo para o topo ao trocar de aba (Desktop, Web e Android WebView)
   useEffect(() => {
-    const mainContent = document.getElementById('main-content-scroll');
-    if (mainContent) {
-      mainContent.scrollTop = 0;
-    }
+    const rolarParaTopo = () => {
+      // 1. Container principal do desktop/tablet
+      const mainContent = document.getElementById('main-content-scroll');
+      if (mainContent) {
+        mainContent.scrollTop = 0;
+      }
+      // 2. Janela e documentos raiz (crítico no Android e celulares móveis)
+      window.scrollTo(0, 0);
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+
+      // 3. Qualquer container com scroll interno
+      document.querySelectorAll('.overflow-y-auto, .overflow-auto').forEach(el => {
+        el.scrollTop = 0;
+      });
+    };
+
+    rolarParaTopo();
+    const timer1 = setTimeout(rolarParaTopo, 40);
+    const timer2 = setTimeout(rolarParaTopo, 150);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
   }, [currentView]);
 
   // Patch global confirm/alert para reatar foco ao webview após janelas nativas
