@@ -1606,7 +1606,7 @@ export const Configuracoes: React.FC = () => {
                     type="button"
                     onClick={() => {
                       const msg = encodeURIComponent('Olá! Gostaria de falar sobre renovação e compra de licenças do App Agenda Nail Designer.');
-                      window.open(`https://wa.me/5535997141856?text=${msg}`, '_blank');
+                      window.open(`https://api.whatsapp.com/send?phone=5535997141856&text=${msg}`, '_blank');
                     }}
                     className="w-full sm:w-auto px-5 py-2.5 bg-[#25D366] hover:bg-[#20BA5C] text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                   >

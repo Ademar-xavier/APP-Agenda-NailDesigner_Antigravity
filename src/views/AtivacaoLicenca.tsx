@@ -58,7 +58,7 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
       'Olá! Gostaria de comprar ou ativar uma Chave de Licença para o aplicativo Agenda Nail Designer.'
     );
     // WhatsApp comercial para venda de licenças
-    window.open(`https://wa.me/5535997141856?text=${msg}`, '_blank');
+    window.open(`https://api.whatsapp.com/send?phone=5535997141856&text=${msg}`, '_blank');
   };
 
   return (

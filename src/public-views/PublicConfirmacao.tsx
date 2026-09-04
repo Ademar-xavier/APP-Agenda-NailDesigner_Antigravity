@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
-import { gerarLinkGoogleCalendar, getBookingUrl } from '../utils/urlHelper';
+import { gerarLinkGoogleCalendar, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface AgendamentoPublico {
   id: string;
@@ -386,9 +386,10 @@ export const PublicConfirmacao: React.FC = () => {
   }) : '#';
 
   // Link do WhatsApp com mensagem pronta
-  const linkWhatsAppSalao = agendamento ? `https://wa.me/55${dadosSalao.telefone}?text=${encodeURIComponent(
+  const linkWhatsAppSalao = agendamento ? gerarLinkWhatsApp(
+    dadosSalao.telefone,
     `Olá, Sheila! Meu nome é ${cliente?.nome || 'Cliente'} (Agendamento #${agendamento.id}). Gostaria de tirar uma dúvida sobre meu horário de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
-  )}` : `https://wa.me/55${dadosSalao.telefone}`;
+  ) : gerarLinkWhatsApp(dadosSalao.telefone, 'Olá, Sheila! Gostaria de tirar uma dúvida sobre atendimento.');
 
   // Link para Google Maps
   const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dadosSalao.endereco)}`;
