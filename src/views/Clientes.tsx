@@ -28,6 +28,7 @@ import {
   salvarFotoClienteSupabase, 
   deletarFotoClienteSupabase 
 } from '../services/supabase';
+import { getBookingUrl } from '../utils/urlHelper';
 
 // Compressão e redimensionamento automático de imagens (garante salvamento imediato e evita estouro de cota)
 const comprimirImagem = (file: File, maxDim = 1200, qualidade = 0.75): Promise<string> => {
@@ -460,7 +461,7 @@ export const Clientes: React.FC<ClientesProps> = ({
         .replace('{cliente}', cliente.nome)
         .replace('{dias_visita}', String(extra?.dias || 20))
         .replace('{servico}', extra?.servico || 'Alongamento')
-        .replace('{link_agendamento}', `https://agenda-sheila.com.br/agendar`);
+        .replace('{link_agendamento}', getBookingUrl());
     } else {
       msg = `Olá, ${cliente.nome}! Tudo bem? Gostaria de agendar seu horário conosco?`;
     }

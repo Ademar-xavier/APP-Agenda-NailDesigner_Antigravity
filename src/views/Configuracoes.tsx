@@ -902,7 +902,12 @@ export const Configuracoes: React.FC = () => {
             <form onSubmit={handleSalvarMensagens} className="space-y-6">
               <div>
                 <h3 className="font-serif font-bold text-base text-[#5A4535]">Templates de WhatsApp</h3>
-                <p className="text-[11px] text-[#8C7A6B] mt-0.5">Use as tags chaves como `{'{cliente}'}`, `{'{servico}'}`, `{'{data}'}`, `{'{hora}'}` para preenchimento automático das mensagens.</p>
+                <p className="text-[11px] text-[#8C7A6B] mt-0.5">
+                  Tags dinâmicas suportadas: <code className="bg-[#FAF9F6] px-1 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">{'{cliente}'}</code>, <code className="bg-[#FAF9F6] px-1 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">{'{servico}'}</code>, <code className="bg-[#FAF9F6] px-1 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">{'{data}'}</code>, <code className="bg-[#FAF9F6] px-1 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">{'{hora}'}</code>, <code className="bg-[#FAF9F6] px-1 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">{'{link_confirmacao}'}</code>.
+                  <span className="block text-[10px] text-emerald-700 font-semibold mt-1">
+                    ✨ O link público de confirmação em 1 toque é incluído automaticamente nas mensagens de confirmação e lembrete!
+                  </span>
+                </p>
               </div>
 
               <div className="space-y-4">
