@@ -1300,13 +1300,13 @@ export const Configuracoes: React.FC = () => {
                       <input 
                         type="text" 
                         readOnly 
-                        value="https://sheilasantos-agenda.netlify.app/api/whatsapp-webhook"
+                        value="https://sheilasantos-agenda.netlify.app/.netlify/functions/whatsapp-webhook"
                         className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
                       />
                       <button
                         type="button"
                         onClick={() => {
-                          navigator.clipboard.writeText('https://sheilasantos-agenda.netlify.app/api/whatsapp-webhook');
+                          navigator.clipboard.writeText('https://sheilasantos-agenda.netlify.app/.netlify/functions/whatsapp-webhook');
                           exibirToast('URL do Webhook copiada com sucesso!');
                         }}
                         className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
