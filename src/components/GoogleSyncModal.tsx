@@ -340,7 +340,7 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
                       </button>
                     </div>
                     <p className="text-[10px] text-[#8C7A6B] mt-1.5 leading-relaxed">
-                      Origem JavaScript autorizada no Google Cloud: <code className="bg-white px-1 py-0.5 rounded border border-[#EFECE6] font-mono">https://sheilasantos-agenda.netlify.app</code>
+                      Origem JavaScript autorizada no Google Cloud: <code className="bg-white px-1 py-0.5 rounded border border-[#EFECE6] font-mono">{typeof window !== 'undefined' && window.location.origin.startsWith('http') ? window.location.origin : 'https://sheilasantos-agenda.vercel.app'}</code>
                     </p>
                   </div>
                 </form>

@@ -11,12 +11,13 @@ import {
   CalendarCheck,
   CheckCircle,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  Calendar
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
-import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -88,6 +89,43 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     return `${dias[date.getDay()]}, ${date.getDate()} de ${meses[date.getMonth()]} de ${date.getFullYear()}`;
   };
 
+  const formatarObservacoesModal = (obs?: string, clienteNome?: string) => {
+    if (!obs || !obs.trim()) return null;
+
+    const isGoogle = 
+      obs.includes('[Google Agenda Oficial]') || 
+      obs.includes('Google Agenda') || 
+      obs.includes('g_gen_');
+
+    if (!isGoogle) {
+      return {
+        isGoogle: false,
+        nota: obs.trim()
+      };
+    }
+
+    // Limpa tags técnicas do Google e identificadores hash
+    let limpo = obs
+      .replace(/\[Google Agenda Oficial\]/gi, '')
+      .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
+      .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
+      .replace(/g_gen_[a-zA-Z0-9_\-]+/gi, '')
+      .trim();
+
+    // Se após a limpeza sobrou apenas hífen ou o próprio nome da cliente
+    if (limpo === '-' || limpo === '—') {
+      limpo = '';
+    }
+    if (clienteNome && (limpo.toLowerCase() === clienteNome.toLowerCase() || limpo.toLowerCase() === `- ${clienteNome.toLowerCase()}`)) {
+      limpo = '';
+    }
+
+    return {
+      isGoogle: true,
+      nota: limpo
+    };
+  };
+
   // WhatsApp helper
   const handleEnviarMensagemWhatsApp = async (tipo: 'confirmacao' | 'lembrete') => {
     if (!cliente) return;
@@ -114,31 +152,39 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const enviarWhatsAppConvencional = () => {
       let msg = '';
       if (tipo === 'confirmacao') {
-        msg = configSalao.templates_whatsapp.confirmacao
-          .replace('{cliente}', cliente.nome)
-          .replace('{servico}', servText)
-          .replace('{profissional}', prof?.nome || 'Sheila')
-          .replace('{data}', dataFormatada)
-          .replace('{hora}', horaStr)
-          .replace('{sinal}', String(agendamento.valor_sinal))
-          .replace('{chave_pix}', configSalao.chave_pix)
-          .replace('{link_reserva}', linkConfirmacao)
-          .replace('{link_confirmacao}', linkConfirmacao);
+        msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
+          cliente: cliente.nome,
+          servico: servText,
+          profissional: prof?.nome || 'Sheila',
+          data: dataFormatada,
+          hora: horaStr,
+          sinal: String(agendamento.valor_sinal),
+          chave_pix: configSalao.chave_pix,
+          link_reserva: linkConfirmacao,
+          link_confirmacao: linkConfirmacao,
+          salao: configSalao.nome || 'Sheila Santos Nails'
+        });
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
         }
       } else {
-        msg = configSalao.templates_whatsapp.lembrete
+        let templateLembrete = configSalao.templates_whatsapp.lembrete
           .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
-          .replace(/\bamanhã\b/gi, diaRelativo)
-          .replace('{dia_relativo}', diaRelativo)
-          .replace('{cliente}', cliente.nome)
-          .replace('{data}', dataFormatada)
-          .replace('{hora}', horaStr)
-          .replace('{servico}', servText)
-          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
-          .replace('{link_confirmacao}', linkConfirmacao);
+          .replace(/\bamanhã\b/gi, diaRelativo);
+
+        msg = preencherTemplateWhatsApp(templateLembrete, {
+          cliente: cliente.nome,
+          servico: servText,
+          dia_relativo: diaRelativo,
+          data: dataFormatada,
+          hora: horaStr,
+          profissional: prof?.nome || 'Sheila',
+          limite_horas: String(configSalao.regras.cancelamento_limite_horas),
+          link_confirmacao: linkConfirmacao,
+          link_reserva: linkConfirmacao,
+          salao: configSalao.nome || 'Sheila Santos Nails'
+        });
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
@@ -331,12 +377,34 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           )}
         </div>
 
-        {/* Observações */}
-        {agendamento.observacoes && (
-          <div className="mb-4 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs text-[#8C7A6B] italic">
-            {agendamento.observacoes}
-          </div>
-        )}
+        {/* Observações / Origem */}
+        {(() => {
+          const infoObs = formatarObservacoesModal(agendamento.observacoes, cliente?.nome);
+          if (!infoObs) return null;
+
+          return (
+            <div className="mb-4 space-y-2">
+              {infoObs.isGoogle && (
+                <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[#F0F7FF] border border-[#D0E3F8] rounded-xl text-xs text-[#1E429F] shadow-sm">
+                  <Calendar size={16} className="text-[#3B82F6] shrink-0" />
+                  <div>
+                    <span className="font-semibold text-xs block">Sincronizado com Google Agenda Oficial</span>
+                    <span className="text-[10px] text-[#4B5563]">Importado e mantido em sincronia com seu calendário</span>
+                  </div>
+                </div>
+              )}
+
+              {infoObs.nota ? (
+                <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs text-[#5A4535]">
+                  <span className="block font-bold text-[10px] uppercase text-[#8C7A6B] mb-1">
+                    Observações:
+                  </span>
+                  <p className="italic text-[#786150] whitespace-pre-line">{infoObs.nota}</p>
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
 
         {/* Lembretes WhatsApp */}
         {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (

@@ -16,7 +16,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Agendamento, ListaEspera, Cliente, Servico } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
-import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
 type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'manutencao' | 'lista_espera' | 'cancelados';
 
@@ -91,31 +91,39 @@ export const Confirmacoes: React.FC = () => {
       const linkConfirmacao = getConfirmationUrl(a.id);
       let msg = '';
       if (tipo === 'confirmacao') {
-        msg = configSalao.templates_whatsapp.confirmacao
-          .replace('{cliente}', clientName)
-          .replace('{servico}', servText)
-          .replace('{profissional}', 'Sheila')
-          .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
-          .replace('{hora}', horaStr)
-          .replace('{sinal}', String(a.valor_sinal))
-          .replace('{chave_pix}', configSalao.chave_pix)
-          .replace('{link_reserva}', linkConfirmacao)
-          .replace('{link_confirmacao}', linkConfirmacao);
+        msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
+          cliente: clientName,
+          servico: servText,
+          profissional: 'Sheila',
+          data: new Date(a.inicio).toLocaleDateString('pt-BR'),
+          hora: horaStr,
+          sinal: String(a.valor_sinal),
+          chave_pix: configSalao.chave_pix,
+          link_reserva: linkConfirmacao,
+          link_confirmacao: linkConfirmacao,
+          salao: configSalao.nome || 'Sheila Santos Nails'
+        });
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
         }
       } else {
-        msg = configSalao.templates_whatsapp.lembrete
+        let templateLembrete = configSalao.templates_whatsapp.lembrete
           .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
-          .replace(/\bamanhã\b/gi, diaRelativo)
-          .replace('{dia_relativo}', diaRelativo)
-          .replace('{cliente}', clientName)
-          .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
-          .replace('{hora}', horaStr)
-          .replace('{servico}', servText)
-          .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
-          .replace('{link_confirmacao}', linkConfirmacao);
+          .replace(/\bamanhã\b/gi, diaRelativo);
+
+        msg = preencherTemplateWhatsApp(templateLembrete, {
+          cliente: clientName,
+          servico: servText,
+          dia_relativo: diaRelativo,
+          data: new Date(a.inicio).toLocaleDateString('pt-BR'),
+          hora: horaStr,
+          profissional: 'Sheila',
+          limite_horas: String(configSalao.regras.cancelamento_limite_horas),
+          link_confirmacao: linkConfirmacao,
+          link_reserva: linkConfirmacao,
+          salao: configSalao.nome || 'Sheila Santos Nails'
+        });
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
@@ -390,24 +398,31 @@ export const Confirmacoes: React.FC = () => {
   };
 
   const handleEnviarWhatsAppManutencao = (rec: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }) => {
-    const fone = rec.cliente.telefone?.replace(/\D/g, '');
-    if (!fone) return;
-
     const linkAgendamento = getBookingUrl();
     const dataFormatada = formatarDataBrasileira(rec.dataSugerida);
     const diasTexto = rec.diasAtraso > 0 ? `${rec.servico.intervalo_manutencao_dias + rec.diasAtraso}` : `${rec.servico.intervalo_manutencao_dias}`;
 
-    let msg = configSalao.templates_whatsapp.retorno_manutencao
-      .replace('{cliente}', rec.cliente.nome)
-      .replace('{servico}', rec.servico.nome)
-      .replace('{dias_visita}', diasTexto)
-      .replace('{link_agendamento}', linkAgendamento);
+    let msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.retorno_manutencao, {
+      cliente: rec.cliente.nome,
+      servico: rec.servico.nome,
+      dias_visita: diasTexto,
+      link_agendamento: linkAgendamento,
+      salao: configSalao.nome || 'Sheila Santos Nails'
+    });
 
     if (!msg.includes(dataFormatada)) {
       msg += `\n📅 Sugestão de data para seu retorno: ${dataFormatada}`;
     }
 
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+    const url = gerarLinkWhatsApp(rec.cliente.telefone, msg);
+    if (!url) {
+      mostrarAlerta({
+        titulo: 'Telefone Não Cadastrado',
+        mensagem: `A cliente "${rec.cliente.nome}" não possui telefone com DDD válido.`,
+        tipo: 'aviso'
+      });
+      return;
+    }
     window.open(url, '_blank');
   };
 
@@ -416,7 +431,6 @@ export const Confirmacoes: React.FC = () => {
     const client = clientes.find(c => c.id === a.cliente_id);
     if (!client) return;
 
-    const fone = client.telefone.replace(/\D/g, '');
     const horaStr = a.inicio.split('T')[1].substring(0, 5);
     const servs = obterServicosDeAgendamento(a.id);
     const servText = servs.map(s => s.nome).join(' + ');
@@ -424,32 +438,40 @@ export const Confirmacoes: React.FC = () => {
     
     let msg = '';
     if (tipo === 'confirmacao') {
-      msg = configSalao.templates_whatsapp.confirmacao
-        .replace('{cliente}', client.nome)
-        .replace('{servico}', servText)
-        .replace('{profissional}', 'Sheila')
-        .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
-        .replace('{hora}', horaStr)
-        .replace('{sinal}', String(a.valor_sinal))
-        .replace('{chave_pix}', configSalao.chave_pix)
-        .replace('{link_reserva}', linkConfirmacao)
-        .replace('{link_confirmacao}', linkConfirmacao);
+      msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
+        cliente: client.nome,
+        servico: servText,
+        profissional: 'Sheila',
+        data: new Date(a.inicio).toLocaleDateString('pt-BR'),
+        hora: horaStr,
+        sinal: String(a.valor_sinal),
+        chave_pix: configSalao.chave_pix,
+        link_reserva: linkConfirmacao,
+        link_confirmacao: linkConfirmacao,
+        salao: configSalao.nome || 'Sheila Santos Nails'
+      });
 
       if (!msg.includes(linkConfirmacao)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
       }
     } else {
       const diaRelativo = formatarDiaRelativo(a.inicio);
-      msg = configSalao.templates_whatsapp.lembrete
+      let templateLembrete = configSalao.templates_whatsapp.lembrete
         .replace(/amanhã\s*\(\{data\}\)/gi, `${diaRelativo} ({data})`)
-        .replace(/\bamanhã\b/gi, diaRelativo)
-        .replace('{dia_relativo}', diaRelativo)
-        .replace('{cliente}', client.nome)
-        .replace('{data}', new Date(a.inicio).toLocaleDateString('pt-BR'))
-        .replace('{hora}', horaStr)
-        .replace('{servico}', servText)
-        .replace('{limite_horas}', String(configSalao.regras.cancelamento_limite_horas))
-        .replace('{link_confirmacao}', linkConfirmacao);
+        .replace(/\bamanhã\b/gi, diaRelativo);
+
+      msg = preencherTemplateWhatsApp(templateLembrete, {
+        cliente: client.nome,
+        servico: servText,
+        dia_relativo: diaRelativo,
+        data: new Date(a.inicio).toLocaleDateString('pt-BR'),
+        hora: horaStr,
+        profissional: 'Sheila',
+        limite_horas: String(configSalao.regras.cancelamento_limite_horas),
+        link_confirmacao: linkConfirmacao,
+        link_reserva: linkConfirmacao,
+        salao: configSalao.nome || 'Sheila Santos Nails'
+      });
 
       if (!msg.includes(linkConfirmacao)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
