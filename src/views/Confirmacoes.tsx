@@ -36,7 +36,8 @@ export const Confirmacoes: React.FC = () => {
     obterRecomendacoesManutencao,
     confirmarAcao,
     mostrarAlerta,
-    updateAgendamentoStatus
+    updateAgendamentoStatus,
+    checkConflitoHorario
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -189,7 +190,7 @@ export const Confirmacoes: React.FC = () => {
   // States para confirmar vaga da Lista de Espera
   const [confirmarVagaItem, setConfirmarVagaItem] = useState<ListaEspera | null>(null);
   const [vagaData, setVagaData] = useState('');
-  const [vagaHora, setVagaHora] = useState('09:00');
+  const [vagaHora, setVagaHora] = useState('');
   const [vagaProfissionalId, setVagaProfissionalId] = useState('u1');
   const [errorVaga, setErrorVaga] = useState('');
 
@@ -197,7 +198,7 @@ export const Confirmacoes: React.FC = () => {
   const handleOpenConfirmarVaga = (item: ListaEspera) => {
     setConfirmarVagaItem(item);
     setVagaData(item.data_preferida);
-    setVagaHora('09:00');
+    setVagaHora('');
     setVagaProfissionalId(currentUser?.id || 'u1');
     setErrorVaga('');
   };
@@ -205,6 +206,11 @@ export const Confirmacoes: React.FC = () => {
   const handleConfirmarVagaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!confirmarVagaItem) return;
+
+    if (!vagaHora) {
+      setErrorVaga('Por favor, selecione um horário disponível.');
+      return;
+    }
 
     const client = clientes.find(c => c.id === confirmarVagaItem.cliente_id);
     const serv = servicos.find(s => s.id === confirmarVagaItem.servico_id);
@@ -353,7 +359,7 @@ export const Confirmacoes: React.FC = () => {
   } | null>(null);
 
   const [manutData, setManutData] = useState<string>('');
-  const [manutHora, setManutHora] = useState<string>('14:00');
+  const [manutHora, setManutHora] = useState<string>('');
   const [manutProfissionalId, setManutProfissionalId] = useState<string>('u1');
   const [errorManut, setErrorManut] = useState<string>('');
 
@@ -368,7 +374,7 @@ export const Confirmacoes: React.FC = () => {
   const handleOpenConfirmarManutencao = (rec: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }) => {
     setConfirmarManutencaoItem(rec);
     setManutData(rec.dataSugerida || new Date().toLocaleDateString('en-CA'));
-    setManutHora('14:00');
+    setManutHora('');
     setManutProfissionalId(equipe[0]?.id || 'u1');
     setErrorManut('');
   };
@@ -376,6 +382,11 @@ export const Confirmacoes: React.FC = () => {
   const handleConfirmarManutencaoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!confirmarManutencaoItem) return;
+
+    if (!manutHora) {
+      setErrorManut('Por favor, selecione um horário disponível.');
+      return;
+    }
 
     const dataInicioStr = `${manutData}T${manutHora}:00`;
     const res = addAgendamento({
@@ -527,12 +538,107 @@ export const Confirmacoes: React.FC = () => {
     });
   };
 
-  // Horários disponíveis para seleção na lista de espera (das 08:00 às 20:00)
-  const horasExpediente = Array.from({ length: 25 }, (_, i) => {
-    const hora = 8 + Math.floor(i / 2);
-    const min = (i % 2) * 30;
-    return `${String(hora).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-  });
+  // Função para calcular horários 100% disponíveis considerando expediente, duração do serviço e conflitos de agenda
+  const calcularHorariosLivres = (
+    dataStr: string,
+    duracaoMinutos: number,
+    profissionalId: string
+  ): { livres: string[]; fechado: boolean } => {
+    if (!dataStr) return { livres: [], fechado: false };
+
+    const diaSemana = new Date(dataStr + 'T12:00:00').getDay();
+    const expediente = configSalao.horarios_trabalho?.[diaSemana];
+
+    if (!expediente || !expediente.ativo) {
+      return { livres: [], fechado: true };
+    }
+
+    const [hIni, mIni] = (expediente.inicio || '08:00').split(':').map(Number);
+    const [hFim, mFim] = (expediente.fim || '20:00').split(':').map(Number);
+    const minInicio = hIni * 60 + mIni;
+    const minFim = hFim * 60 + mFim;
+
+    const duracao = duracaoMinutos > 0 ? duracaoMinutos : 30;
+    const livres: string[] = [];
+
+    for (let m = minInicio; m <= minFim - duracao; m += 30) {
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      const slot = `${hStr}:${mStr}`;
+
+      const inicioAgend = `${dataStr}T${slot}:00`;
+      const dateInicio = new Date(inicioAgend);
+      const dateFim = new Date(dateInicio.getTime() + duracao * 60 * 1000);
+      
+      const anoF = dateFim.getFullYear();
+      const mesF = String(dateFim.getMonth() + 1).padStart(2, '0');
+      const diaF = String(dateFim.getDate()).padStart(2, '0');
+      const horaF = String(dateFim.getHours()).padStart(2, '0');
+      const minF = String(dateFim.getMinutes()).padStart(2, '0');
+      const segF = String(dateFim.getSeconds()).padStart(2, '0');
+      const fimAgend = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
+
+      const conflito = checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+
+      if (!conflito) {
+        livres.push(slot);
+      }
+    }
+
+    return { livres, fechado: false };
+  };
+
+  // Análise de horários livres para o modal de Lista de Espera (Definir Horário da Vaga)
+  const vagaServico = useMemo(() => {
+    return servicos.find(s => s.id === confirmarVagaItem?.servico_id);
+  }, [servicos, confirmarVagaItem]);
+
+  const vagaDuracao = vagaServico?.duracao_minutos || 60;
+
+  const analiseVaga = useMemo(() => {
+    if (!confirmarVagaItem || !vagaData) return { livres: [], fechado: false };
+    return calcularHorariosLivres(vagaData, vagaDuracao, vagaProfissionalId);
+  }, [confirmarVagaItem, vagaData, vagaDuracao, vagaProfissionalId, agendamentos, configSalao]);
+
+  useEffect(() => {
+    if (analiseVaga.livres.length > 0) {
+      if (!analiseVaga.livres.includes(vagaHora)) {
+        const periodo = confirmarVagaItem?.periodo_preferido;
+        let preferido: string | undefined;
+        if (periodo === 'manha') {
+          preferido = analiseVaga.livres.find(h => parseInt(h.split(':')[0], 10) < 12);
+        } else if (periodo === 'tarde') {
+          preferido = analiseVaga.livres.find(h => {
+            const horaNum = parseInt(h.split(':')[0], 10);
+            return horaNum >= 12 && horaNum < 18;
+          });
+        } else if (periodo === 'noite') {
+          preferido = analiseVaga.livres.find(h => parseInt(h.split(':')[0], 10) >= 18);
+        }
+        setVagaHora(preferido || analiseVaga.livres[0]);
+      }
+    } else {
+      setVagaHora('');
+    }
+  }, [analiseVaga.livres, confirmarVagaItem?.periodo_preferido]);
+
+  // Análise de horários livres para o modal de Manutenção
+  const manutDuracao = confirmarManutencaoItem?.servico?.duracao_minutos || 60;
+
+  const analiseManut = useMemo(() => {
+    if (!confirmarManutencaoItem || !manutData) return { livres: [], fechado: false };
+    return calcularHorariosLivres(manutData, manutDuracao, manutProfissionalId);
+  }, [confirmarManutencaoItem, manutData, manutDuracao, manutProfissionalId, agendamentos, configSalao]);
+
+  useEffect(() => {
+    if (analiseManut.livres.length > 0) {
+      if (!analiseManut.livres.includes(manutHora)) {
+        setManutHora(analiseManut.livres[0]);
+      }
+    } else {
+      setManutHora('');
+    }
+  }, [analiseManut.livres]);
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
@@ -959,15 +1065,24 @@ export const Confirmacoes: React.FC = () => {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Horário</label>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                      Horário ({analiseVaga.livres.length} livre{analiseVaga.livres.length !== 1 ? 's' : ''})
+                    </label>
                     <select
                       value={vagaHora}
                       onChange={(e) => setVagaHora(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                      disabled={analiseVaga.livres.length === 0}
+                      className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
                     >
-                      {horasExpediente.map(h => (
-                        <option key={h} value={h}>{h}</option>
-                      ))}
+                      {analiseVaga.livres.length === 0 ? (
+                        <option value="" disabled>
+                          {analiseVaga.fechado ? 'Salão fechado' : 'Sem vagas livres'}
+                        </option>
+                      ) : (
+                        analiseVaga.livres.map(h => (
+                          <option key={h} value={h}>{h}</option>
+                        ))
+                      )}
                     </select>
                   </div>
                   <div>
@@ -983,6 +1098,17 @@ export const Confirmacoes: React.FC = () => {
                     </select>
                   </div>
                 </div>
+
+                {analiseVaga.livres.length === 0 && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                    <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      {analiseVaga.fechado 
+                        ? 'O salão não abre neste dia da semana. Escolha outra data.'
+                        : 'Não há horários disponíveis suficientes para este procedimento nesta data. Selecione outra data ou profissional.'}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] w-full">
                   <button
@@ -1006,7 +1132,8 @@ export const Confirmacoes: React.FC = () => {
                     </button>
                     <button
                       type="submit"
-                      className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                      disabled={analiseVaga.livres.length === 0}
+                      className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
                     >
                       Confirmar e Agendar
                     </button>
@@ -1071,15 +1198,24 @@ export const Confirmacoes: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Horário</label>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Horário ({analiseManut.livres.length} livre{analiseManut.livres.length !== 1 ? 's' : ''})
+                  </label>
                   <select
                     value={manutHora}
                     onChange={(e) => setManutHora(e.target.value)}
-                    className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
+                    disabled={analiseManut.livres.length === 0}
+                    className="w-full border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
                   >
-                    {horasExpediente.map(h => (
-                      <option key={h} value={h}>{h}</option>
-                    ))}
+                    {analiseManut.livres.length === 0 ? (
+                      <option value="" disabled>
+                        {analiseManut.fechado ? 'Salão fechado' : 'Sem vagas livres'}
+                      </option>
+                    ) : (
+                      analiseManut.livres.map(h => (
+                        <option key={h} value={h}>{h}</option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div>
@@ -1095,6 +1231,17 @@ export const Confirmacoes: React.FC = () => {
                   </select>
                 </div>
               </div>
+
+              {analiseManut.livres.length === 0 && (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                  <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    {analiseManut.fechado 
+                      ? 'O salão não abre neste dia da semana. Escolha outra data.'
+                      : 'Não há horários disponíveis suficientes para este retorno nesta data. Selecione outra data ou profissional.'}
+                  </span>
+                </div>
+              )}
 
               <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] w-full">
                 <button
@@ -1119,7 +1266,8 @@ export const Confirmacoes: React.FC = () => {
                   </button>
                   <button
                     type="submit"
-                    className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
+                    disabled={analiseManut.livres.length === 0}
+                    className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
                   >
                     Confirmar e Agendar
                   </button>
