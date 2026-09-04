@@ -16,7 +16,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
-import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -145,7 +145,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         }
       }
 
-      const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+      const url = gerarLinkWhatsApp(cliente.telefone, msg);
+      if (!url) {
+        mostrarAlerta({
+          titulo: 'Telefone Não Cadastrado',
+          mensagem: `A cliente "${cliente.nome}" não possui um número de telefone com DDD válido cadastrado no sistema. Por favor, acesse a aba "Clientes" e adicione o número com DDD (ex: 35 99999-9999).`,
+          tipo: 'aviso'
+        });
+        return;
+      }
       window.open(url, '_blank');
     };
 

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
-import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface DashboardProps {
   setCurrentView: (view: string) => void;
@@ -174,7 +174,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         .replace('{link_agendamento}', getBookingUrl());
     }
 
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+    const url = gerarLinkWhatsApp(cliente.telefone, msg);
+    if (!url) {
+      alert(`A cliente "${cliente.nome}" não possui um número de WhatsApp válido cadastrado.`);
+      return;
+    }
     window.open(url, '_blank');
   };
 

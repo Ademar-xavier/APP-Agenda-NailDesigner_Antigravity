@@ -54,7 +54,7 @@ export const PublicConfirmacao: React.FC = () => {
     agendamentos: agendamentosContext,
     clientes: clientesContext,
     servicos: servicosContext,
-    itensAgendamento: itensAgendamentoContext,
+    obterServicosDeAgendamento,
     updateAgendamentoStatus, 
     cancelAgendamento, 
     configSalao: configSalaoContext, 
@@ -164,10 +164,10 @@ export const PublicConfirmacao: React.FC = () => {
           } else {
             const localAg = (agendamentosContext || []).find(a => a.id.toLowerCase() === agendamentoId.toLowerCase());
             if (localAg) {
-              const servsIds = (itensAgendamentoContext && itensAgendamentoContext[localAg.id]) || ['s1'];
+              const servs = obterServicosDeAgendamento ? obterServicosDeAgendamento(localAg.id) : [];
               agendamentoData = {
                 ...localAg,
-                itens_servicos: servsIds
+                itens_servicos: servs.map(s => s.id)
               };
             }
           }

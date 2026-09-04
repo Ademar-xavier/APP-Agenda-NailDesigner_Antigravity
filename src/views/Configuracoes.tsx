@@ -20,6 +20,7 @@ import {
   Bookmark,
   Trash2,
   Key,
+  RotateCcw,
   Lock,
   Shield,
   Bot,
