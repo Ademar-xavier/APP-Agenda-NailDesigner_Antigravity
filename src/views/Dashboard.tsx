@@ -13,7 +13,7 @@ import {
   Users
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Cliente } from '../types';
+import { Cliente, REGRA_DEVOLUCAO_PADRAO } from '../types';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
 interface DashboardProps {
@@ -140,8 +140,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const linkReserva = extra?.agendamentoId ? getConfirmationUrl(extra.agendamentoId) : getBookingUrl();
 
     if (tipo === 'confirmacao') {
-      const regraDevolucaoTexto = configSalao.regra_devolucao_sinal
-        ? `\n\n📌 *Política de devolução/cancelamento:*\n${configSalao.regra_devolucao_sinal.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+      const templateRegra = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
+      const regraDevolucaoTexto = templateRegra
+        ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
         : '';
 
       msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
@@ -157,7 +158,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         salao: configSalao.nome || 'Sheila Santos Nails'
       });
 
-      if (regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+      const valorSinalNum = Number(extra?.sinal || 0);
+      const falaDeSinal = valorSinalNum > 0 && (msg.toLowerCase().includes('sinal') || msg.toLowerCase().includes('pix'));
+
+      if (falaDeSinal && regraDevolucaoTexto && !msg.includes('Política de devolução')) {
         msg += regraDevolucaoTexto;
       }
 
@@ -484,10 +488,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 if (valorSinal <= 0) {
                                   const servsSinal = servs.reduce((acc, s) => {
                                     if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
-                                    if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 30)) / 100);
+                                    if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 0)) / 100);
                                     return acc;
                                   }, 0);
-                                  valorSinal = servsSinal > 0 ? servsSinal : 30;
+                                  valorSinal = servsSinal > 0 ? servsSinal : (Number(configSalao.regras?.sinal_padrao) || 15);
                                   atualizarValorSinalAgendamento(a.id, valorSinal);
                                 }
 
