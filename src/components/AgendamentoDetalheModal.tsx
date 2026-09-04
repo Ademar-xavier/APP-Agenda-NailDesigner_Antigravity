@@ -37,6 +37,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     equipe, 
     configSalao,
     updateAgendamentoStatus,
+    atualizarValorSinalAgendamento,
     cancelAgendamento,
     confirmarSinal,
     concluirAtendimento,
@@ -56,6 +57,28 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const servs = agendamento ? obterServicosDeAgendamento(agendamento.id) : [];
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
+
+  // Valor a cobrar de sinal (se o agendamento já possuir valor_sinal > 0, usa ele; senão calcula dos serviços ou sugere 30)
+  const [valorSinalCobrar, setValorSinalCobrar] = useState<number>(() => {
+    if (agendamento && agendamento.valor_sinal > 0) return agendamento.valor_sinal;
+    if (servs && servs.length > 0) {
+      const somaServs = servs.reduce((acc, s) => {
+        if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
+        if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 30)) / 100);
+        return acc;
+      }, 0);
+      if (somaServs > 0) return somaServs;
+    }
+    return 30;
+  });
+
+  useEffect(() => {
+    if (agendamento) {
+      if (agendamento.valor_sinal > 0) {
+        setValorSinalCobrar(agendamento.valor_sinal);
+      }
+    }
+  }, [agendamento?.id, agendamento?.valor_sinal]);
 
   useEffect(() => {
     setAcao(null);
@@ -255,6 +278,66 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     enviarWhatsAppConvencional();
   };
 
+  // Cobrança ativa do Sinal Pix com gravação imediata do valor no agendamento
+  const handleCobrarSinalWhatsApp = () => {
+    if (!cliente) return;
+    const valor = Number(valorSinalCobrar);
+    if (!valor || valor <= 0) {
+      mostrarAlerta({
+        titulo: 'Valor Inválido',
+        mensagem: 'Por favor, digite um valor de sinal válido (maior que zero) para enviar a cobrança via Pix.',
+        tipo: 'aviso'
+      });
+      return;
+    }
+
+    // 1. Atualiza imediatamente o agendamento no Supabase e contexto para exigir sinal
+    atualizarValorSinalAgendamento(agendamento.id, valor);
+
+    // 2. Prepara e dispara a mensagem de cobrança do WhatsApp
+    const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
+    const servText = servs.map(s => s.nome).join(' + ');
+    const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
+    const linkConfirmacao = getConfirmationUrl(agendamento.id);
+
+    const regraDevolucaoTexto = configSalao.regra_devolucao_sinal
+      ? `\n\n📌 *Política de devolução/cancelamento:*\n${configSalao.regra_devolucao_sinal.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+      : '';
+
+    let msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
+      cliente: cliente.nome,
+      servico: servText,
+      profissional: prof?.nome || 'Sheila',
+      data: dataFormatada,
+      hora: horaStr,
+      sinal: String(valor),
+      chave_pix: configSalao.chave_pix,
+      link_reserva: linkConfirmacao,
+      link_confirmacao: linkConfirmacao,
+      salao: configSalao.nome || 'Sheila Santos Nails'
+    });
+
+    if (regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+      msg += regraDevolucaoTexto;
+    }
+
+    if (!msg.includes(linkConfirmacao)) {
+      msg += `\n\n👉 Envie o comprovante e acompanhe sua reserva:\n${linkConfirmacao}`;
+    }
+
+    const url = gerarLinkWhatsApp(cliente.telefone, msg);
+    if (!url) {
+      mostrarAlerta({
+        titulo: 'Telefone Não Cadastrado',
+        mensagem: `A cliente "${cliente.nome}" não possui um número de WhatsApp válido cadastrado no sistema.`,
+        tipo: 'aviso'
+      });
+      return;
+    }
+
+    window.open(url, '_blank');
+  };
+
   // Lógica de ações
   const handleConfirmar = () => {
     updateAgendamentoStatus(agendamento.id, 'confirmado');
@@ -324,7 +407,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               {initials}
             </div>
             <div>
-              <h3 className="font-bold text-[#5A4535] text-sm leading-tight">{cliente?.nome || 'Horário Reservado'}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-[#5A4535] text-sm leading-tight">{cliente?.nome || 'Horário Reservado'}</h3>
+                <span className="font-mono text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-1.5 py-0.5 rounded border border-[#EFECE6]" title="Código exclusivo do agendamento">
+                  #{agendamento.id}
+                </span>
+              </div>
               <p className="text-xs text-[#8C7A6B] mt-0.5">{cliente?.telefone}</p>
             </div>
           </div>
@@ -369,6 +457,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         {/* Details Grid */}
         <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-xs text-[#5A4535] mb-4">
           <div>
+            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Código</p>
+            <p className="font-mono font-bold text-xs mt-0.5 text-[#8C6D58]">#{agendamento.id}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Origem</p>
+            <p className="font-semibold mt-0.5 capitalize">{agendamento.origem}</p>
+          </div>
+          <div>
             <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Data</p>
             <p className="font-semibold mt-0.5">{formatarDataLonga(agendamento.inicio)}</p>
           </div>
@@ -381,13 +477,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               }min)</span>
             </p>
           </div>
-          <div>
+          <div className="col-span-2">
             <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Profissional</p>
             <p className="font-semibold mt-0.5">{prof?.nome || 'Não definido'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Origem</p>
-            <p className="font-semibold mt-0.5 capitalize">{agendamento.origem}</p>
           </div>
         </div>
 
@@ -443,24 +535,67 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           );
         })()}
 
-        {/* Lembretes WhatsApp */}
+        {/* Lembretes WhatsApp e Cobrança de Sinal */}
         {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
-          <div className="flex flex-wrap gap-2 mb-5">
-            <button
-              onClick={() => handleEnviarMensagemWhatsApp('lembrete')}
-              className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-bold transition-colors"
-            >
-              <MessageCircle size={14} className="text-[#25D366]" />
-              <span>Enviar lembrete</span>
-            </button>
-            {agendamento.status === 'pendente' && (
+          <div className="space-y-3 mb-5">
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => handleEnviarMensagemWhatsApp('confirmacao')}
-                className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-bold transition-colors"
+                type="button"
+                onClick={() => handleEnviarMensagemWhatsApp('lembrete')}
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-bold transition-colors"
               >
                 <MessageCircle size={14} className="text-[#25D366]" />
-                <span>Pedir confirmação</span>
+                <span>Enviar lembrete</span>
               </button>
+              {agendamento.status === 'pendente' && (
+                <button
+                  type="button"
+                  onClick={() => handleEnviarMensagemWhatsApp('confirmacao')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-bold transition-colors"
+                >
+                  <MessageCircle size={14} className="text-[#25D366]" />
+                  <span>Pedir confirmação</span>
+                </button>
+              )}
+              {statusVisual === 'pendente' && (
+                <button
+                  type="button"
+                  onClick={handleCobrarSinalWhatsApp}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-[#4FA97A] hover:bg-[#419266] text-white rounded-xl text-xs font-bold transition-colors shadow-sm"
+                  title="Enviar mensagem cobrando o sinal Pix da cliente e atualizar o agendamento"
+                >
+                  <MessageCircle size={14} />
+                  <span>Cobrar Sinal Pix</span>
+                </button>
+              )}
+            </div>
+
+            {/* Campo para digitar o valor do sinal quando status for Pendente */}
+            {statusVisual === 'pendente' && (
+              <div className="p-3 bg-[#FAF6F0] border border-[#8C6D58]/25 rounded-xl space-y-1.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C6D58] uppercase tracking-wider">
+                      Valor do Sinal Pix a Cobrar
+                    </label>
+                    <span className="text-[10px] text-[#8C7A6B]">
+                      Exige envio de comprovante e bloqueia confirmação direta
+                    </span>
+                  </div>
+                  <div className="relative w-28 shrink-0">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8C6D58]">R$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      value={valorSinalCobrar === 0 ? '' : valorSinalCobrar}
+                      onChange={(e) => setValorSinalCobrar(Number(e.target.value))}
+                      className="w-full pl-8 pr-2 py-1.5 border border-[#EFECE6] rounded-lg text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
+                      placeholder="30,00"
+                    />
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}

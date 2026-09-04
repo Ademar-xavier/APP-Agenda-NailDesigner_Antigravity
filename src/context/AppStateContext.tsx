@@ -20,6 +20,7 @@ import {
   salvarServicoSupabase,
   salvarAgendamentoSupabase,
   atualizarStatusAgendamentoSupabase,
+  atualizarValorSinalAgendamentoSupabase,
   deletarAgendamentoSupabase,
   salvarListaEsperaSupabase,
   atualizarStatusListaEsperaSupabase,
@@ -68,6 +69,7 @@ interface AppStateContextType {
   // Ações de Agendamentos
   addAgendamento: (agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, servicosSelecionados: string[]) => { success: boolean; error?: string; agendamento?: Agendamento };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus) => void;
+  atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
@@ -193,6 +195,7 @@ const configSalaoInicial: ConfigSalao = {
   instagram: '@sheilasantos.naildesigner',
   chave_pix: 'pix@sheilasantosnails.com.br',
   instrucoes_pix: 'Envie o comprovante em até 2 hours para garantir o seu horário. O valor do sinal é deduzido do total no dia do atendimento.',
+  regra_devolucao_sinal: 'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.',
   horarios_trabalho: {
     1: { ativo: true, inicio: '09:00', fim: '18:00' }, // Segunda
     2: { ativo: true, inicio: '09:00', fim: '18:00' }, // Terça
@@ -843,6 +846,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
               return a;
             }));
+          } else if (event.data?.type === 'VALOR_SINAL_UPDATED') {
+            const { id, valorSinal } = event.data;
+            setAgendamentos(prev => prev.map(a => {
+              if (a.id && a.id.toLowerCase() === id.toLowerCase()) {
+                return {
+                  ...a,
+                  valor_sinal: Number(valorSinal) || 0
+                };
+              }
+              return a;
+            }));
           }
         };
       }
@@ -1327,6 +1341,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     atualizarStatusAgendamentoSupabase(id, status);
   };
 
+  const atualizarValorSinalAgendamento = (id: string, valorSinal: number) => {
+    const valor = Math.max(0, Number(valorSinal) || 0);
+    setAgendamentos(prev => prev.map(a => a.id === id ? { ...a, valor_sinal: valor } : a));
+
+    // Atualiza ou insere o pagamento pendente do sinal
+    if (valor > 0) {
+      setPagamentos(prev => {
+        const existente = prev.find(p => p.agendamento_id === id && p.status === 'pendente');
+        if (existente) {
+          return prev.map(p => p.id === existente.id ? { ...p, valor } : p);
+        } else {
+          const novoPag: Pagamento = {
+            id: 'p_' + gerarId(),
+            agendamento_id: id,
+            tipo: 'pix',
+            valor,
+            status: 'pendente',
+            data_pagamento: new Date().toISOString()
+          };
+          return [...prev, novoPag];
+        }
+      });
+    }
+
+    atualizarValorSinalAgendamentoSupabase(id, valor);
+    mostrarNotificacaoGlobal(`✅ Sinal de R$ ${valor.toFixed(2).replace('.', ',')} configurado para o agendamento!`);
+  };
+
   const cancelAgendamento = (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => {
     setAgendamentos(prev => prev.map(a => {
       if (a.id === id) {
@@ -1674,6 +1716,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       deleteServico,
       addAgendamento,
       updateAgendamentoStatus,
+      atualizarValorSinalAgendamento,
       cancelAgendamento,
       deleteAgendamento,
       confirmarSinal,

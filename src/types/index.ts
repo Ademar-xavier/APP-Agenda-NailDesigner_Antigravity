@@ -131,6 +131,7 @@ export interface ConfigSalao {
   instagram: string;
   chave_pix: string;
   instrucoes_pix: string;
+  regra_devolucao_sinal?: string;
   horarios_trabalho: {
     [key: number]: { // 0=Domingo, 1=Segunda, etc.
       ativo: boolean;

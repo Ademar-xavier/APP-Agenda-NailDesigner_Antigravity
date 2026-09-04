@@ -59,6 +59,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return true;
   });
 
+  const handleNavigate = (viewId: string) => {
+    setCurrentView(viewId);
+    window.scrollTo(0, 0);
+    const main = document.getElementById('main-content-scroll');
+    if (main) main.scrollTop = 0;
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+    document.querySelectorAll('.overflow-y-auto, .overflow-auto').forEach(el => {
+      el.scrollTop = 0;
+    });
+  };
+
   if (!isAdmin) return null;
 
   return (
@@ -120,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id)}
+                onClick={() => handleNavigate(item.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                   active 
                     ? 'bg-[#8C6D58] text-white shadow-sm' 
@@ -155,7 +167,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentView(item.id)}
+              onClick={() => handleNavigate(item.id)}
               className={`flex flex-col items-center justify-center flex-1 py-1 rounded-lg text-[10px] font-medium transition-colors ${
                 active ? 'text-[#8C6D58]' : 'text-[#8C7A6B]'
               }`}
@@ -215,7 +227,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => {
-                      setCurrentView(item.id);
+                      handleNavigate(item.id);
                       setShowMobileMenu(false);
                     }}
                     className={`flex items-center gap-3 p-3.5 rounded-2xl text-xs font-semibold transition-all border ${

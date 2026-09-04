@@ -145,6 +145,50 @@ export const atualizarStatusAgendamentoSupabase = async (
   }
 };
 
+// --- ATUALIZAR VALOR DO SINAL DE AGENDAMENTO ---
+export const atualizarValorSinalAgendamentoSupabase = async (
+  id: string,
+  valorSinal: number
+) => {
+  try {
+    const valor = Number(valorSinal) || 0;
+    const updates: any = { valor_sinal: valor };
+
+    // 1. Atualizar localStorage imediatamente para sincronia no mesmo navegador
+    try {
+      const saved = localStorage.getItem('nail_agendamentos');
+      if (saved) {
+        const ags = JSON.parse(saved);
+        const atualizados = ags.map((a: any) => {
+          if (a.id && a.id.toLowerCase() === id.toLowerCase()) {
+            return { ...a, valor_sinal: valor };
+          }
+          return a;
+        });
+        localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados));
+      }
+    } catch (err) {}
+
+    // 2. Disparar broadcast instantâneo (0ms) para todas as abas abertas no navegador
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({ type: 'VALOR_SINAL_UPDATED', id, valorSinal: valor });
+        bc.close();
+      }
+    } catch (err) {}
+
+    // 3. Atualizar no Supabase (com eq e fallback para case-insensitive)
+    const { error } = await supabase.from('agendamentos').update(updates).eq('id', id);
+    if (error) {
+      console.warn('Erro ao atualizar valor_sinal por eq, tentando case-insensitive:', error);
+      await supabase.from('agendamentos').update(updates).ilike('id', id);
+    }
+  } catch (e) {
+    console.error('Falha em atualizarValorSinalAgendamentoSupabase:', e);
+  }
+};
+
 // --- DELETAR AGENDAMENTO ---
 export const deletarAgendamentoSupabase = async (id: string) => {
   try {

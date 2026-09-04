@@ -266,6 +266,10 @@ export const Configuracoes: React.FC = () => {
   const [instagram, setInstagram] = useState(configSalao.instagram);
   const [chavePix, setChavePix] = useState(configSalao.chave_pix);
   const [instrucoesPix, setInstrucoesPix] = useState(configSalao.instrucoes_pix);
+  const [regraDevolucaoSinal, setRegraDevolucaoSinal] = useState(
+    configSalao.regra_devolucao_sinal ||
+    'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.'
+  );
   const [cancelamentoLimite, setCancelamentoLimite] = useState(configSalao.regras.cancelamento_limite_horas);
   const [sinalObrigatorio, setSinalObrigatorio] = useState(configSalao.regras.sinal_obrigatorio_geral);
 
@@ -360,6 +364,7 @@ export const Configuracoes: React.FC = () => {
       instagram,
       chave_pix: chavePix,
       instrucoes_pix: instrucoesPix,
+      regra_devolucao_sinal: regraDevolucaoSinal,
       regras: {
         ...configSalao.regras,
         cancelamento_limite_horas: cancelamentoLimite,
@@ -683,6 +688,25 @@ export const Configuracoes: React.FC = () => {
                       rows={2} value={instrucoesPix} onChange={(e) => setInstrucoesPix(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white resize-none"
                     />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase">
+                        Regra de Devolução do Sinal (Cancelamento Antecipado)
+                      </label>
+                      <span className="text-[10px] text-[#8C6D58] font-medium">Tag dinâmica: {'{horas}'}</span>
+                    </div>
+                    <textarea 
+                      rows={2} 
+                      value={regraDevolucaoSinal} 
+                      onChange={(e) => setRegraDevolucaoSinal(e.target.value)}
+                      placeholder="Ex: Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável."
+                      className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white resize-none"
+                    />
+                    <p className="text-[10px] text-[#8C7A6B] mt-1">
+                      Esta política será exibida na página pública de confirmação da cliente e incluída nas mensagens de cobrança do sinal via WhatsApp.
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">

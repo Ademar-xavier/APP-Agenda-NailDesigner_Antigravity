@@ -34,6 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     obterRecomendacoesManutencao,
     configSalao,
     updateAgendamentoStatus,
+    atualizarValorSinalAgendamento,
     obterServicosDeAgendamento,
     currentUser,
     listaEspera,
@@ -139,6 +140,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const linkReserva = extra?.agendamentoId ? getConfirmationUrl(extra.agendamentoId) : getBookingUrl();
 
     if (tipo === 'confirmacao') {
+      const regraDevolucaoTexto = configSalao.regra_devolucao_sinal
+        ? `\n\n📌 *Política de devolução/cancelamento:*\n${configSalao.regra_devolucao_sinal.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+        : '';
+
       msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
         cliente: cliente.nome,
         servico: extra?.servico || 'serviço',
@@ -151,6 +156,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         link_confirmacao: linkReserva,
         salao: configSalao.nome || 'Sheila Santos Nails'
       });
+
+      if (regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+        msg += regraDevolucaoTexto;
+      }
 
       if (extra?.agendamentoId && !msg.includes(linkReserva)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkReserva}`;
@@ -469,11 +478,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             onClick={() => {
                               if (client) {
                                 const horaStr = a.inicio.split('T')[1].substring(0, 5);
+                                const dataFormatada = new Date(a.inicio).toLocaleDateString('pt-BR');
+
+                                let valorSinal = Number(a.valor_sinal) || 0;
+                                if (valorSinal <= 0) {
+                                  const servsSinal = servs.reduce((acc, s) => {
+                                    if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
+                                    if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 30)) / 100);
+                                    return acc;
+                                  }, 0);
+                                  valorSinal = servsSinal > 0 ? servsSinal : 30;
+                                  atualizarValorSinalAgendamento(a.id, valorSinal);
+                                }
+
                                 handleEnviarMensagemWhatsApp(client, 'confirmacao', {
+                                  agendamentoId: a.id,
                                   servico: servText,
-                                  data: '29/08/2026',
+                                  data: dataFormatada,
                                   hora: horaStr,
-                                  sinal: a.valor_sinal
+                                  sinal: valorSinal
                                 });
                               }
                             }}
