@@ -261,7 +261,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       const dataStr = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
       const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
       const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoCancelamento}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕\n\n📅 Escolha um novo horário online:\n${getBookingUrl()}`;
-      window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+      const url = gerarLinkWhatsApp(cliente.telefone, msg);
+      if (url) window.open(url, '_blank');
     }
 
     setAcao(null);

@@ -239,8 +239,8 @@ export const Confirmacoes: React.FC = () => {
       
       const msg = `Olá, ${client.nome}! O horário que você aguardava ficou disponível! Agendamos você para o dia ${new Date(dataInicioStr).toLocaleDateString('pt-BR')} às ${vagaHora} com a profissional ${prof?.nome || 'Sheila'} para realizar o serviço ${serv.nome}. Confirmado? Te esperamos!`;
       
-      const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
-      window.open(url, '_blank');
+      const url = gerarLinkWhatsApp(client.telefone, msg);
+      if (url) window.open(url, '_blank');
 
       // 3. Fechar modal
       setConfirmarVagaItem(null);
@@ -520,7 +520,8 @@ export const Confirmacoes: React.FC = () => {
         
         const msg = `Olá, ${client.nome}! Infelizmente não conseguimos uma vaga para encaixe no dia ${dataFormatada} (${periodoLabel}) como solicitado. Havendo novas oportunidades e desistências futuras, entraremos em contato. Agradecemos muito a sua compreensão! 💕`;
         
-        window.open(`https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`, '_blank');
+        const url = gerarLinkWhatsApp(client.telefone, msg);
+        if (url) window.open(url, '_blank');
       }
     });
   };

@@ -581,7 +581,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           onClick={() => {
                             if (client?.telefone) {
                               const msg = `Olá, ${client.nome}! Surgiu um horário disponível para seu procedimento (${serv?.nome || 'atendimento'}) na Sheila Santos Nails Designer. Gostaria de agendar?`;
-                              window.open(`https://wa.me/55${client.telefone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+                              const url = gerarLinkWhatsApp(client.telefone, msg);
+                              if (url) window.open(url, '_blank');
                             }
                           }}
                           className="p-2 bg-[#E2F5EC] hover:bg-[#c9ebd9] text-[#4FA97A] rounded-full transition-colors shrink-0"
