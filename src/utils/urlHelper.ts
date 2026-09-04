@@ -58,3 +58,26 @@ export const gerarLinkGoogleCalendar = (params: {
     return 'https://calendar.google.com';
   }
 };
+
+/**
+ * Normaliza número de telefone para formato aceito pelo WhatsApp
+ */
+export const formatarNumeroWhatsApp = (telefone?: string): string => {
+  if (!telefone) return '';
+  let limpo = telefone.replace(/\D/g, '').replace(/^0+/, '');
+  if (!limpo) return '';
+  if (limpo.startsWith('55') && limpo.length >= 12) {
+    return limpo;
+  }
+  return '55' + limpo;
+};
+
+/**
+ * Gera URL segura para WhatsApp (retorna vazio se o telefone for inválido para evitar tela branca do WhatsApp)
+ */
+export const gerarLinkWhatsApp = (telefone?: string, mensagem: string = ''): string => {
+  const numero = formatarNumeroWhatsApp(telefone);
+  // Se não tiver pelo menos 10 dígitos (DDD + número) após adicionar 55 (ou seja, total >= 12)
+  if (!numero || numero.length < 12) return '';
+  return `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+};

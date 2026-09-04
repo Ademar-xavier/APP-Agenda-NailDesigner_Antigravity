@@ -16,7 +16,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Agendamento, ListaEspera, Cliente, Servico } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
-import { getConfirmationUrl, getBookingUrl } from '../utils/urlHelper';
+import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'manutencao' | 'lista_espera' | 'cancelados';
 
@@ -150,8 +150,15 @@ export const Confirmacoes: React.FC = () => {
     const item = loteItens[idx];
     if (!item) return;
 
-    const fone = item.clienteTelefone.replace(/\D/g, '');
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(item.mensagem)}`;
+    const url = gerarLinkWhatsApp(item.clienteTelefone, item.mensagem);
+    if (!url) {
+      mostrarAlerta({
+        titulo: 'Telefone Não Cadastrado',
+        mensagem: `A cliente "${item.clienteNome}" não possui um número de telefone com DDD válido cadastrado no sistema. Atualize o cadastro na aba Clientes.`,
+        tipo: 'aviso'
+      });
+      return;
+    }
     window.open(url, '_blank');
 
     if (idx < loteItens.length - 1) {
@@ -449,7 +456,15 @@ export const Confirmacoes: React.FC = () => {
       }
     }
 
-    const url = `https://wa.me/55${fone}?text=${encodeURIComponent(msg)}`;
+    const url = gerarLinkWhatsApp(client.telefone, msg);
+    if (!url) {
+      mostrarAlerta({
+        titulo: 'Telefone Não Cadastrado',
+        mensagem: `A cliente "${client.nome}" não possui um número de telefone com DDD válido cadastrado no sistema. Por favor, adicione o WhatsApp na aba Clientes.`,
+        tipo: 'aviso'
+      });
+      return;
+    }
     window.open(url, '_blank');
   };
 
