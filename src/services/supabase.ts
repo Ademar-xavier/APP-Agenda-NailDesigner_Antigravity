@@ -105,8 +105,41 @@ export const atualizarStatusAgendamentoSupabase = async (
     if (canceladoPor) updates.cancelado_por = canceladoPor;
     if (motivo) updates.motivo_cancelamento = motivo;
 
+    // 1. Atualizar localStorage imediatamente para sincronia no mesmo navegador
+    try {
+      const saved = localStorage.getItem('nail_agendamentos');
+      if (saved) {
+        const ags = JSON.parse(saved);
+        const atualizados = ags.map((a: any) => {
+          if (a.id && a.id.toLowerCase() === id.toLowerCase()) {
+            return { 
+              ...a, 
+              status, 
+              ...(canceladoPor ? { cancelado_por: canceladoPor } : {}), 
+              ...(motivo ? { motivo_cancelamento: motivo } : {}) 
+            };
+          }
+          return a;
+        });
+        localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados));
+      }
+    } catch (err) {}
+
+    // 2. Disparar broadcast instantâneo (0ms) para todas as abas abertas no navegador
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({ type: 'STATUS_UPDATED', id, status, canceladoPor, motivo });
+        bc.close();
+      }
+    } catch (err) {}
+
+    // 3. Atualizar no Supabase (com eq e fallback para case-insensitive)
     const { error } = await supabase.from('agendamentos').update(updates).eq('id', id);
-    if (error) console.error('Erro ao atualizar agendamento no Supabase:', error);
+    if (error) {
+      console.warn('Erro ao atualizar agendamento por eq, tentando case-insensitive:', error);
+      await supabase.from('agendamentos').update(updates).ilike('id', id);
+    }
   } catch (e) {
     console.error('Falha em atualizarStatusAgendamentoSupabase:', e);
   }

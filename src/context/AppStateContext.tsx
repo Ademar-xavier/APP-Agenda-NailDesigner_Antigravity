@@ -779,9 +779,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return [payload.new as Agendamento, ...prev];
           });
         } else if (payload.eventType === 'UPDATE') {
-          setAgendamentos(prev => prev.map(a => a.id === payload.new.id ? { ...a, ...payload.new } : a));
+          setAgendamentos(prev => {
+            const atualizados = prev.map(a => (a.id && a.id.toLowerCase() === payload.new.id?.toLowerCase()) ? { ...a, ...payload.new } : a);
+            try { localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados)); } catch (e) {}
+            return atualizados;
+          });
         } else if (payload.eventType === 'DELETE') {
-          setAgendamentos(prev => prev.filter(a => a.id !== payload.old.id));
+          setAgendamentos(prev => {
+            const filtrados = prev.filter(a => a.id && a.id.toLowerCase() !== payload.old?.id?.toLowerCase());
+            try { localStorage.setItem('nail_agendamentos', JSON.stringify(filtrados)); } catch (e) {}
+            return filtrados;
+          });
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'lista_espera' }, (payload: any) => {
@@ -816,8 +824,50 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
       .subscribe();
 
+    // 3. Ouvinte BroadcastChannel entre abas (comunicação instantânea 0ms)
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('nail_agenda_sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'STATUS_UPDATED') {
+            const { id, status, canceladoPor, motivo } = event.data;
+            setAgendamentos(prev => prev.map(a => {
+              if (a.id && a.id.toLowerCase() === id.toLowerCase()) {
+                return {
+                  ...a,
+                  status,
+                  ...(canceladoPor ? { cancelado_por: canceladoPor } : {}),
+                  ...(motivo ? { motivo_cancelamento: motivo } : {})
+                };
+              }
+              return a;
+            }));
+          }
+        };
+      }
+    } catch (err) {}
+
+    // 4. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
+    const handleReSync = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        sincronizarComNuvem(false);
+      }
+    };
+    window.addEventListener('focus', handleReSync);
+    document.addEventListener('visibilitychange', handleReSync);
+
+    // 5. Polling contínuo leve a cada 15 segundos para garantir paridade total
+    const pollInterval = setInterval(() => {
+      sincronizarComNuvem(false);
+    }, 15000);
+
     return () => {
       supabase.removeChannel(channel);
+      bc?.close();
+      window.removeEventListener('focus', handleReSync);
+      document.removeEventListener('visibilitychange', handleReSync);
+      clearInterval(pollInterval);
     };
   }, []);
 

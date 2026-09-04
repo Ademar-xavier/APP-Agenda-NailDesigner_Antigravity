@@ -113,6 +113,15 @@ export const preencherTemplateWhatsApp = (
   if (!template) return '';
   let resultado = template;
 
+  const valorSinalNum = Number(variaveis.sinal || 0);
+
+  // Se o sinal for zero ou não informado, remove menção a pagamento de sinal de R$ 0
+  if (valorSinalNum <= 0) {
+    resultado = resultado.replace(/Para confirmar,\s*efetue o pagamento do sinal[^\.\n]*[\.\n]*/gi, '');
+    resultado = resultado.replace(/efetue o pagamento do sinal[^\.\n]*[\.\n]*/gi, '');
+    resultado = resultado.replace(/sinal de R\$\s*0[\.,00]*[^\.\n]*[\.\n]*/gi, '');
+  }
+
   // Substitui cada variável em todas as posições do texto
   for (const [chave, valor] of Object.entries(variaveis)) {
     if (valor !== undefined && valor !== null) {
@@ -120,6 +129,10 @@ export const preencherTemplateWhatsApp = (
       resultado = resultado.replace(regex, String(valor));
     }
   }
+
+  // Limpa espaços duplos e quebras de linha acumuladas
+  resultado = resultado.replace(/[ \t]{2,}/g, ' ');
+  resultado = resultado.replace(/\n{3,}/g, '\n\n').trim();
 
   return resultado;
 };

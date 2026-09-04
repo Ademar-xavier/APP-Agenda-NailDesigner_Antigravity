@@ -15,7 +15,9 @@ import {
   ExternalLink,
   ChevronRight,
   ShieldCheck,
-  Heart
+  Heart,
+  Copy,
+  Check
 } from 'lucide-react';
 import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
@@ -72,8 +74,11 @@ export const PublicConfirmacao: React.FC = () => {
     proprietaria: 'Sheila Santos',
     telefone: '3597141856',
     endereco: 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
-    instagram: '@sheilasantos_nails'
+    instagram: '@sheilasantos_nails',
+    chave_pix: '',
+    instrucoes_pix: ''
   });
+  const [pixCopiado, setPixCopiado] = useState<boolean>(false);
 
   const [processandoAcao, setProcessandoAcao] = useState<boolean>(false);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
@@ -243,7 +248,9 @@ export const PublicConfirmacao: React.FC = () => {
             proprietaria: configSalaoContext.proprietaria || 'Sheila Santos',
             telefone: (configSalaoContext.telefone || '3597141856').replace(/\D/g, ''),
             endereco: configSalaoContext.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
-            instagram: configSalaoContext.instagram || '@sheilasantos_nails'
+            instagram: configSalaoContext.instagram || '@sheilasantos_nails',
+            chave_pix: configSalaoContext.chave_pix || '',
+            instrucoes_pix: configSalaoContext.instrucoes_pix || ''
           });
         } else {
           const { data: configData } = await supabase
@@ -258,7 +265,9 @@ export const PublicConfirmacao: React.FC = () => {
               proprietaria: cs.proprietaria || 'Sheila Santos',
               telefone: (cs.telefone || '3597141856').replace(/\D/g, ''),
               endereco: cs.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
-              instagram: cs.instagram || '@sheilasantos_nails'
+              instagram: cs.instagram || '@sheilasantos_nails',
+              chave_pix: cs.chave_pix || '',
+              instrucoes_pix: cs.instrucoes_pix || ''
             });
           }
         }
@@ -271,7 +280,7 @@ export const PublicConfirmacao: React.FC = () => {
 
     carregarDados();
 
-    // Inscrição Realtime no Supabase para refletir alterações instantaneamente
+    // 1. Inscrição Realtime no Supabase para refletir alterações instantaneamente
     const canal = supabase
       .channel(`public_agendamento_${agendamentoId}`)
       .on('postgres_changes', {
@@ -286,9 +295,66 @@ export const PublicConfirmacao: React.FC = () => {
       })
       .subscribe();
 
+    // 2. Ouvinte BroadcastChannel entre abas (comunicação instantânea 0ms)
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('nail_agenda_sync');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'STATUS_UPDATED') {
+            const { id, status, canceladoPor, motivo } = event.data;
+            if (id && id.toLowerCase() === agendamentoId.toLowerCase()) {
+              setAgendamento(prev => prev ? {
+                ...prev,
+                status: status as any,
+                ...(canceladoPor ? { cancelado_por: canceladoPor } : {}),
+                ...(motivo ? { motivo_cancelamento: motivo } : {})
+              } : null);
+            }
+          }
+        };
+      }
+    } catch (err) {}
+
+    // 3. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
+    const handleReSync = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        supabase
+          .from('agendamentos')
+          .select('*')
+          .eq('id', agendamentoId)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data && isMounted) {
+              setAgendamento(prev => prev ? { ...prev, ...data } : data);
+            }
+          });
+      }
+    };
+    window.addEventListener('focus', handleReSync);
+    document.addEventListener('visibilitychange', handleReSync);
+
+    // 4. Polling contínuo leve a cada 10 segundos enquanto aguarda
+    const pollInterval = setInterval(() => {
+      supabase
+        .from('agendamentos')
+        .select('*')
+        .eq('id', agendamentoId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data && isMounted) {
+            setAgendamento(prev => prev ? { ...prev, ...data } : data);
+          }
+        });
+    }, 10000);
+
     return () => {
       isMounted = false;
       supabase.removeChannel(canal);
+      bc?.close();
+      window.removeEventListener('focus', handleReSync);
+      document.removeEventListener('visibilitychange', handleReSync);
+      clearInterval(pollInterval);
     };
   }, [agendamentoId]);
 
@@ -391,6 +457,26 @@ export const PublicConfirmacao: React.FC = () => {
     `Olá, Sheila! Meu nome é ${cliente?.nome || 'Cliente'} (Agendamento #${agendamento.id}). Gostaria de tirar uma dúvida sobre meu horário de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
   ) : gerarLinkWhatsApp(dadosSalao.telefone, 'Olá, Sheila! Gostaria de tirar uma dúvida sobre atendimento.');
 
+  // Chave Pix e cópia rápida
+  const chavePixParaPagamento = dadosSalao.chave_pix || dadosSalao.telefone;
+
+  const handleCopiarPix = () => {
+    if (!chavePixParaPagamento) return;
+    try {
+      navigator.clipboard.writeText(chavePixParaPagamento);
+      setPixCopiado(true);
+      setTimeout(() => setPixCopiado(false), 2500);
+    } catch (e) {
+      console.error('Falha ao copiar Pix:', e);
+    }
+  };
+
+  // Link para envio de comprovante via WhatsApp quando houver sinal
+  const linkComprovanteWhatsApp = agendamento ? gerarLinkWhatsApp(
+    dadosSalao.telefone,
+    `Olá, Sheila! ✨ Segue o comprovante do sinal de ${formatarMoeda(agendamento.valor_sinal)} referente ao meu agendamento #${agendamento.id} para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
+  ) : '#';
+
   // Link para Google Maps
   const linkGoogleMaps = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dadosSalao.endereco)}`;
 
@@ -462,6 +548,7 @@ export const PublicConfirmacao: React.FC = () => {
   const isCancelado = agendamento.status === 'cancelado';
   const isPendente = agendamento.status === 'pendente';
   const isConcluido = agendamento.status === 'concluido';
+  const temSinal = (agendamento.valor_sinal || 0) > 0;
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#2D2D2D] py-6 sm:py-10 px-4 flex flex-col justify-between">
@@ -528,7 +615,7 @@ export const PublicConfirmacao: React.FC = () => {
               {isPendente && (
                 <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse">
                   <Clock size={14} className="text-amber-600" />
-                  Aguardando Confirmação
+                  {temSinal ? 'Aguardando Pagamento do Sinal' : 'Aguardando Confirmação'}
                 </span>
               )}
               {isCancelado && (
@@ -604,9 +691,10 @@ export const PublicConfirmacao: React.FC = () => {
 
             {agendamento.valor_sinal > 0 && (
               <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/60">
-                <span>Sinal de Reserva:</span>
+                <span className="font-semibold">Sinal de Reserva:</span>
                 <span className="font-bold">
                   {formatarMoeda(agendamento.valor_sinal)}
+                  {isConfirmado && <span className="ml-1.5 text-[10px] text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded font-bold">Pago</span>}
                 </span>
               </div>
             )}
@@ -616,34 +704,114 @@ export const PublicConfirmacao: React.FC = () => {
           <div className="pt-3 space-y-3">
             {isPendente && (
               <>
-                <button
-                  type="button"
-                  onClick={handleConfirmarPresenca}
-                  disabled={processandoAcao}
-                  className="w-full py-3.5 px-4 bg-[#8C6D58] hover:bg-[#725743] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#8C6D58]/20 flex items-center justify-center gap-2"
-                >
-                  {processandoAcao ? (
-                    <>
-                      <RefreshCw size={17} className="animate-spin" />
-                      <span>Confirmando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 size={18} />
-                      <span>✅ Confirmar Minha Presença</span>
-                    </>
-                  )}
-                </button>
+                {temSinal ? (
+                  /* FLUXO COM SINAL: O CLIENTE NÃO CONFIRMA DIRETAMENTE; PAGA O SINAL E ENVIA O COMPROVANTE */
+                  <div className="space-y-3">
+                    <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-xs text-amber-950 space-y-3">
+                      <div className="flex items-center gap-2 text-amber-900 font-bold">
+                        <Clock size={16} className="text-amber-600 shrink-0" />
+                        <span>Para garantir seu horário, efetue o sinal</span>
+                      </div>
+                      
+                      <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                        Faça a transferência do sinal de <strong className="text-amber-950 font-bold">{formatarMoeda(agendamento.valor_sinal)}</strong> via Pix e envie o comprovante pelo botão abaixo para confirmarmos sua vaga no sistema:
+                      </p>
 
-                <button
-                  type="button"
-                  onClick={() => setModalCancelarAberto(true)}
-                  disabled={processandoAcao}
-                  className="w-full py-2.5 px-4 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <XCircle size={15} />
-                  <span>Não Poderei Comparecer</span>
-                </button>
+                      {chavePixParaPagamento && (
+                        <div className="bg-white p-3 rounded-xl border border-amber-200/60 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Chave Pix:</span>
+                            <span className="text-[10px] font-semibold text-[#8C6D58]">{dadosSalao.proprietaria || 'Sheila Santos'}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 bg-[#FAF8F5] p-2 rounded-lg border border-[#EFECE6]">
+                            <code className="text-xs font-mono font-bold text-[#5A4535] select-all break-all">
+                              {chavePixParaPagamento}
+                            </code>
+                            <button
+                              type="button"
+                              onClick={handleCopiarPix}
+                              className="shrink-0 px-2.5 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-md text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 shadow-2xs"
+                              title="Copiar Chave Pix"
+                            >
+                              {pixCopiado ? (
+                                <>
+                                  <Check size={13} className="text-emerald-300" />
+                                  <span>Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={13} />
+                                  <span>Copiar</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          {dadosSalao.instrucoes_pix && (
+                            <p className="text-[10px] text-[#8C7A6B] italic">
+                              {dadosSalao.instrucoes_pix}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <a
+                        href={linkComprovanteWhatsApp}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
+                      >
+                        <MessageCircle size={18} />
+                        <span>Enviar Comprovante pelo WhatsApp</span>
+                      </a>
+
+                      <p className="text-[10px] text-center text-amber-800/80">
+                        Após você enviar o comprovante, Sheila confirmará seu horário e este painel será atualizado automaticamente! ✨
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalCancelarAberto(true)}
+                      disabled={processandoAcao}
+                      className="w-full py-2.5 px-4 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <XCircle size={15} />
+                      <span>Não Poderei Comparecer (Liberar Vaga)</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* FLUXO SEM SINAL: O CLIENTE CONFIRMA DIRETAMENTE EM 1 TOQUE */
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleConfirmarPresenca}
+                      disabled={processandoAcao}
+                      className="w-full py-3.5 px-4 bg-[#8C6D58] hover:bg-[#725743] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#8C6D58]/20 flex items-center justify-center gap-2"
+                    >
+                      {processandoAcao ? (
+                        <>
+                          <RefreshCw size={17} className="animate-spin" />
+                          <span>Confirmando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={18} />
+                          <span>✅ Confirmar Minha Presença</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalCancelarAberto(true)}
+                      disabled={processandoAcao}
+                      className="w-full py-2.5 px-4 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    >
+                      <XCircle size={15} />
+                      <span>Não Poderei Comparecer</span>
+                    </button>
+                  </>
+                )}
               </>
             )}
 
