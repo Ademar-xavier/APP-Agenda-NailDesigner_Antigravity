@@ -11,7 +11,9 @@ import {
   Usuario,
   Despesa,
   Material,
-  ModalAlertaConfig
+  ModalAlertaConfig,
+  NotificacaoClienteAcao,
+  REGRA_DEVOLUCAO_PADRAO
 } from '../types';
 import { 
   supabase,
@@ -34,6 +36,42 @@ import {
 } from '../services/supabase';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
+
+// Emite sinal sonoro suave e elegante (dois tons em acorde harmônico) usando a Web Audio API nativa
+export const tocarAlertaSonoro = () => {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    // Tom 1 (G5 - 783.99 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(783.99, now);
+    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    // Tom 2 (C6 - 1046.50 Hz)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(1046.50, now + 0.12);
+    gain2.gain.setValueAtTime(0.25, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.6);
+  } catch (e) {
+    console.warn('Alerta sonoro não pôde ser executado:', e);
+  }
+};
 
 interface AppStateContextType {
   clientes: Cliente[];
@@ -154,6 +192,10 @@ interface AppStateContextType {
     onConfirm: () => void;
     onCancel?: () => void;
   }) => void;
+  notificacaoClienteAcao: NotificacaoClienteAcao | null;
+  fecharNotificacaoClienteAcao: () => void;
+  dispararNotificacaoCliente: (notif: Omit<NotificacaoClienteAcao, 'id' | 'hora'>) => void;
+  tocarAlertaSonoro: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -208,7 +250,9 @@ const configSalaoInicial: ConfigSalao = {
   regras: {
     cancelamento_limite_horas: 24,
     sinal_obrigatorio_geral: true,
-    lembrete_horas_antecedencia: 24
+    lembrete_horas_antecedencia: 24,
+    alerta_sonoro_ativo: true,
+    alerta_visual_ativo: true
   },
   templates_whatsapp: {
     confirmacao: 'Olá, {cliente}! Seu agendamento para {servico} com {profissional} no dia {data} às {hora} foi recebido. Para confirmar, efetue o pagamento do sinal de R$ {sinal} na chave Pix {chave_pix} e envie o comprovante aqui.\n\n👉 Confirme sua presença em 1 toque:\n{link_confirmacao}',
@@ -247,6 +291,68 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setNotificacaoGlobal(null);
     }, 3800);
   };
+
+  // Notificação Visual (Popup) e Sonora para ações de clientes em tempo real
+  const [notificacaoClienteAcao, setNotificacaoClienteAcao] = useState<NotificacaoClienteAcao | null>(null);
+
+  const dispararNotificacaoCliente = (notif: Omit<NotificacaoClienteAcao, 'id' | 'hora'>) => {
+    // Verifica se os alertas estão habilitados nas configurações (padrão true)
+    let sonoroAtivo = true;
+    let visualAtivo = true;
+    try {
+      const cfgLocal = localStorage.getItem('nail_config_salao');
+      if (cfgLocal) {
+        const parsed = JSON.parse(cfgLocal);
+        if (parsed?.regras?.alerta_sonoro_ativo !== undefined) {
+          sonoroAtivo = parsed.regras.alerta_sonoro_ativo;
+        }
+        if (parsed?.regras?.alerta_visual_ativo !== undefined) {
+          visualAtivo = parsed.regras.alerta_visual_ativo;
+        }
+      }
+    } catch (e) {}
+
+    if (sonoroAtivo) {
+      tocarAlertaSonoro();
+    }
+
+    if (visualAtivo) {
+      const novaNotif: NotificacaoClienteAcao = {
+        id: Math.random().toString(36).substring(2, 9),
+        hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        ...notif
+      };
+      setNotificacaoClienteAcao(novaNotif);
+      setTimeout(() => {
+        setNotificacaoClienteAcao(prev => (prev?.id === novaNotif.id ? null : prev));
+      }, 9000);
+    }
+  };
+
+  const fecharNotificacaoClienteAcao = () => {
+    setNotificacaoClienteAcao(null);
+  };
+
+  // Desbloqueia AudioContext na primeira interação do usuário para permitir autoplay de áudio
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') ctx.resume();
+        }
+      } catch (e) {}
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
 
   // Modal de Alerta / Confirmação Visual Elegante (Substituto para alert e confirm nativos)
   const [modalAlerta, setModalAlerta] = useState<ModalAlertaConfig | null>(null);
@@ -562,6 +668,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (dados.agendamentos && dados.agendamentos.length > 0) {
         setAgendamentos(dados.agendamentos);
         try { localStorage.setItem('nail_agendamentos', JSON.stringify(dados.agendamentos)); } catch (e) {}
+
+        // Hidrata itensAgendamento a partir de itens_servicos de cada agendamento
+        const novosItensAgendamento: { [key: string]: string[] } = {};
+        dados.agendamentos.forEach((a: any) => {
+          if (a.itens_servicos && Array.isArray(a.itens_servicos) && a.itens_servicos.length > 0) {
+            novosItensAgendamento[a.id] = a.itens_servicos;
+          }
+        });
+        if (Object.keys(novosItensAgendamento).length > 0) {
+          setItensAgendamento(prev => {
+            const merged = { ...prev, ...novosItensAgendamento };
+            try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          });
+        }
       } else if (forcarSobrescrita && dados.agendamentos && dados.agendamentos.length === 0) {
         setAgendamentos([]);
         try { localStorage.setItem('nail_agendamentos', JSON.stringify([])); } catch (e) {}
@@ -660,8 +781,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // 9. Configurações Gerais do Salão (Técnicas, Formatos, Categorias)
       if (dados.configuracoes) {
         if (dados.configuracoes.config_salao) {
-          setConfigSalao(dados.configuracoes.config_salao);
-          try { localStorage.setItem('nail_config_salao', JSON.stringify(dados.configuracoes.config_salao)); } catch (e) {}
+          const cfg = {
+            ...dados.configuracoes.config_salao,
+            regra_devolucao_sinal: dados.configuracoes.config_salao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
+            regras: {
+              ...dados.configuracoes.config_salao.regras,
+              alerta_sonoro_ativo: dados.configuracoes.config_salao.regras?.alerta_sonoro_ativo !== false,
+              alerta_visual_ativo: dados.configuracoes.config_salao.regras?.alerta_visual_ativo !== false
+            }
+          };
+          setConfigSalao(cfg);
+          try { localStorage.setItem('nail_config_salao', JSON.stringify(cfg)); } catch (e) {}
         }
         if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
           setTecnicas(dados.configuracoes.tecnicas);
@@ -781,10 +911,39 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if (prev.some(a => a.id === payload.new.id)) return prev;
             return [payload.new as Agendamento, ...prev];
           });
+          if (payload.new?.origem === 'cliente') {
+            dispararNotificacaoCliente({
+              tipo: 'agendamento',
+              titulo: 'Novo Agendamento Recebido! 💅',
+              mensagem: 'Uma cliente realizou um agendamento online.',
+              detalhes: `Código #${payload.new.id}`,
+              agendamentoId: payload.new.id
+            });
+          }
         } else if (payload.eventType === 'UPDATE') {
           setAgendamentos(prev => {
+            const anterior = prev.find(a => a.id?.toLowerCase() === payload.new.id?.toLowerCase());
             const atualizados = prev.map(a => (a.id && a.id.toLowerCase() === payload.new.id?.toLowerCase()) ? { ...a, ...payload.new } : a);
             try { localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados)); } catch (e) {}
+
+            if (payload.new.status === 'confirmado' && anterior && anterior.status !== 'confirmado') {
+              dispararNotificacaoCliente({
+                tipo: 'confirmacao',
+                titulo: 'Presença Confirmada! ✅',
+                mensagem: `Cliente confirmou o agendamento #${payload.new.id}.`,
+                detalhes: 'Status atualizado para confirmado.',
+                agendamentoId: payload.new.id
+              });
+            } else if (payload.new.status === 'cancelado' && anterior && anterior.status !== 'cancelado' && payload.new.cancelado_por === 'cliente') {
+              dispararNotificacaoCliente({
+                tipo: 'cancelamento',
+                titulo: 'Horário Cancelado ❌',
+                mensagem: `A cliente solicitou cancelamento do agendamento #${payload.new.id}.`,
+                detalhes: payload.new.motivo_cancelamento ? `Motivo: ${payload.new.motivo_cancelamento}` : 'Horário liberado na agenda.',
+                agendamentoId: payload.new.id
+              });
+            }
+
             return atualizados;
           });
         } else if (payload.eventType === 'DELETE') {
@@ -800,6 +959,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setListaEspera(prev => {
             if (prev.some(l => l.id === payload.new.id)) return prev;
             return [payload.new as ListaEspera, ...prev];
+          });
+          dispararNotificacaoCliente({
+            tipo: 'espera',
+            titulo: 'Nova Solicitação na Lista de Espera ⏳',
+            mensagem: `A cliente ${payload.new.nome || 'Cliente'} entrou na fila de espera.`,
+            detalhes: `Período: ${payload.new.periodo_preferido || 'qualquer'}`
           });
         } else if (payload.eventType === 'UPDATE') {
           setListaEspera(prev => prev.map(l => l.id === payload.new.id ? { ...l, ...payload.new } : l));
@@ -846,6 +1011,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
               return a;
             }));
+            if (status === 'confirmado') {
+              dispararNotificacaoCliente({
+                tipo: 'confirmacao',
+                titulo: 'Presença Confirmada! ✅',
+                mensagem: `Cliente confirmou o agendamento #${id}.`,
+                agendamentoId: id
+              });
+            } else if (status === 'cancelado' && canceladoPor === 'cliente') {
+              dispararNotificacaoCliente({
+                tipo: 'cancelamento',
+                titulo: 'Agendamento Cancelado ❌',
+                mensagem: `A cliente cancelou o agendamento #${id}.`,
+                detalhes: motivo ? `Motivo: ${motivo}` : undefined,
+                agendamentoId: id
+              });
+            }
           } else if (event.data?.type === 'VALOR_SINAL_UPDATED') {
             const { id, valorSinal } = event.data;
             setAgendamentos(prev => prev.map(a => {
@@ -857,6 +1038,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
               return a;
             }));
+          } else if (event.data?.type === 'CLIENTE_ACAO') {
+            if (event.data.notificacao) {
+              dispararNotificacaoCliente(event.data.notificacao);
+            }
           }
         };
       }
@@ -1261,7 +1446,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const obterServicosDeAgendamento = (agendamentoId: string): Servico[] => {
-    const ids = itensAgendamento[agendamentoId] || [];
+    let ids = itensAgendamento[agendamentoId] || [];
+    if (ids.length === 0) {
+      const agend = agendamentos.find(a => a.id === agendamentoId) as any;
+      if (agend?.itens_servicos && Array.isArray(agend.itens_servicos) && agend.itens_servicos.length > 0) {
+        ids = agend.itens_servicos;
+      }
+    }
     const directServs = servicos.filter(s => ids.includes(s.id));
     const expandedServs: Servico[] = [];
     directServs.forEach(s => {
@@ -1765,7 +1956,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       modalAlerta,
       mostrarAlerta,
       fecharAlerta,
-      confirmarAcao
+      confirmarAcao,
+      notificacaoClienteAcao,
+      fecharNotificacaoClienteAcao,
+      dispararNotificacaoCliente,
+      tocarAlertaSonoro
     }}>
       {children}
     </AppStateContext.Provider>

@@ -213,6 +213,9 @@ export const Financeiro: React.FC = () => {
     }
     return true;
   });
+
+  const despesasMes = despesas.filter(d => d.data.startsWith(mesSelecionadoStr));
+
   const dataRef = new Date(anoNum, mesNum - 1, 1);
   const nomeMesAtual = dataRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
@@ -447,7 +450,7 @@ export const Financeiro: React.FC = () => {
               financeTab === 'despesas' ? 'border-[#8C6D58] text-[#8C6D58]' : 'border-transparent text-[#8C7A6B]'
             }`}
           >
-            Extrato de Despesas ({despesas.length})
+            Extrato de Despesas ({despesasMes.length})
           </button>
         </div>
         
@@ -497,7 +500,7 @@ export const Financeiro: React.FC = () => {
           {/* TAB 2: EXTRATO DESPESAS */}
           {financeTab === 'despesas' && (
             <>
-              {despesas.map((d) => (
+              {despesasMes.map((d) => (
                 <div key={d.id} className="flex items-center justify-between p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2">
@@ -521,8 +524,8 @@ export const Financeiro: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {despesas.length === 0 && (
-                <p className="text-xs text-[#8C7A6B] text-center py-4 italic">Nenhuma despesa registrada ainda.</p>
+              {despesasMes.length === 0 && (
+                <p className="text-xs text-[#8C7A6B] text-center py-4 italic">Nenhuma despesa registrada neste mês.</p>
               )}
             </>
           )}

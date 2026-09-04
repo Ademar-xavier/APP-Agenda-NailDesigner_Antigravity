@@ -14,7 +14,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Agendamento, ListaEspera, Cliente, Servico } from '../types';
+import { Agendamento, ListaEspera, Cliente, Servico, REGRA_DEVOLUCAO_PADRAO } from '../types';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
@@ -93,6 +93,11 @@ export const Confirmacoes: React.FC = () => {
       const linkConfirmacao = getConfirmationUrl(a.id);
       let msg = '';
       if (tipo === 'confirmacao') {
+        const templateRegra = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
+        const regraDevolucaoTexto = templateRegra
+          ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+          : '';
+
         msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
           cliente: clientName,
           servico: servText,
@@ -105,6 +110,13 @@ export const Confirmacoes: React.FC = () => {
           link_confirmacao: linkConfirmacao,
           salao: configSalao.nome || 'Sheila Santos Nails'
         });
+
+        const valorSinalNum = Number(a.valor_sinal || 0);
+        const falaDeSinal = valorSinalNum > 0 && (msg.toLowerCase().includes('sinal') || msg.toLowerCase().includes('pix'));
+
+        if (falaDeSinal && regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+          msg += regraDevolucaoTexto;
+        }
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
@@ -450,6 +462,11 @@ export const Confirmacoes: React.FC = () => {
     
     let msg = '';
     if (tipo === 'confirmacao') {
+      const templateRegra = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
+      const regraDevolucaoTexto = templateRegra
+        ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+        : '';
+
       msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
         cliente: client.nome,
         servico: servText,
@@ -462,6 +479,13 @@ export const Confirmacoes: React.FC = () => {
         link_confirmacao: linkConfirmacao,
         salao: configSalao.nome || 'Sheila Santos Nails'
       });
+
+      const valorSinalNum = Number(a.valor_sinal || 0);
+      const falaDeSinal = valorSinalNum > 0 && (msg.toLowerCase().includes('sinal') || msg.toLowerCase().includes('pix'));
+
+      if (falaDeSinal && regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+        msg += regraDevolucaoTexto;
+      }
 
       if (!msg.includes(linkConfirmacao)) {
         msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;

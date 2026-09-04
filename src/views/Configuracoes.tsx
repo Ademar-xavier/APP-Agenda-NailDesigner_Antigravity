@@ -272,6 +272,8 @@ export const Configuracoes: React.FC = () => {
   );
   const [cancelamentoLimite, setCancelamentoLimite] = useState(configSalao.regras.cancelamento_limite_horas);
   const [sinalObrigatorio, setSinalObrigatorio] = useState(configSalao.regras.sinal_obrigatorio_geral);
+  const [alertaSonoro, setAlertaSonoro] = useState(configSalao.regras?.alerta_sonoro_ativo !== false);
+  const [alertaVisual, setAlertaVisual] = useState(configSalao.regras?.alerta_visual_ativo !== false);
 
   // Expediente
   const [horarios, setHorarios] = useState(configSalao.horarios_trabalho);
@@ -368,7 +370,9 @@ export const Configuracoes: React.FC = () => {
       regras: {
         ...configSalao.regras,
         cancelamento_limite_horas: cancelamentoLimite,
-        sinal_obrigatorio_geral: sinalObrigatorio
+        sinal_obrigatorio_geral: sinalObrigatorio,
+        alerta_sonoro_ativo: alertaSonoro,
+        alerta_visual_ativo: alertaVisual
       }
     };
     updateConfigSalao(updated);
@@ -717,6 +721,40 @@ export const Configuracoes: React.FC = () => {
                     <label htmlFor="sinal_obr" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
                       Exigir sinal de agendamento por padrão para novas clientes
                     </label>
+                  </div>
+
+                  {/* Alertas Sonoros e Visuais no App */}
+                  <div className="md:col-span-2 pt-3 border-t border-[#EFECE6] space-y-2">
+                    <span className="block text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">
+                      Notificações do Aplicativo em Tempo Real (Retorno de Clientes)
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="flex items-center gap-2.5 p-3 bg-white border border-[#EFECE6] rounded-xl cursor-pointer hover:border-[#8C6D58] transition-colors shadow-xs">
+                        <input 
+                          type="checkbox" 
+                          checked={alertaSonoro} 
+                          onChange={(e) => setAlertaSonoro(e.target.checked)}
+                          className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">🔊 Alerta Sonoro no App</span>
+                          <span className="text-[10px] text-[#8C7A6B] block">Tocar aviso sonoro (chime) quando cliente agendar, confirmar ou cancelar</span>
+                        </div>
+                      </label>
+
+                      <label className="flex items-center gap-2.5 p-3 bg-white border border-[#EFECE6] rounded-xl cursor-pointer hover:border-[#8C6D58] transition-colors shadow-xs">
+                        <input 
+                          type="checkbox" 
+                          checked={alertaVisual} 
+                          onChange={(e) => setAlertaVisual(e.target.checked)}
+                          className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">🔔 Aviso Visual no App (Popup)</span>
+                          <span className="text-[10px] text-[#8C7A6B] block">Exibir notificação flutuante na tela para ações da cliente</span>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>

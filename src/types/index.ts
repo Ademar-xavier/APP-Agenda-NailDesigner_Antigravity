@@ -143,6 +143,8 @@ export interface ConfigSalao {
     cancelamento_limite_horas: number;
     sinal_obrigatorio_geral: boolean;
     lembrete_horas_antecedencia: number;
+    alerta_sonoro_ativo?: boolean;
+    alerta_visual_ativo?: boolean;
   };
   templates_whatsapp: {
     confirmacao: string;
@@ -151,6 +153,18 @@ export interface ConfigSalao {
     lista_espera: string;
     contato_geral?: string;
   };
+}
+
+export const REGRA_DEVOLUCAO_PADRAO = 'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.';
+
+export interface NotificacaoClienteAcao {
+  id: string;
+  tipo: 'agendamento' | 'confirmacao' | 'espera' | 'cancelamento' | 'pagamento_sinal';
+  titulo: string;
+  mensagem: string;
+  detalhes?: string;
+  hora: string;
+  agendamentoId?: string;
 }
 
 export interface Despesa {

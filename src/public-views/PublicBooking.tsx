@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
+import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -212,6 +213,34 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       setValorSinal(sinalTotal);
       setValorTotal(precoTotal);
       setStep(5);
+
+      // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
+      try {
+        const telDest = profSelecionada?.telefone || configSalao.telefone;
+        const dataFmt = formatarDataLocal(dataSelecionada);
+        const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
+        const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${sinalTotal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
+        if (telDest) {
+          enviarMensagemTextoMeta(telDest, msgProf).catch(() => {});
+        }
+      } catch (err) {}
+
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('nail_agenda_sync');
+          bc.postMessage({
+            type: 'CLIENTE_ACAO',
+            notificacao: {
+              tipo: 'agendamento',
+              titulo: 'Novo Agendamento Recebido! 💅',
+              mensagem: `${nome} agendou para ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`,
+              detalhes: `Código #${res.agendamento.id}`,
+              agendamentoId: res.agendamento.id
+            }
+          });
+          bc.close();
+        }
+      } catch (err) {}
     }
   };
 
@@ -246,6 +275,32 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       data_preferida: dataSelecionada,
       periodo_preferido: periodoPreferido
     });
+
+    // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
+    try {
+      const telDest = configSalao.telefone;
+      const dataFmt = formatarDataLocal(dataSelecionada);
+      const msgProf = `🔔 *Nova Inscrição na Lista de Espera!*\n\nOlá! A cliente *${nome}* (${telefone}) acabou de entrar na fila de espera para o dia *${dataFmt}* (${periodoPreferido === 'qualquer' ? 'qualquer período' : periodoPreferido}).\n\n👉 Acesse o app para conferir!`;
+      if (telDest) {
+        enviarMensagemTextoMeta(telDest, msgProf).catch(() => {});
+      }
+    } catch (err) {}
+
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({
+          type: 'CLIENTE_ACAO',
+          notificacao: {
+            tipo: 'espera',
+            titulo: 'Nova Inscrição na Lista de Espera ⏳',
+            mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}.`,
+            detalhes: `Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`
+          }
+        });
+        bc.close();
+      }
+    } catch (err) {}
 
     setStep(7);
   };

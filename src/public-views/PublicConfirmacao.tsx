@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
+import { REGRA_DEVOLUCAO_PADRAO } from '../types';
+import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 import { gerarLinkGoogleCalendar, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface AgendamentoPublico {
@@ -77,7 +79,7 @@ export const PublicConfirmacao: React.FC = () => {
     instagram: '@sheilasantos_nails',
     chave_pix: '',
     instrucoes_pix: '',
-    regra_devolucao_sinal: '',
+    regra_devolucao_sinal: REGRA_DEVOLUCAO_PADRAO,
     cancelamento_limite_horas: 24
   });
   const [pixCopiado, setPixCopiado] = useState<boolean>(false);
@@ -253,7 +255,7 @@ export const PublicConfirmacao: React.FC = () => {
             instagram: configSalaoContext.instagram || '@sheilasantos_nails',
             chave_pix: configSalaoContext.chave_pix || '',
             instrucoes_pix: configSalaoContext.instrucoes_pix || '',
-            regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || '',
+            regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
             cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24
           });
         } else {
@@ -272,7 +274,7 @@ export const PublicConfirmacao: React.FC = () => {
               instagram: cs.instagram || '@sheilasantos_nails',
               chave_pix: cs.chave_pix || '',
               instrucoes_pix: cs.instrucoes_pix || '',
-              regra_devolucao_sinal: cs.regra_devolucao_sinal || '',
+              regra_devolucao_sinal: cs.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
               cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24
             });
           }
@@ -379,6 +381,33 @@ export const PublicConfirmacao: React.FC = () => {
 
       setAgendamento(prev => prev ? { ...prev, status: 'confirmado' } : null);
       setMensagemSucesso('🎉 Presença confirmada com sucesso! Seu horário está 100% garantido.');
+
+      // Notifica a profissional via WhatsApp (Meta Cloud API) e BroadcastChannel
+      try {
+        const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
+        const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
+        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ A cliente *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
+        if (dadosSalao.telefone) {
+          enviarMensagemTextoMeta(dadosSalao.telefone, textoNotif).catch(() => {});
+        }
+      } catch (err) {}
+
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('nail_agenda_sync');
+          bc.postMessage({
+            type: 'CLIENTE_ACAO',
+            notificacao: {
+              tipo: 'confirmacao',
+              titulo: 'Presença Confirmada! ✅',
+              mensagem: `A cliente ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
+              detalhes: `Horário #${agendamento.id}`,
+              agendamentoId: agendamento.id
+            }
+          });
+          bc.close();
+        }
+      } catch (err) {}
     } catch (e) {
       console.error('Erro ao confirmar:', e);
       alert('Não foi possível confirmar no momento. Por favor, tente novamente ou entre em contato pelo WhatsApp.');
@@ -412,6 +441,33 @@ export const PublicConfirmacao: React.FC = () => {
 
       setModalCancelarAberto(false);
       setMensagemSucesso('Seu cancelamento foi registrado com sucesso. Agradecemos pelo aviso!');
+
+      // Notifica a profissional via WhatsApp (Meta Cloud API) e BroadcastChannel
+      try {
+        const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
+        const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
+        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ A cliente *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
+        if (dadosSalao.telefone) {
+          enviarMensagemTextoMeta(dadosSalao.telefone, textoNotif).catch(() => {});
+        }
+      } catch (err) {}
+
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const bc = new BroadcastChannel('nail_agenda_sync');
+          bc.postMessage({
+            type: 'CLIENTE_ACAO',
+            notificacao: {
+              tipo: 'cancelamento',
+              titulo: 'Horário Cancelado ❌',
+              mensagem: `A cliente ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
+              detalhes: `Motivo: ${motivoFinal}`,
+              agendamentoId: agendamento.id
+            }
+          });
+          bc.close();
+        }
+      } catch (err) {}
     } catch (e) {
       console.error('Erro ao cancelar:', e);
       alert('Não foi possível registrar o cancelamento. Por favor, avise-nos pelo WhatsApp.');
@@ -757,12 +813,10 @@ export const PublicConfirmacao: React.FC = () => {
                               {dadosSalao.instrucoes_pix}
                             </p>
                           )}
-                          {dadosSalao.regra_devolucao_sinal && (
-                            <div className="pt-2 border-t border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
-                              <span className="font-bold text-amber-950 block mb-0.5">📌 Política de Devolução do Sinal:</span>
-                              {dadosSalao.regra_devolucao_sinal.replace('{horas}', String(dadosSalao.cancelamento_limite_horas || 24))}
-                            </div>
-                          )}
+                          <div className="pt-2 border-t border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
+                            <span className="font-bold text-amber-950 block mb-0.5">📌 Política de Devolução do Sinal:</span>
+                            {(dadosSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO).replace('{horas}', String(dadosSalao.cancelamento_limite_horas || 24))}
+                          </div>
                         </div>
                       )}
 
@@ -770,6 +824,24 @@ export const PublicConfirmacao: React.FC = () => {
                         href={linkComprovanteWhatsApp}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={() => {
+                          try {
+                            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+                              const bc = new BroadcastChannel('nail_agenda_sync');
+                              bc.postMessage({
+                                type: 'CLIENTE_ACAO',
+                                notificacao: {
+                                  tipo: 'pagamento_sinal',
+                                  titulo: 'Comprovante Pix Informado! 💵',
+                                  mensagem: `A cliente ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
+                                  detalhes: `Agendamento #${agendamento.id}`,
+                                  agendamentoId: agendamento.id
+                                }
+                              });
+                              bc.close();
+                            }
+                          } catch (err) {}
+                        }}
                         className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
                       >
                         <MessageCircle size={18} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy } from 'lucide-react';
+import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy, X } from 'lucide-react';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -20,7 +20,15 @@ import { AtivacaoLicenca } from './views/AtivacaoLicenca';
 import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
 
 function AppContent() {
-  const { currentUser, notificacaoGlobal, modalAlerta, fecharAlerta, mostrarNotificacaoGlobal } = useAppState();
+  const { 
+    currentUser, 
+    notificacaoGlobal, 
+    modalAlerta, 
+    fecharAlerta, 
+    mostrarNotificacaoGlobal,
+    notificacaoClienteAcao,
+    fecharNotificacaoClienteAcao
+  } = useAppState();
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
   const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());
@@ -407,6 +415,76 @@ function AppContent() {
           }`}>
             <Cloud size={16} className="text-emerald-400 shrink-0" />
             <span>{notificacaoGlobal.mensagem}</span>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP VISUAL DE AÇÃO DA CLIENTE (Tempo Real) */}
+      {notificacaoClienteAcao && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] max-w-md w-[92%] sm:w-full animate-in slide-in-from-top-6 fade-in duration-300">
+          <div className="bg-[#1C1917] text-white p-4 rounded-2xl shadow-2xl border border-[#8C6D58]/40 backdrop-blur-md flex items-start gap-3 relative overflow-hidden">
+            {/* Barra de brilho no topo */}
+            <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
+              notificacaoClienteAcao.tipo === 'confirmacao'
+                ? 'from-emerald-400 to-teal-500'
+                : notificacaoClienteAcao.tipo === 'cancelamento'
+                ? 'from-rose-400 to-red-600'
+                : notificacaoClienteAcao.tipo === 'espera'
+                ? 'from-amber-400 to-orange-500'
+                : 'from-[#DB7093] to-[#8C6D58]'
+            }`} />
+
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+              notificacaoClienteAcao.tipo === 'confirmacao'
+                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                : notificacaoClienteAcao.tipo === 'cancelamento'
+                ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                : notificacaoClienteAcao.tipo === 'espera'
+                ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                : 'bg-pink-950 text-pink-300 border border-pink-800'
+            }`}>
+              <Sparkles size={20} />
+            </div>
+
+            <div className="flex-1 min-w-0 pr-6">
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-xs text-white leading-tight">{notificacaoClienteAcao.titulo}</h4>
+                <span className="text-[10px] text-zinc-400 font-mono">({notificacaoClienteAcao.hora})</span>
+              </div>
+              <p className="text-xs text-zinc-300 mt-1 leading-snug">{notificacaoClienteAcao.mensagem}</p>
+              {notificacaoClienteAcao.detalhes && (
+                <p className="text-[11px] text-[#D37F64] font-semibold mt-0.5">{notificacaoClienteAcao.detalhes}</p>
+              )}
+
+              <div className="flex items-center gap-2 mt-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentView('agenda');
+                    fecharNotificacaoClienteAcao();
+                  }}
+                  className="px-3 py-1 bg-[#8C6D58] hover:bg-[#725743] text-white text-[11px] font-bold rounded-lg transition-colors shadow-sm"
+                >
+                  Ver na Agenda
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharNotificacaoClienteAcao}
+                  className="px-2.5 py-1 text-zinc-400 hover:text-white text-[11px] font-medium transition-colors"
+                >
+                  Dispensar
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={fecharNotificacaoClienteAcao}
+              className="absolute top-3 right-3 text-zinc-400 hover:text-white p-1 rounded-lg transition-colors"
+              title="Fechar aviso"
+            >
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}

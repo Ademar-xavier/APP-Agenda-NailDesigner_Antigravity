@@ -15,7 +15,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { MetodoPagamento, AgendamentoStatus } from '../types';
+import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
@@ -58,27 +58,36 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
 
-  // Valor a cobrar de sinal (se o agendamento já possuir valor_sinal > 0, usa ele; senão calcula dos serviços ou sugere 30)
+  // Valor a cobrar de sinal (se o agendamento já possuir valor_sinal > 0, usa ele; senão calcula dos serviços ou sugere 15)
   const [valorSinalCobrar, setValorSinalCobrar] = useState<number>(() => {
-    if (agendamento && agendamento.valor_sinal > 0) return agendamento.valor_sinal;
+    if (agendamento && Number(agendamento.valor_sinal) > 0) return Number(agendamento.valor_sinal);
     if (servs && servs.length > 0) {
       const somaServs = servs.reduce((acc, s) => {
         if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
-        if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 30)) / 100);
+        if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 0)) / 100);
         return acc;
       }, 0);
       if (somaServs > 0) return somaServs;
     }
-    return 30;
+    return 15;
   });
 
   useEffect(() => {
     if (agendamento) {
-      if (agendamento.valor_sinal > 0) {
-        setValorSinalCobrar(agendamento.valor_sinal);
+      if (Number(agendamento.valor_sinal) > 0) {
+        setValorSinalCobrar(Number(agendamento.valor_sinal));
+      } else if (servs && servs.length > 0) {
+        const somaServs = servs.reduce((acc, s) => {
+          if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
+          if (s.sinal_tipo === 'porcentagem') return acc + ((s.preco * (s.sinal_valor || 0)) / 100);
+          return acc;
+        }, 0);
+        if (somaServs > 0) {
+          setValorSinalCobrar(somaServs);
+        }
       }
     }
-  }, [agendamento?.id, agendamento?.valor_sinal]);
+  }, [agendamento?.id, agendamento?.valor_sinal, servs.length]);
 
   useEffect(() => {
     setAcao(null);
@@ -184,6 +193,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const enviarWhatsAppConvencional = () => {
       let msg = '';
       if (tipo === 'confirmacao') {
+        const templateRegra = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
+        const regraDevolucaoTexto = templateRegra
+          ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
+          : '';
+
         msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
           cliente: cliente.nome,
           servico: servText,
@@ -196,6 +210,13 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           link_confirmacao: linkConfirmacao,
           salao: configSalao.nome || 'Sheila Santos Nails'
         });
+
+        const valorSinalNum = Number(agendamento.valor_sinal || 0);
+        const falaDeSinal = valorSinalNum > 0 && (msg.toLowerCase().includes('sinal') || msg.toLowerCase().includes('pix'));
+
+        if (falaDeSinal && regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+          msg += regraDevolucaoTexto;
+        }
 
         if (!msg.includes(linkConfirmacao)) {
           msg += `\n\n👉 Confirme sua presença em 1 toque:\n${linkConfirmacao}`;
@@ -300,9 +321,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
     const linkConfirmacao = getConfirmationUrl(agendamento.id);
 
-    const regraDevolucaoTexto = configSalao.regra_devolucao_sinal
-      ? `\n\n📌 *Política de devolução/cancelamento:*\n${configSalao.regra_devolucao_sinal.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
-      : '';
+    const regraTextoBase = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
+    const regraDevolucaoTexto = `\n\n📌 *Política de devolução/cancelamento:*\n${regraTextoBase.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`;
 
     let msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
       cliente: cliente.nome,
@@ -317,7 +337,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       salao: configSalao.nome || 'Sheila Santos Nails'
     });
 
-    if (regraDevolucaoTexto && !msg.includes('Política de devolução')) {
+    const falaDeSinal = valor > 0 && (msg.toLowerCase().includes('sinal') || msg.toLowerCase().includes('pix'));
+
+    if (falaDeSinal && regraDevolucaoTexto && !msg.includes('Política de devolução')) {
       msg += regraDevolucaoTexto;
     }
 
@@ -407,12 +429,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               {initials}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-[#5A4535] text-sm leading-tight">{cliente?.nome || 'Horário Reservado'}</h3>
-                <span className="font-mono text-[10px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-1.5 py-0.5 rounded border border-[#EFECE6]" title="Código exclusivo do agendamento">
-                  #{agendamento.id}
-                </span>
-              </div>
+              <h3 className="font-bold text-[#5A4535] text-sm leading-tight">{cliente?.nome || 'Horário Reservado'}</h3>
               <p className="text-xs text-[#8C7A6B] mt-0.5">{cliente?.telefone}</p>
             </div>
           </div>
