@@ -289,6 +289,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         mensagem: `${nome} agendou para ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`,
         detalhes: `Código #${res.agendamento.id} • ${valorSinalFinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
         agendamentoId: res.agendamento.id,
+        clienteId: cId,
         clienteNome: nome
       });
     }
@@ -318,7 +319,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
 
     // Adiciona na lista de espera
-    addListaEspera({
+    const waitlistItem = addListaEspera({
       cliente_id: cId,
       servico_id: servicosSelecionados[0] || 's1', // Vincula ao primeiro serviço selecionado
       profissional_id: profissionalId || undefined,
@@ -343,6 +344,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       titulo: 'Nova Inscrição na Lista de Espera ⏳',
       mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}.`,
       detalhes: `Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`,
+      listaEsperaId: waitlistItem?.id,
+      clienteId: cId,
       clienteNome: nome
     });
 

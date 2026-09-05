@@ -79,6 +79,7 @@ export const dispararNotificacaoBarraStatus = async (
         }
       }
 
+      // Disparo imediato sem agendamento no AlarmManager para exibição instantânea no topo
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -86,7 +87,6 @@ export const dispararNotificacaoBarraStatus = async (
             title: titulo,
             body: corpo,
             channelId: 'agendamentos_nail',
-            schedule: { at: new Date(Date.now() + 100) },
             extra: { agendamentoId }
           }
         ]
@@ -101,7 +101,11 @@ export const dispararNotificacaoBarraStatus = async (
   // No Android móvel PWA, o construtor `new Notification(...)` é bloqueado; DEVE-SE usar `registration.showNotification`
   try {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<ServiceWorkerRegistration | undefined>((resolve) => setTimeout(() => resolve(undefined), 800))
+      ]) || await navigator.serviceWorker.getRegistration();
+
       if (reg && typeof reg.showNotification === 'function') {
         await reg.showNotification(titulo, {
           body: corpo,

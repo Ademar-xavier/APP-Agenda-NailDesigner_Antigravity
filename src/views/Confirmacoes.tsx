@@ -259,6 +259,8 @@ export const Confirmacoes: React.FC = () => {
       // 1. Atualizar status na lista de espera para atendido
       updateListaEsperaStatus(confirmarVagaItem.id, 'atendido');
       marcarAvisoComoLido(confirmarVagaItem.id);
+      if (confirmarVagaItem.cliente_id) marcarAvisoComoLido(confirmarVagaItem.cliente_id);
+      if (client.nome) marcarAvisoComoLido(client.nome);
       if (res.agendamento?.id) {
         marcarAvisoComoLido(res.agendamento.id);
       }
@@ -742,27 +744,59 @@ export const Confirmacoes: React.FC = () => {
     });
   }, [avisosNaoLidos, agendamentos]);
 
-  const temAvisoAgendamento = (agendamentoId: string) => {
-    if (!agendamentoId) return false;
-    const idNorm = agendamentoId.toLowerCase().replace(/^#/, '').trim();
+  const temAvisoAgendamento = (agendamento: Agendamento | string, clientNome?: string) => {
+    const agId = typeof agendamento === 'string' ? agendamento : agendamento?.id;
+    if (!agId) return false;
+    const idNorm = agId.toLowerCase().replace(/^#/, '').trim();
+    const cliNomeNorm = (clientNome || (typeof agendamento !== 'string' ? clientes.find(c => c.id === agendamento.cliente_id)?.nome : '') || '').toLowerCase().trim();
+
     return avisosNaoLidos.some(av => {
       const avAgId = (av.agendamentoId || '').toLowerCase().replace(/^#/, '').trim();
       if (avAgId && avAgId === idNorm) return true;
+
       const avId = (av.id || '').toLowerCase().trim();
       if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
+
       if (av.detalhes && (av.detalhes.toLowerCase().includes(`#${idNorm}`) || av.detalhes.toLowerCase().includes(idNorm))) return true;
+
+      const avCliNome = (av.clienteNome || '').toLowerCase().trim();
+      if (cliNomeNorm && avCliNome && avCliNome === cliNomeNorm && av.tipo === 'agendamento') return true;
+
       return false;
     });
   };
 
-  const temAvisoWaitlist = (waitlistId: string) => {
-    if (!waitlistId) return false;
-    const idNorm = waitlistId.toLowerCase().replace(/^#/, '').trim();
+  const temAvisoWaitlist = (w: ListaEspera | string, clientNome?: string) => {
+    const wId = typeof w === 'string' ? w : w?.id;
+    if (!wId) return false;
+    const idNorm = wId.toLowerCase().replace(/^#/, '').trim();
+    const cliIdNorm = (typeof w !== 'string' ? w.cliente_id : '')?.toLowerCase().trim();
+    const nomeNorm = (clientNome || (typeof w !== 'string' ? clientes.find(c => c.id === w.cliente_id)?.nome : '') || '').toLowerCase().trim();
+
     return avisosNaoLidos.some(av => {
+      // 1. Pelo listaEsperaId
       const avLeId = (av.listaEsperaId || '').toLowerCase().replace(/^#/, '').trim();
       if (avLeId && avLeId === idNorm) return true;
+
+      // 2. Pelo id do aviso contendo o id do item
       const avId = (av.id || '').toLowerCase().trim();
       if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
+
+      // 3. Pelo clienteId
+      const avCliId = ((av as any).clienteId || '').toLowerCase().trim();
+      if (cliIdNorm && avCliId && avCliId === cliIdNorm) return true;
+
+      // 4. Pelo clienteNome
+      const avCliNome = (av.clienteNome || '').toLowerCase().trim();
+      if (nomeNorm && avCliNome && (avCliNome.includes(nomeNorm) || nomeNorm.includes(avCliNome))) return true;
+
+      // 5. Se for aviso de espera e mencionar o nome no corpo ou for único item ativo
+      if (av.tipo === 'espera') {
+        const textoAviso = `${av.titulo} ${av.mensagem} ${av.detalhes || ''}`.toLowerCase();
+        if (nomeNorm && textoAviso.includes(nomeNorm)) return true;
+        if (listaEsperaAtiva.length === 1) return true;
+      }
+
       return false;
     });
   };
@@ -1098,7 +1132,7 @@ export const Confirmacoes: React.FC = () => {
                 const client = clientes.find(c => c.id === w.cliente_id);
                 const serv = servicos.find(s => s.id === w.servico_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = temAvisoWaitlist(w.id);
+                const temAviso = temAvisoWaitlist(w, client?.nome);
                 
                 return (
                   <div 
@@ -1136,6 +1170,8 @@ export const Confirmacoes: React.FC = () => {
                       <button
                         onClick={() => {
                           marcarAvisoComoLido(w.id);
+                          if (w.cliente_id) marcarAvisoComoLido(w.cliente_id);
+                          if (client?.nome) marcarAvisoComoLido(client.nome);
                           handleOpenConfirmarVaga(w);
                         }}
                         className="flex items-center gap-1.5 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
