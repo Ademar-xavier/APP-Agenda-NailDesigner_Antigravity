@@ -6,9 +6,9 @@ export const inicializarCanalNotificacoes = async () => {
   if (canalInicializado || !Capacitor.isNativePlatform()) return;
   try {
     const { LocalNotifications } = await import('@capacitor/local-notifications');
-    // Cria canal de alta prioridade para o Android 8+ (heads-up banner no topo + status bar)
+    // Cria canal de máxima prioridade (heads-up banner no topo + status bar + som/vibração)
     await LocalNotifications.createChannel({
-      id: 'agendamentos_nail',
+      id: 'agendamentos_nail_v2',
       name: 'Alertas de Agendamentos e Clientes',
       description: 'Notificações em tempo real sobre novos agendamentos, confirmações, cancelamentos e pagamentos',
       importance: 5, // 5 = High/Max: ativa aviso no topo da tela (heads up) e som
@@ -79,16 +79,18 @@ export const dispararNotificacaoBarraStatus = async (
         }
       }
 
-      // Disparo imediato sem agendamento no AlarmManager para exibição instantânea no topo
+      // Disparo imediato com prioridade alta e foreground=true para banner heads-up garantido
       await LocalNotifications.schedule({
         notifications: [
           {
             id: Math.floor(Math.random() * 899999) + 100000,
             title: titulo,
             body: corpo,
-            channelId: 'agendamentos_nail',
+            channelId: 'agendamentos_nail_v2',
             smallIcon: 'ic_launcher',
             iconColor: '#C71585',
+            foreground: true,
+            schedule: { at: new Date(Date.now() + 50), allowWhileIdle: true },
             extra: { agendamentoId }
           }
         ]
@@ -119,7 +121,7 @@ export const dispararNotificacaoBarraStatus = async (
             icon: './logo.png?v=3',
             badge: './logo.png?v=3',
             vibrate: [250, 100, 250],
-            tag: agendamentoId ? `nail_${agendamentoId}` : `nail_${Date.now()}`,
+            tag: 'nail_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
             renotify: true,
             data: {
               agendamentoId,

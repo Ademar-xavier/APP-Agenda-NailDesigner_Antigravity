@@ -458,6 +458,14 @@ export const salvarConfiguracoesSupabase = async (dados: {
       configSalaoObj.equipe = dados.equipe;
     }
 
+    // Preserva avisos_nao_lidos já salvos no banco para nunca apagar nem reverter exclusões de avisos
+    try {
+      const { data: atual } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+      if (atual?.config_salao?.avisos_nao_lidos !== undefined && configSalaoObj.avisos_nao_lidos === undefined) {
+        configSalaoObj.avisos_nao_lidos = atual.config_salao.avisos_nao_lidos;
+      }
+    } catch (e) {}
+
     const payload: any = {
       id: 'salao_principal',
       config_salao: configSalaoObj,

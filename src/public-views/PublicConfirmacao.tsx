@@ -794,7 +794,7 @@ export const PublicConfirmacao: React.FC = () => {
               </span>
             </div>
 
-            {agendamento.valor_sinal > 0 && (
+            {Number(agendamento.valor_sinal) > 0 && agendamento.id !== 'AGTESTE' && (
               <div className="flex items-center justify-between text-xs text-amber-900 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/60">
                 <span className="font-semibold">Sinal de Reserva:</span>
                 <span className="font-bold">
