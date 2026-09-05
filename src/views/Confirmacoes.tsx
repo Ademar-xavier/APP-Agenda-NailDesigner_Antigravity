@@ -250,7 +250,7 @@ export const Confirmacoes: React.FC = () => {
       inicio: dataInicioStr,
       status: 'confirmado', // Confirma o horário direto
       valor_total: total,
-      valor_sinal: sinal,
+      valor_sinal: 0,
       observacoes: `Convertido da lista de espera. Período preferido: ${confirmarVagaItem.periodo_preferido}`,
       origem: 'admin'
     }, [serv.id]);
@@ -718,17 +718,32 @@ export const Confirmacoes: React.FC = () => {
   // Detecção de avisos não lidos por aba para exibir a bolinha piscando
   const temAvisoAConfirmar = useMemo(() => {
     return avisosNaoLidos.some(av => {
-      if (av.tipo === 'agendamento' || av.tipo === 'pagamento_sinal') return true;
-      const ag = agendamentos.find(a => a.id === av.agendamentoId);
-      return ag && ag.status === 'pendente';
+      if (av.tipo === 'pagamento_sinal') return true;
+      const ag = agendamentos.find(a => a.id?.toLowerCase() === (av.agendamentoId || '').toLowerCase());
+      if (ag) {
+        return ag.status === 'pendente';
+      }
+      if (av.tipo === 'agendamento') {
+        const texto = `${av.detalhes || ''} ${av.mensagem || ''}`.toLowerCase();
+        if (texto.includes('confirmado')) return false;
+        if (texto.includes('aguardando') || texto.includes('sinal') || texto.includes('pendente')) return true;
+      }
+      return false;
     });
   }, [avisosNaoLidos, agendamentos]);
 
   const temAvisoConfirmados = useMemo(() => {
     return avisosNaoLidos.some(av => {
       if (av.tipo === 'confirmacao') return true;
-      const ag = agendamentos.find(a => a.id === av.agendamentoId);
-      return ag && ag.status === 'confirmado';
+      const ag = agendamentos.find(a => a.id?.toLowerCase() === (av.agendamentoId || '').toLowerCase());
+      if (ag) {
+        return ag.status === 'confirmado';
+      }
+      if (av.tipo === 'agendamento') {
+        const texto = `${av.detalhes || ''} ${av.mensagem || ''}`.toLowerCase();
+        return texto.includes('confirmado');
+      }
+      return false;
     });
   }, [avisosNaoLidos, agendamentos]);
 
@@ -739,28 +754,30 @@ export const Confirmacoes: React.FC = () => {
   const temAvisoCancelados = useMemo(() => {
     return avisosNaoLidos.some(av => {
       if (av.tipo === 'cancelamento') return true;
-      const ag = agendamentos.find(a => a.id === av.agendamentoId);
+      const ag = agendamentos.find(a => a.id?.toLowerCase() === (av.agendamentoId || '').toLowerCase());
       return ag && ag.status === 'cancelado';
     });
   }, [avisosNaoLidos, agendamentos]);
 
-  const temAvisoAgendamento = (agendamento: Agendamento | string, clientNome?: string) => {
+  const temAvisoAgendamento = (agendamento: Agendamento | string, _clientNome?: string) => {
     const agId = typeof agendamento === 'string' ? agendamento : agendamento?.id;
     if (!agId) return false;
     const idNorm = agId.toLowerCase().replace(/^#/, '').trim();
-    const cliNomeNorm = (clientNome || (typeof agendamento !== 'string' ? clientes.find(c => c.id === agendamento.cliente_id)?.nome : '') || '').toLowerCase().trim();
 
     return avisosNaoLidos.some(av => {
+      // 1. Vinculação estrita pelo código de agendamento do aviso
       const avAgId = (av.agendamentoId || '').toLowerCase().replace(/^#/, '').trim();
-      if (avAgId && avAgId === idNorm) return true;
+      if (avAgId) {
+        return avAgId === idNorm;
+      }
 
+      // 2. Vinculação pelo ID do próprio aviso
       const avId = (av.id || '').toLowerCase().trim();
       if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
 
+      // 3. Vinculação por código nos detalhes ou mensagem
       if (av.detalhes && (av.detalhes.toLowerCase().includes(`#${idNorm}`) || av.detalhes.toLowerCase().includes(idNorm))) return true;
-
-      const avCliNome = (av.clienteNome || '').toLowerCase().trim();
-      if (cliNomeNorm && avCliNome && avCliNome === cliNomeNorm && av.tipo === 'agendamento') return true;
+      if (av.mensagem && (av.mensagem.toLowerCase().includes(`#${idNorm}`) || av.mensagem.toLowerCase().includes(idNorm))) return true;
 
       return false;
     });
@@ -770,31 +787,26 @@ export const Confirmacoes: React.FC = () => {
     const wId = typeof w === 'string' ? w : w?.id;
     if (!wId) return false;
     const idNorm = wId.toLowerCase().replace(/^#/, '').trim();
-    const cliIdNorm = (typeof w !== 'string' ? w.cliente_id : '')?.toLowerCase().trim();
     const nomeNorm = (clientNome || (typeof w !== 'string' ? clientes.find(c => c.id === w.cliente_id)?.nome : '') || '').toLowerCase().trim();
 
     return avisosNaoLidos.some(av => {
-      // 1. Pelo listaEsperaId
+      // 1. Vinculação estrita pelo listaEsperaId
       const avLeId = (av.listaEsperaId || '').toLowerCase().replace(/^#/, '').trim();
-      if (avLeId && avLeId === idNorm) return true;
+      if (avLeId) {
+        return avLeId === idNorm;
+      }
 
-      // 2. Pelo id do aviso contendo o id do item
+      // 2. Pelo ID do aviso contendo o ID do item
       const avId = (av.id || '').toLowerCase().trim();
       if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
 
-      // 3. Pelo clienteId
-      const avCliId = ((av as any).clienteId || '').toLowerCase().trim();
-      if (cliIdNorm && avCliId && avCliId === cliIdNorm) return true;
+      // 3. Pelo código nos detalhes
+      if (av.detalhes && (av.detalhes.toLowerCase().includes(`#${idNorm}`) || av.detalhes.toLowerCase().includes(idNorm))) return true;
 
-      // 4. Pelo clienteNome
-      const avCliNome = (av.clienteNome || '').toLowerCase().trim();
-      if (nomeNorm && avCliNome && (avCliNome.includes(nomeNorm) || nomeNorm.includes(avCliNome))) return true;
-
-      // 5. Se for aviso de espera e mencionar o nome no corpo ou for único item ativo
+      // 4. Se for aviso de espera sem ID explícito e mencionar o nome
       if (av.tipo === 'espera') {
         const textoAviso = `${av.titulo} ${av.mensagem} ${av.detalhes || ''}`.toLowerCase();
         if (nomeNorm && textoAviso.includes(nomeNorm)) return true;
-        if (listaEsperaAtiva.length === 1) return true;
       }
 
       return false;

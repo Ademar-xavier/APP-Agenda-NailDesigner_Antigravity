@@ -924,8 +924,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Sincronização de Avisos Não Lidos da Nuvem para este Aparelho (Fonte da Verdade: Nuvem)
           const avisosNuvem = dados.configuracoes.config_salao.avisos_nao_lidos;
           if (Array.isArray(avisosNuvem)) {
-            setAvisosNaoLidos(avisosNuvem);
-            salvarAvisosLocalStorage(avisosNuvem);
+            setAvisosNaoLidos(prev => {
+              const idsLocais = new Set(prev.map(a => a.id));
+              const novissimos = avisosNuvem.filter(a => !idsLocais.has(a.id));
+              novissimos.forEach(av => {
+                const criadoEmMs = new Date(av.criadoEm || Date.now()).getTime();
+                if (Math.abs(Date.now() - criadoEmMs) < 300000) {
+                  dispararNotificacaoBarraStatus(av.titulo, av.mensagem, av.detalhes, av.agendamentoId);
+                  tocarAlertaSonoro();
+                  setNotificacaoClienteAcao({
+                    id: av.id,
+                    hora: av.hora || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    tipo: av.tipo,
+                    titulo: av.titulo,
+                    mensagem: av.mensagem,
+                    detalhes: av.detalhes,
+                    agendamentoId: av.agendamentoId,
+                    listaEsperaId: av.listaEsperaId,
+                    clienteNome: av.clienteNome
+                  });
+                }
+              });
+              salvarAvisosLocalStorage(avisosNuvem);
+              return avisosNuvem;
+            });
           }
         }
         if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
@@ -1191,7 +1213,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               novissimos.forEach(av => {
                 const agora = Date.now();
                 const criadoEmMs = new Date(av.criadoEm || agora).getTime();
-                if (agora - criadoEmMs < 120000) {
+                if (Math.abs(agora - criadoEmMs) < 300000) {
                   dispararNotificacaoBarraStatus(av.titulo, av.mensagem, av.detalhes, av.agendamentoId);
                   tocarAlertaSonoro();
                   setNotificacaoClienteAcao({
