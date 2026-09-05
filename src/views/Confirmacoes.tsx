@@ -258,6 +258,10 @@ export const Confirmacoes: React.FC = () => {
     if (res.success) {
       // 1. Atualizar status na lista de espera para atendido
       updateListaEsperaStatus(confirmarVagaItem.id, 'atendido');
+      marcarAvisoComoLido(confirmarVagaItem.id);
+      if (res.agendamento?.id) {
+        marcarAvisoComoLido(res.agendamento.id);
+      }
 
       // 2. Abrir WhatsApp notificando a cliente do horário agendado!
       const fone = client.telefone.replace(/\D/g, '');
@@ -547,7 +551,10 @@ export const Confirmacoes: React.FC = () => {
         mensagem: 'Esta solicitação de lista de espera não possui um cliente associado no sistema. Deseja remover este item mesmo assim?',
         tipo: 'aviso',
         textoConfirmar: 'Remover',
-        onConfirm: () => updateListaEsperaStatus(w.id, 'cancelado')
+        onConfirm: () => {
+          updateListaEsperaStatus(w.id, 'cancelado');
+          marcarAvisoComoLido(w.id);
+        }
       });
       return;
     }
@@ -562,7 +569,10 @@ export const Confirmacoes: React.FC = () => {
         tipo: 'aviso',
         textoConfirmar: 'Remover Sem Avisar',
         textoCancelar: 'Voltar',
-        onConfirm: () => updateListaEsperaStatus(w.id, 'cancelado')
+        onConfirm: () => {
+          updateListaEsperaStatus(w.id, 'cancelado');
+          marcarAvisoComoLido(w.id);
+        }
       });
       return;
     }
@@ -574,6 +584,7 @@ export const Confirmacoes: React.FC = () => {
       textoConfirmar: 'Remover e Avisar',
       onConfirm: () => {
         updateListaEsperaStatus(w.id, 'cancelado');
+        marcarAvisoComoLido(w.id);
         
         const dataFormatada = w.data_preferida.split('-').reverse().join('/');
         const periodoLabel = w.periodo_preferido === 'manha' ? 'Manhã' : 
@@ -731,6 +742,31 @@ export const Confirmacoes: React.FC = () => {
     });
   }, [avisosNaoLidos, agendamentos]);
 
+  const temAvisoAgendamento = (agendamentoId: string) => {
+    if (!agendamentoId) return false;
+    const idNorm = agendamentoId.toLowerCase().replace(/^#/, '').trim();
+    return avisosNaoLidos.some(av => {
+      const avAgId = (av.agendamentoId || '').toLowerCase().replace(/^#/, '').trim();
+      if (avAgId && avAgId === idNorm) return true;
+      const avId = (av.id || '').toLowerCase().trim();
+      if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
+      if (av.detalhes && (av.detalhes.toLowerCase().includes(`#${idNorm}`) || av.detalhes.toLowerCase().includes(idNorm))) return true;
+      return false;
+    });
+  };
+
+  const temAvisoWaitlist = (waitlistId: string) => {
+    if (!waitlistId) return false;
+    const idNorm = waitlistId.toLowerCase().replace(/^#/, '').trim();
+    return avisosNaoLidos.some(av => {
+      const avLeId = (av.listaEsperaId || '').toLowerCase().replace(/^#/, '').trim();
+      if (avLeId && avLeId === idNorm) return true;
+      const avId = (av.id || '').toLowerCase().trim();
+      if (avId === idNorm || avId.endsWith(`_${idNorm}`)) return true;
+      return false;
+    });
+  };
+
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
@@ -807,7 +843,7 @@ export const Confirmacoes: React.FC = () => {
               aConfirmar.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
+                const temAviso = temAvisoAgendamento(a.id);
                 
                 return (
                   <div 
@@ -908,7 +944,7 @@ export const Confirmacoes: React.FC = () => {
               confirmados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
+                const temAviso = temAvisoAgendamento(a.id);
                 
                 return (
                   <div 
@@ -1062,7 +1098,7 @@ export const Confirmacoes: React.FC = () => {
                 const client = clientes.find(c => c.id === w.cliente_id);
                 const serv = servicos.find(s => s.id === w.servico_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = avisosNaoLidos.some(av => av.listaEsperaId === w.id);
+                const temAviso = temAvisoWaitlist(w.id);
                 
                 return (
                   <div 
@@ -1128,7 +1164,7 @@ export const Confirmacoes: React.FC = () => {
               cancelados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
+                const temAviso = temAvisoAgendamento(a.id);
                 
                 return (
                   <div 
