@@ -82,6 +82,13 @@ export const PublicConfirmacao: React.FC = () => {
     regra_devolucao_sinal: REGRA_DEVOLUCAO_PADRAO,
     cancelamento_limite_horas: 24
   });
+  const [dadosProfissional, setDadosProfissional] = useState<{
+    id?: string;
+    nome?: string;
+    telefone?: string;
+    chave_pix?: string;
+    usar_pix_proprio?: boolean;
+  } | null>(null);
   const [pixCopiado, setPixCopiado] = useState<boolean>(false);
 
   const [processandoAcao, setProcessandoAcao] = useState<boolean>(false);
@@ -233,14 +240,28 @@ export const PublicConfirmacao: React.FC = () => {
           const profLocal = (equipeContext || []).find(e => e.id === agendamentoData.profissional_id);
           if (profLocal) {
             setProfissionalNome(profLocal.nome);
+            setDadosProfissional({
+              id: profLocal.id,
+              nome: profLocal.nome,
+              telefone: profLocal.telefone,
+              chave_pix: profLocal.chave_pix,
+              usar_pix_proprio: profLocal.usar_pix_proprio
+            });
           } else {
             const { data: profData } = await supabase
               .from('usuarios')
-              .select('nome')
+              .select('id, nome, telefone, chave_pix, usar_pix_proprio')
               .eq('id', agendamentoData.profissional_id)
               .maybeSingle();
-            if (profData?.nome && isMounted) {
-              setProfissionalNome(profData.nome);
+            if (profData && isMounted) {
+              if (profData.nome) setProfissionalNome(profData.nome);
+              setDadosProfissional({
+                id: profData.id,
+                nome: profData.nome,
+                telefone: profData.telefone,
+                chave_pix: profData.chave_pix,
+                usar_pix_proprio: profData.usar_pix_proprio
+              });
             }
           }
         }
@@ -261,7 +282,7 @@ export const PublicConfirmacao: React.FC = () => {
         } else {
           const { data: configData } = await supabase
             .from('configuracoes')
-            .select('config_salao')
+            .select('config_salao, equipe')
             .eq('id', 'salao_principal')
             .maybeSingle();
           if (configData?.config_salao && isMounted) {
@@ -277,6 +298,22 @@ export const PublicConfirmacao: React.FC = () => {
               regra_devolucao_sinal: cs.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
               cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24
             });
+
+            // Fallback para dados da equipe salvos em configuracoes
+            const equipeSalva = cs.equipe || (configData as any).equipe;
+            if (Array.isArray(equipeSalva) && agendamentoData.profissional_id) {
+              const profSalvo = equipeSalva.find((item: any) => item.id === agendamentoData.profissional_id);
+              if (profSalvo) {
+                if (profSalvo.nome) setProfissionalNome(profSalvo.nome);
+                setDadosProfissional({
+                  id: profSalvo.id,
+                  nome: profSalvo.nome,
+                  telefone: profSalvo.telefone,
+                  chave_pix: profSalvo.chave_pix,
+                  usar_pix_proprio: profSalvo.usar_pix_proprio
+                });
+              }
+            }
           }
         }
       } catch (err) {
@@ -372,11 +409,11 @@ export const PublicConfirmacao: React.FC = () => {
     setProcessandoAcao(true);
 
     try {
-      await atualizarStatusAgendamentoSupabase(agendamento.id, 'confirmado');
+      await atualizarStatusAgendamentoSupabase(agendamento.id, 'confirmado', undefined, undefined, 'cliente');
       
       // Atualiza estado local no contexto caso esteja aberto no mesmo app
       if (updateAgendamentoStatus) {
-        updateAgendamentoStatus(agendamento.id, 'confirmado');
+        updateAgendamentoStatus(agendamento.id, 'confirmado', undefined, undefined, 'cliente');
       }
 
       setAgendamento(prev => prev ? { ...prev, status: 'confirmado' } : null);
@@ -513,14 +550,26 @@ export const PublicConfirmacao: React.FC = () => {
     local: dadosSalao.endereco
   }) : '#';
 
+  // Chave Pix e destinatário dinâmicos
+  const usarPixProf = !!(dadosProfissional?.usar_pix_proprio && dadosProfissional?.chave_pix?.trim());
+  const chavePixParaPagamento = usarPixProf
+    ? dadosProfissional!.chave_pix!.trim()
+    : (dadosSalao.chave_pix || dadosSalao.telefone);
+  const titularPixParaPagamento = usarPixProf
+    ? (dadosProfissional!.nome || profissionalNome || 'Profissional')
+    : (dadosSalao.proprietaria || 'Sheila Santos');
+  const telefoneDestinatario = (usarPixProf && dadosProfissional?.telefone)
+    ? dadosProfissional.telefone.replace(/\D/g, '')
+    : dadosSalao.telefone;
+  const nomeDestinatario = usarPixProf
+    ? (dadosProfissional!.nome || profissionalNome || 'Sheila')
+    : (dadosSalao.proprietaria || 'Sheila');
+
   // Link do WhatsApp com mensagem pronta
   const linkWhatsAppSalao = agendamento ? gerarLinkWhatsApp(
-    dadosSalao.telefone,
-    `Olá, Sheila! Meu nome é ${cliente?.nome || 'Cliente'} (Agendamento #${agendamento.id}). Gostaria de tirar uma dúvida sobre meu horário de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
-  ) : gerarLinkWhatsApp(dadosSalao.telefone, 'Olá, Sheila! Gostaria de tirar uma dúvida sobre atendimento.');
-
-  // Chave Pix e cópia rápida
-  const chavePixParaPagamento = dadosSalao.chave_pix || dadosSalao.telefone;
+    telefoneDestinatario,
+    `Olá, ${nomeDestinatario}! Meu nome é ${cliente?.nome || 'Cliente'} (Agendamento #${agendamento.id}). Gostaria de tirar uma dúvida sobre meu horário de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
+  ) : gerarLinkWhatsApp(dadosSalao.telefone, 'Olá! Gostaria de tirar uma dúvida sobre atendimento.');
 
   const handleCopiarPix = () => {
     if (!chavePixParaPagamento) return;
@@ -535,8 +584,20 @@ export const PublicConfirmacao: React.FC = () => {
 
   // Link para envio de comprovante via WhatsApp quando houver sinal
   const linkComprovanteWhatsApp = agendamento ? gerarLinkWhatsApp(
-    dadosSalao.telefone,
-    `Olá, Sheila! ✨ Segue o comprovante do sinal de ${formatarMoeda(agendamento.valor_sinal)} referente ao meu agendamento #${agendamento.id} para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
+    telefoneDestinatario,
+    `Olá, ${nomeDestinatario}! ✨ Segue o comprovante do sinal de ${formatarMoeda(agendamento.valor_sinal)} referente ao meu agendamento #${agendamento.id} para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
+  ) : '#';
+
+  // Link para avisar confirmação diretamente no WhatsApp
+  const linkAvisarConfirmacaoWhatsApp = agendamento ? gerarLinkWhatsApp(
+    telefoneDestinatario,
+    `Olá, ${nomeDestinatario}! ✅ Acabei de confirmar minha presença para o atendimento de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)} (Agendamento #${agendamento.id}). Nos vemos em breve! 💕`
+  ) : '#';
+
+  // Link para avisar cancelamento diretamente no WhatsApp
+  const linkAvisarCancelamentoWhatsApp = agendamento ? gerarLinkWhatsApp(
+    telefoneDestinatario,
+    `Olá, ${nomeDestinatario}! ❌ Precisei cancelar meu agendamento #${agendamento.id} marcado para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}. Agradeço pela compreensão e em breve agendo um novo horário! 💕`
   ) : '#';
 
   // Link para Google Maps
@@ -783,7 +844,9 @@ export const PublicConfirmacao: React.FC = () => {
                         <div className="bg-white p-3 rounded-xl border border-amber-200/60 space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Chave Pix:</span>
-                            <span className="text-[10px] font-semibold text-[#8C6D58]">{dadosSalao.proprietaria || 'Sheila Santos'}</span>
+                            <span className="text-[10px] font-semibold text-[#8C6D58]">
+                              {titularPixParaPagamento} {usarPixProf ? '(Profissional)' : ''}
+                            </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 bg-[#FAF8F5] p-2 rounded-lg border border-[#EFECE6]">
                             <code className="text-xs font-mono font-bold text-[#5A4535] select-all break-all">
@@ -902,6 +965,16 @@ export const PublicConfirmacao: React.FC = () => {
             {isConfirmado && (
               <div className="space-y-2.5 animate-in fade-in duration-300">
                 <a
+                  href={linkAvisarConfirmacaoWhatsApp}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-[#25D366]/20"
+                >
+                  <MessageCircle size={16} />
+                  <span>Avisar {nomeDestinatario} no WhatsApp</span>
+                </a>
+
+                <a
                   href={linkGoogleCalendar}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -929,6 +1002,16 @@ export const PublicConfirmacao: React.FC = () => {
                     Quando desejar um novo momento de autocuidado, estaremos de portas abertas para te receber!
                   </p>
                 </div>
+
+                <a
+                  href={linkAvisarCancelamentoWhatsApp}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 bg-white border border-[#EFECE6] hover:border-rose-300 text-rose-700 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs"
+                >
+                  <MessageCircle size={15} />
+                  <span>Avisar {nomeDestinatario} pelo WhatsApp</span>
+                </a>
 
                 <a
                   href={getBookingUrl()}

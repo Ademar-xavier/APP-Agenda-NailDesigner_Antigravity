@@ -106,7 +106,7 @@ interface AppStateContextType {
   
   // Ações de Agendamentos
   addAgendamento: (agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, servicosSelecionados: string[]) => { success: boolean; error?: string; agendamento?: Agendamento };
-  updateAgendamentoStatus: (id: string, status: AgendamentoStatus) => void;
+  updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
@@ -926,22 +926,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const atualizados = prev.map(a => (a.id && a.id.toLowerCase() === payload.new.id?.toLowerCase()) ? { ...a, ...payload.new } : a);
             try { localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados)); } catch (e) {}
 
-            if (payload.new.status === 'confirmado' && anterior && anterior.status !== 'confirmado') {
-              dispararNotificacaoCliente({
-                tipo: 'confirmacao',
-                titulo: 'Presença Confirmada! ✅',
-                mensagem: `Cliente confirmou o agendamento #${payload.new.id}.`,
-                detalhes: 'Status atualizado para confirmado.',
-                agendamentoId: payload.new.id
+            if (payload.new.status === 'confirmado') {
+              // Sincroniza pagamentos do sinal pendentes
+              setPagamentos(prevPag => {
+                const temPendente = prevPag.some(p => p.agendamento_id === payload.new.id && p.status === 'pendente');
+                if (temPendente) {
+                  return prevPag.map(p => (p.agendamento_id === payload.new.id && p.status === 'pendente')
+                    ? { ...p, status: 'sinal pago', data_pagamento: new Date().toISOString() }
+                    : p
+                  );
+                }
+                return prevPag;
               });
-            } else if (payload.new.status === 'cancelado' && anterior && anterior.status !== 'cancelado' && payload.new.cancelado_por === 'cliente') {
-              dispararNotificacaoCliente({
-                tipo: 'cancelamento',
-                titulo: 'Horário Cancelado ❌',
-                mensagem: `A cliente solicitou cancelamento do agendamento #${payload.new.id}.`,
-                detalhes: payload.new.motivo_cancelamento ? `Motivo: ${payload.new.motivo_cancelamento}` : 'Horário liberado na agenda.',
-                agendamentoId: payload.new.id
-              });
+
+              // SÓ dispara som e popup se a confirmação foi feita pelo CLIENTE na página pública
+              if (anterior && anterior.status !== 'confirmado' && payload.new.confirmado_por === 'cliente') {
+                dispararNotificacaoCliente({
+                  tipo: 'confirmacao',
+                  titulo: 'Presença Confirmada! ✅',
+                  mensagem: `A cliente confirmou o agendamento #${payload.new.id}.`,
+                  detalhes: 'Status confirmado pela página pública.',
+                  agendamentoId: payload.new.id
+                });
+              }
+            } else if (payload.new.status === 'cancelado') {
+              setPagamentos(prevPag => prevPag.map(p => (p.agendamento_id === payload.new.id && p.status === 'pendente')
+                ? { ...p, status: 'estornado' }
+                : p
+              ));
+
+              if (anterior && anterior.status !== 'cancelado' && payload.new.cancelado_por === 'cliente') {
+                dispararNotificacaoCliente({
+                  tipo: 'cancelamento',
+                  titulo: 'Horário Cancelado ❌',
+                  mensagem: `A cliente solicitou cancelamento do agendamento #${payload.new.id}.`,
+                  detalhes: payload.new.motivo_cancelamento ? `Motivo: ${payload.new.motivo_cancelamento}` : 'Horário liberado na agenda.',
+                  agendamentoId: payload.new.id
+                });
+              }
             }
 
             return atualizados;
@@ -999,33 +1021,56 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         bc = new BroadcastChannel('nail_agenda_sync');
         bc.onmessage = (event) => {
           if (event.data?.type === 'STATUS_UPDATED') {
-            const { id, status, canceladoPor, motivo } = event.data;
+            const { id, status, canceladoPor, motivo, confirmadoPor } = event.data;
             setAgendamentos(prev => prev.map(a => {
               if (a.id && a.id.toLowerCase() === id.toLowerCase()) {
                 return {
                   ...a,
                   status,
                   ...(canceladoPor ? { cancelado_por: canceladoPor } : {}),
-                  ...(motivo ? { motivo_cancelamento: motivo } : {})
+                  ...(motivo ? { motivo_cancelamento: motivo } : {}),
+                  ...(confirmadoPor ? { confirmado_por: confirmadoPor } : {})
                 };
               }
               return a;
             }));
+
             if (status === 'confirmado') {
-              dispararNotificacaoCliente({
-                tipo: 'confirmacao',
-                titulo: 'Presença Confirmada! ✅',
-                mensagem: `Cliente confirmou o agendamento #${id}.`,
-                agendamentoId: id
+              setPagamentos(prevPag => {
+                const temPendente = prevPag.some(p => p.agendamento_id === id && p.status === 'pendente');
+                if (temPendente) {
+                  return prevPag.map(p => (p.agendamento_id === id && p.status === 'pendente')
+                    ? { ...p, status: 'sinal pago', data_pagamento: new Date().toISOString() }
+                    : p
+                  );
+                }
+                return prevPag;
               });
-            } else if (status === 'cancelado' && canceladoPor === 'cliente') {
-              dispararNotificacaoCliente({
-                tipo: 'cancelamento',
-                titulo: 'Agendamento Cancelado ❌',
-                mensagem: `A cliente cancelou o agendamento #${id}.`,
-                detalhes: motivo ? `Motivo: ${motivo}` : undefined,
-                agendamentoId: id
-              });
+
+              // Só notifica se foi confirmado pelo CLIENTE na página pública
+              if (confirmadoPor === 'cliente') {
+                dispararNotificacaoCliente({
+                  tipo: 'confirmacao',
+                  titulo: 'Presença Confirmada! ✅',
+                  mensagem: `A cliente confirmou o agendamento #${id}.`,
+                  agendamentoId: id
+                });
+              }
+            } else if (status === 'cancelado') {
+              setPagamentos(prevPag => prevPag.map(p => (p.agendamento_id === id && p.status === 'pendente')
+                ? { ...p, status: 'estornado' }
+                : p
+              ));
+
+              if (canceladoPor === 'cliente') {
+                dispararNotificacaoCliente({
+                  tipo: 'cancelamento',
+                  titulo: 'Agendamento Cancelado ❌',
+                  mensagem: `A cliente cancelou o agendamento #${id}.`,
+                  detalhes: motivo ? `Motivo: ${motivo}` : undefined,
+                  agendamentoId: id
+                });
+              }
             }
           } else if (event.data?.type === 'VALOR_SINAL_UPDATED') {
             const { id, valorSinal } = event.data;
@@ -1527,9 +1572,46 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { success: true, agendamento };
   };
 
-  const updateAgendamentoStatus = (id: string, status: AgendamentoStatus) => {
-    setAgendamentos(prev => prev.map(a => a.id === id ? { ...a, status } : a));
-    atualizarStatusAgendamentoSupabase(id, status);
+  const updateAgendamentoStatus = (
+    id: string, 
+    status: AgendamentoStatus,
+    canceladoPor?: 'cliente' | 'admin',
+    motivo?: string,
+    confirmadoPor?: 'cliente' | 'admin'
+  ) => {
+    setAgendamentos(prev => prev.map(a => {
+      if (a.id === id) {
+        return { 
+          ...a, 
+          status,
+          ...(canceladoPor ? { cancelado_por: canceladoPor } : {}),
+          ...(motivo ? { motivo_cancelamento: motivo } : {}),
+          ...(confirmadoPor ? { confirmado_por: confirmadoPor } : {})
+        };
+      }
+      return a;
+    }));
+
+    // Sincronização automática com a tabela de pagamentos
+    if (status === 'confirmado') {
+      setPagamentos(prev => {
+        const temPendente = prev.some(p => p.agendamento_id === id && p.status === 'pendente');
+        if (temPendente) {
+          return prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
+            ? { ...p, status: 'sinal pago', data_pagamento: new Date().toISOString() }
+            : p
+          );
+        }
+        return prev;
+      });
+    } else if (status === 'cancelado') {
+      setPagamentos(prev => prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
+        ? { ...p, status: 'estornado' }
+        : p
+      ));
+    }
+
+    atualizarStatusAgendamentoSupabase(id, status, canceladoPor, motivo, confirmadoPor);
   };
 
   const atualizarValorSinalAgendamento = (id: string, valorSinal: number) => {

@@ -207,8 +207,12 @@ export const Financeiro: React.FC = () => {
   const pagamentosPendentes = pagamentos.filter((p: any) => {
     const matchMes = p.status === 'pendente' && p.data_pagamento?.startsWith(mesSelecionadoStr);
     if (!matchMes) return false;
+    const agend = agendamentos.find(a => a.id === p.agendamento_id);
+    // Se o agendamento já foi confirmado, concluído ou cancelado, não é mais um pagamento pendente
+    if (agend && (agend.status === 'confirmado' || agend.status === 'concluido' || agend.status === 'cancelado')) {
+      return false;
+    }
     if (profissionalFiltro !== 'todas') {
-      const agend = agendamentos.find(a => a.id === p.agendamento_id);
       return agend?.profissional_id === profissionalFiltro;
     }
     return true;

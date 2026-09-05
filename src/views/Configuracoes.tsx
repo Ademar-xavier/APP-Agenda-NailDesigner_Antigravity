@@ -308,6 +308,8 @@ export const Configuracoes: React.FC = () => {
   const [novoMembroSenha, setNovoMembroSenha] = useState('');
   const [novoMembroPerfil, setNovoMembroPerfil] = useState<'admin' | 'profissional'>('profissional');
   const [novoMembroServicos, setNovoMembroServicos] = useState<string[]>([]);
+  const [novoMembroChavePix, setNovoMembroChavePix] = useState('');
+  const [novoMembroUsarPixProprio, setNovoMembroUsarPixProprio] = useState(false);
 
   // --- ALTERAR SENHA MODAL STATE ---
   const [isAlterarSenhaModalOpen, setIsAlterarSenhaModalOpen] = useState(false);
@@ -322,6 +324,8 @@ export const Configuracoes: React.FC = () => {
   const [editPerfil, setEditPerfil] = useState<'admin' | 'profissional'>('profissional');
   const [editAtivo, setEditAtivo] = useState(true);
   const [editServicosHabilitados, setEditServicosHabilitados] = useState<string[]>([]);
+  const [editChavePix, setEditChavePix] = useState('');
+  const [editUsarPixProprio, setEditUsarPixProprio] = useState(false);
 
   const formatarMoedaLocal = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
@@ -334,6 +338,8 @@ export const Configuracoes: React.FC = () => {
     setEditPerfil(membro.perfil);
     setEditAtivo(membro.ativo);
     setEditServicosHabilitados(membro.servicos_habilitados || []);
+    setEditChavePix(membro.chave_pix || '');
+    setEditUsarPixProprio(membro.usar_pix_proprio || false);
     setIsEditarMembroModalOpen(true);
   };
 
@@ -346,7 +352,9 @@ export const Configuracoes: React.FC = () => {
       telefone: editFone.trim(),
       perfil: editPerfil,
       ativo: editAtivo,
-      servicos_habilitados: editServicosHabilitados
+      servicos_habilitados: editServicosHabilitados,
+      chave_pix: editChavePix.trim(),
+      usar_pix_proprio: editUsarPixProprio
     });
 
     setIsEditarMembroModalOpen(false);
@@ -445,7 +453,9 @@ export const Configuracoes: React.FC = () => {
       email: novoMembroNome.toLowerCase().replace(/\s+/g, '') + '@agenda.com',
       perfil: novoMembroPerfil,
       senha: novoMembroSenha.trim() || (novoMembroPerfil === 'admin' ? 'admin' : '1234'),
-      servicos_habilitados: novoMembroServicos
+      servicos_habilitados: novoMembroServicos,
+      chave_pix: novoMembroChavePix.trim(),
+      usar_pix_proprio: novoMembroUsarPixProprio
     });
 
     setNovoMembroNome('');
@@ -453,6 +463,8 @@ export const Configuracoes: React.FC = () => {
     setNovoMembroSenha('');
     setNovoMembroPerfil('profissional');
     setNovoMembroServicos([]);
+    setNovoMembroChavePix('');
+    setNovoMembroUsarPixProprio(false);
     setIsEquipeModalOpen(false);
     exibirToast(`✅ Profissional ${novoMembroNome} cadastrada e sincronizada com a nuvem!`);
     triggerSuccess();
@@ -1180,6 +1192,15 @@ export const Configuracoes: React.FC = () => {
                                 📱 {membro.telefone}
                               </span>
                             )}
+                            {membro.usar_pix_proprio && membro.chave_pix ? (
+                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60" title={`Chave Pix: ${membro.chave_pix}`}>
+                                🟢 Pix Direto: {membro.chave_pix}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#EFECE6]">
+                                🏦 Pix Salão
+                              </span>
+                            )}
                             {(!membro.servicos_habilitados || membro.servicos_habilitados.length === 0) ? (
                               <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
                                 ✨ Realiza todos os serviços
@@ -1748,6 +1769,47 @@ export const Configuracoes: React.FC = () => {
                 />
               </div>
 
+              {/* Recebimento de Sinal & Pix Próprio */}
+              <div className="pt-2 border-t border-[#EFECE6] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-[#5A4535]">Recebimento Pix Próprio</label>
+                    <p className="text-[10px] text-[#8C7A6B]">Direcionar sinal/pagamento para a chave desta profissional</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNovoMembroUsarPixProprio(!novoMembroUsarPixProprio)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      novoMembroUsarPixProprio ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        novoMembroUsarPixProprio ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {novoMembroUsarPixProprio && (
+                  <div className="animate-in fade-in duration-150 pt-1">
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                      Chave Pix da Profissional (CPF, Celular, E-mail, etc.)
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder="Ex: 35999999999 ou maria@pix.com"
+                      value={novoMembroChavePix}
+                      onChange={(e) => setNovoMembroChavePix(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                    />
+                    <p className="text-[10px] text-[#8C7A6B] mt-1 italic">
+                      * Ao ativar, cobranças de sinal e links de pagamento desta profissional usarão esta chave Pix no lugar do Pix do salão.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Serviços que realiza */}
               <div className="pt-2 border-t border-[#EFECE6]">
                 <div className="flex items-center justify-between mb-1.5">
@@ -1865,6 +1927,47 @@ export const Configuracoes: React.FC = () => {
                     <option value="admin">Administradora</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Recebimento de Sinal & Pix Próprio */}
+              <div className="pt-2 border-t border-[#EFECE6] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-[#5A4535]">Recebimento Pix Próprio</label>
+                    <p className="text-[10px] text-[#8C7A6B]">Direcionar sinal/pagamento para a chave desta profissional</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditUsarPixProprio(!editUsarPixProprio)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      editUsarPixProprio ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        editUsarPixProprio ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {editUsarPixProprio && (
+                  <div className="animate-in fade-in duration-150 pt-1">
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                      Chave Pix da Profissional (CPF, Celular, E-mail, etc.)
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder="Ex: 35999999999 ou maria@pix.com"
+                      value={editChavePix}
+                      onChange={(e) => setEditChavePix(e.target.value)}
+                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                    />
+                    <p className="text-[10px] text-[#8C7A6B] mt-1 italic">
+                      * Ao ativar, cobranças de sinal e links de pagamento desta profissional usarão esta chave Pix no lugar do Pix do salão.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* SELEÇÃO DE SERVIÇOS REALIZADOS */}
