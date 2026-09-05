@@ -36,6 +36,7 @@ import {
   salvarUsuarioSupabase,
   persistirAvisosNaoLidosSupabase
 } from '../services/supabase';
+import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
@@ -360,12 +361,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const marcarAvisoComoLido = (idOuRefId: string) => {
     if (!idOuRefId) return;
     const alvo = idOuRefId.toLowerCase().trim();
+    const alvoLimpo = alvo.replace(/^#/, '').trim();
+
     setAvisosNaoLidos(prev => {
-      const atualizados = prev.filter(a => 
-        a.id.toLowerCase() !== alvo && 
-        (!a.agendamentoId || a.agendamentoId.toLowerCase() !== alvo) &&
-        (!a.listaEsperaId || a.listaEsperaId.toLowerCase() !== alvo)
-      );
+      const atualizados = prev.filter(a => {
+        const id = (a.id || '').toLowerCase().trim();
+        const agId = (a.agendamentoId || '').toLowerCase().replace(/^#/, '').trim();
+        const leId = (a.listaEsperaId || '').toLowerCase().replace(/^#/, '').trim();
+        const detalhes = (a.detalhes || '').toLowerCase();
+
+        // Se corresponder ao id direto ou normalizado
+        if (id === alvo || id === alvoLimpo) return false;
+        if (id === `aviso_rec_${alvoLimpo}` || id.endsWith(`_${alvoLimpo}`)) return false;
+        if (agId && (agId === alvo || agId === alvoLimpo)) return false;
+        if (leId && (leId === alvo || leId === alvoLimpo)) return false;
+        // Se o campo detalhes contém o código exato (ex: #a123 ou a123)
+        if (alvoLimpo && (detalhes.includes(`#${alvoLimpo}`) || detalhes.includes(alvoLimpo))) return false;
+
+        return true;
+      });
+
       salvarAvisosLocalStorage(atualizados);
       persistirAvisosNaoLidosSupabase(atualizados);
       return atualizados;
@@ -424,16 +439,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }, 9000);
     }
 
-    // Dispara notificação nativa do sistema operacional caso permitida
-    try {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification(notif.titulo, {
-          body: `${notif.mensagem}${notif.detalhes ? ' • ' + notif.detalhes : ''}`,
-          icon: './logo.png?v=3',
-          badge: './logo.png?v=3'
-        });
-      }
-    } catch (e) {}
+    // Dispara notificação nativa no topo do celular (Barra de Notificações e Central de Notificações)
+    dispararNotificacaoBarraStatus(notif.titulo, notif.mensagem, notif.detalhes, notif.agendamentoId);
   };
 
   const fecharNotificacaoClienteAcao = () => {
@@ -451,11 +458,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       } catch (e) {}
 
-      try {
-        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().catch(() => {});
-        }
-      } catch (e) {}
+      // Solicita permissão para notificações na barra de status do celular
+      solicitarPermissaoNotificacoes();
 
       window.removeEventListener('click', unlockAudioAndNotification);
       window.removeEventListener('touchstart', unlockAudioAndNotification);
@@ -1169,7 +1173,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             tipo: 'espera',
             titulo: 'Nova Solicitação na Lista de Espera ⏳',
             mensagem: `A cliente ${payload.new.nome || 'Cliente'} entrou na fila de espera.`,
-            detalhes: `Período: ${payload.new.periodo_preferido || 'qualquer'}`
+            detalhes: `Período: ${payload.new.periodo_preferido || 'qualquer'}`,
+            listaEsperaId: payload.new.id,
+            clienteNome: payload.new.nome
           });
         } else if (payload.eventType === 'UPDATE') {
           setListaEspera(prev => prev.map(l => l.id === payload.new.id ? { ...l, ...payload.new } : l));
@@ -1849,6 +1855,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     atualizarStatusAgendamentoSupabase(id, status, canceladoPor, motivo, confirmadoPor);
+    marcarAvisoComoLido(id);
   };
 
   const atualizarValorSinalAgendamento = (id: string, valorSinal: number) => {
@@ -1902,12 +1909,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return p;
     }));
+
+    if (canceladoPor === 'admin') {
+      marcarAvisoComoLido(id);
+    }
   };
 
   const deleteAgendamento = (id: string) => {
     limparFocoAtivo();
     setAgendamentos(prev => prev.filter(a => a.id !== id));
     deletarAgendamentoSupabase(id);
+    marcarAvisoComoLido(id);
     mostrarNotificacaoGlobal('✅ Agendamento excluído e sincronizado com a nuvem!');
   };
 
@@ -1930,6 +1942,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return [...prev, novoPag];
       }
     });
+
+    marcarAvisoComoLido(agendamentoId);
   };
 
   const concluirAtendimento = (
@@ -1959,6 +1973,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return p;
     }));
 
+    marcarAvisoComoLido(agendamentoId);
     mostrarNotificacaoGlobal('✅ Atendimento concluído com sucesso e sincronizado na nuvem!');
   };
 
@@ -1977,11 +1992,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateListaEsperaStatus = (id: string, status: ListaEspera['status']) => {
     setListaEspera(prev => prev.map(w => w.id === id ? { ...w, status } : w));
     atualizarStatusListaEsperaSupabase(id, status);
+    marcarAvisoComoLido(id);
   };
 
   const atenderListaEspera = (id: string, agendamentoId: string) => {
     setListaEspera(prev => prev.map(w => w.id === id ? { ...w, status: 'atendido' } : w));
     atualizarStatusListaEsperaSupabase(id, 'atendido');
+    marcarAvisoComoLido(id);
+    if (agendamentoId) marcarAvisoComoLido(agendamentoId);
   };
 
   // --- Configurações ---

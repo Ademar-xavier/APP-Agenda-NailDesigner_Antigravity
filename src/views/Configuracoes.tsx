@@ -54,6 +54,7 @@ import {
 } from '../services/licencaService';
 import { salvarConfiguracoesSupabase } from '../services/supabase';
 import { getBookingUrl } from '../utils/urlHelper';
+import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
 export const Configuracoes: React.FC = () => {
   const { 
@@ -75,7 +76,8 @@ export const Configuracoes: React.FC = () => {
     sincronizarComNuvem,
     enviarDadosParaNuvem,
     mostrarAlerta,
-    confirmarAcao
+    confirmarAcao,
+    mostrarNotificacaoGlobal
   } = useAppState();
   
   const [activeTab, setActiveTab] = useState<'geral' | 'expediente' | 'mensagens' | 'equipe' | 'meta_whatsapp' | 'licenca'>('geral');
@@ -892,6 +894,39 @@ export const Configuracoes: React.FC = () => {
                           <span className="text-[10px] text-[#8C7A6B] block">Exibir notificação flutuante na tela para ações da cliente</span>
                         </div>
                       </label>
+                    </div>
+
+                    {/* Teste de Notificação Nativa na Barra de Status / Topo */}
+                    <div className="mt-3 p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div>
+                        <span className="text-xs font-bold text-[#5A4535] flex items-center gap-1.5">
+                          <Smartphone size={14} className="text-[#8C6D58]" />
+                          Notificações na Barra de Status / Topo do Celular (Push)
+                        </span>
+                        <p className="text-[10px] text-[#8C7A6B] mt-0.5">
+                          Exibe o card no topo e o ícone na central de notificações do Android quando clientes agendam ou confirmam.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const perm = await solicitarPermissaoNotificacoes();
+                          await dispararNotificacaoBarraStatus(
+                            '💅 Notificação de Teste',
+                            'Seu aparelho está configurado para receber avisos em tempo real!',
+                            'Toque para abrir a agenda',
+                            'teste'
+                          );
+                          mostrarNotificacaoGlobal(perm !== false 
+                            ? '🔔 Notificação enviada para a barra de status do celular!' 
+                            : '⚠️ Permissão de notificação negada no aparelho. Ative em Configurações do Android.'
+                          );
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#8C6D58] border border-[#8C6D58] text-[#8C6D58] hover:text-white rounded-xl text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <Send size={12} />
+                        <span>Testar no Topo do Celular</span>
+                      </button>
                     </div>
                   </div>
                 </div>

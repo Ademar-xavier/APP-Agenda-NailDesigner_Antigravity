@@ -30,6 +30,7 @@ export const Financeiro: React.FC = () => {
     servicos,
     obterServicosDeAgendamento,
     confirmarSinal,
+    marcarAvisoComoLido,
     despesas,
     addDespesa,
     deleteDespesa,
@@ -532,7 +533,10 @@ export const Financeiro: React.FC = () => {
                             tipo: 'sucesso',
                             textoConfirmar: 'Confirmar',
                             textoCancelar: 'Voltar',
-                            onConfirm: () => confirmarSinal(p.agendamento_id, p.valor, 'pix')
+                            onConfirm: () => {
+                              confirmarSinal(p.agendamento_id, p.valor, 'pix');
+                              marcarAvisoComoLido(p.agendamento_id);
+                            }
                           });
                         }}
                         className="bg-white hover:bg-[#8C6D58] border border-[#8C6D58] text-[#8C6D58] hover:text-white px-2 py-1 rounded-lg text-[9px] font-bold uppercase transition-all shadow-sm"
