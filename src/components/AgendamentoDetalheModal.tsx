@@ -261,7 +261,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     };
 
     // Se a Meta Cloud API estiver ativa, oferece envio oficial com botões clicáveis
-    const metaConfig = obterConfigMetaWhatsApp();
+    const metaConfig = obterConfigMetaWhatsApp(configSalao?.meta_whatsapp);
     if (metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken) {
       confirmarAcao({
         titulo: 'Enviar com Botões Oficiais do WhatsApp?',
@@ -281,7 +281,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             botoes: [
               { id: `confirmar_${agendamento.id}`, title: '✅ Confirmar Horário' },
               { id: `cancelar_${agendamento.id}`, title: '❌ Cancelar / Remarcar' }
-            ]
+            ],
+            configOverride: metaConfig
           });
 
           mostrarAlerta({

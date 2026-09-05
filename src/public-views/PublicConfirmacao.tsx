@@ -80,7 +80,8 @@ export const PublicConfirmacao: React.FC = () => {
     chave_pix: '',
     instrucoes_pix: '',
     regra_devolucao_sinal: REGRA_DEVOLUCAO_PADRAO,
-    cancelamento_limite_horas: 24
+    cancelamento_limite_horas: 24,
+    meta_whatsapp: undefined as { phoneNumberId: string; accessToken: string; ativo: boolean } | undefined
   });
   const [dadosProfissional, setDadosProfissional] = useState<{
     id?: string;
@@ -277,7 +278,8 @@ export const PublicConfirmacao: React.FC = () => {
             chave_pix: configSalaoContext.chave_pix || '',
             instrucoes_pix: configSalaoContext.instrucoes_pix || '',
             regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
-            cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24
+            cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24,
+            meta_whatsapp: configSalaoContext.meta_whatsapp
           });
         } else {
           const { data: configData } = await supabase
@@ -296,7 +298,8 @@ export const PublicConfirmacao: React.FC = () => {
               chave_pix: cs.chave_pix || '',
               instrucoes_pix: cs.instrucoes_pix || '',
               regra_devolucao_sinal: cs.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
-              cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24
+              cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24,
+              meta_whatsapp: cs.meta_whatsapp
             });
 
             // Fallback para dados da equipe salvos em configuracoes
@@ -421,11 +424,12 @@ export const PublicConfirmacao: React.FC = () => {
 
       // Notifica a profissional via WhatsApp (Meta Cloud API) e BroadcastChannel
       try {
+        const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ A cliente *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
-        if (dadosSalao.telefone) {
-          enviarMensagemTextoMeta(dadosSalao.telefone, textoNotif).catch(() => {});
+        if (telDest) {
+          enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
         }
       } catch (err) {}
 
@@ -481,11 +485,12 @@ export const PublicConfirmacao: React.FC = () => {
 
       // Notifica a profissional via WhatsApp (Meta Cloud API) e BroadcastChannel
       try {
+        const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ A cliente *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
-        if (dadosSalao.telefone) {
-          enviarMensagemTextoMeta(dadosSalao.telefone, textoNotif).catch(() => {});
+        if (telDest) {
+          enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
         }
       } catch (err) {}
 
@@ -586,18 +591,6 @@ export const PublicConfirmacao: React.FC = () => {
   const linkComprovanteWhatsApp = agendamento ? gerarLinkWhatsApp(
     telefoneDestinatario,
     `Olá, ${nomeDestinatario}! ✨ Segue o comprovante do sinal de ${formatarMoeda(agendamento.valor_sinal)} referente ao meu agendamento #${agendamento.id} para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}.`
-  ) : '#';
-
-  // Link para avisar confirmação diretamente no WhatsApp
-  const linkAvisarConfirmacaoWhatsApp = agendamento ? gerarLinkWhatsApp(
-    telefoneDestinatario,
-    `Olá, ${nomeDestinatario}! ✅ Acabei de confirmar minha presença para o atendimento de ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)} (Agendamento #${agendamento.id}). Nos vemos em breve! 💕`
-  ) : '#';
-
-  // Link para avisar cancelamento diretamente no WhatsApp
-  const linkAvisarCancelamentoWhatsApp = agendamento ? gerarLinkWhatsApp(
-    telefoneDestinatario,
-    `Olá, ${nomeDestinatario}! ❌ Precisei cancelar meu agendamento #${agendamento.id} marcado para ${formatarDataCompleta(agendamento.inicio)} às ${formatarHorario(agendamento.inicio)}. Agradeço pela compreensão e em breve agendo um novo horário! 💕`
   ) : '#';
 
   // Link para Google Maps
@@ -965,16 +958,6 @@ export const PublicConfirmacao: React.FC = () => {
             {isConfirmado && (
               <div className="space-y-2.5 animate-in fade-in duration-300">
                 <a
-                  href={linkAvisarConfirmacaoWhatsApp}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-md shadow-[#25D366]/20"
-                >
-                  <MessageCircle size={16} />
-                  <span>Avisar {nomeDestinatario} no WhatsApp</span>
-                </a>
-
-                <a
                   href={linkGoogleCalendar}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -1002,16 +985,6 @@ export const PublicConfirmacao: React.FC = () => {
                     Quando desejar um novo momento de autocuidado, estaremos de portas abertas para te receber!
                   </p>
                 </div>
-
-                <a
-                  href={linkAvisarCancelamentoWhatsApp}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2.5 px-4 bg-white border border-[#EFECE6] hover:border-rose-300 text-rose-700 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 shadow-2xs"
-                >
-                  <MessageCircle size={15} />
-                  <span>Avisar {nomeDestinatario} pelo WhatsApp</span>
-                </a>
 
                 <a
                   href={getBookingUrl()}

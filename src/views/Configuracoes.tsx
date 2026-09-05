@@ -210,7 +210,9 @@ export const Configuracoes: React.FC = () => {
   };
 
   // --- META WHATSAPP CONFIG STATE ---
-  const [metaConfig, setMetaConfig] = useState(obterConfigMetaWhatsApp());
+  const [metaConfig, setMetaConfig] = useState(() => {
+    return configSalao?.meta_whatsapp || obterConfigMetaWhatsApp();
+  });
   const [metaPhoneId, setMetaPhoneId] = useState(metaConfig.phoneNumberId === 'admin' ? '' : metaConfig.phoneNumberId);
   const [metaToken, setMetaToken] = useState(metaConfig.phoneNumberId === 'admin' ? '' : metaConfig.accessToken);
   const [showMetaToken, setShowMetaToken] = useState(false);
@@ -219,7 +221,7 @@ export const Configuracoes: React.FC = () => {
   const [metaTestando, setMetaTestando] = useState(false);
   const [metaTestResult, setMetaTestResult] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
 
-  const handleSalvarMetaConfig = (e: React.FormEvent) => {
+  const handleSalvarMetaConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     const novaConfig = {
       phoneNumberId: metaPhoneId.trim(),
@@ -228,6 +230,18 @@ export const Configuracoes: React.FC = () => {
     };
     salvarConfigMetaWhatsApp(novaConfig);
     setMetaConfig(novaConfig);
+    updateConfigSalao({ meta_whatsapp: novaConfig });
+    try {
+      await salvarConfiguracoesSupabase({
+        configSalao: {
+          ...configSalao,
+          meta_whatsapp: novaConfig
+        }
+      });
+      exibirToast('✅ Credenciais da Meta salvas e sincronizadas com a nuvem!');
+    } catch (err) {
+      exibirToast('⚠️ Credenciais salvas localmente!');
+    }
     triggerSuccess();
   };
 

@@ -964,6 +964,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   agendamentoId: payload.new.id
                 });
               }
+            } else if (payload.new.status === 'pendente') {
+              setPagamentos(prevPag => {
+                const existente = prevPag.find(p => p.agendamento_id === payload.new.id);
+                if (existente) {
+                  return prevPag.map(p => p.id === existente.id ? { ...p, status: 'pendente' } : p);
+                }
+                const valSinal = payload.new.valor_sinal || payload.new.valor_total || 0;
+                const novoPag: Pagamento = {
+                  id: 'p_' + gerarId(),
+                  agendamento_id: payload.new.id,
+                  tipo: 'pix',
+                  valor: valSinal,
+                  status: 'pendente',
+                  data_pagamento: payload.new.inicio || new Date().toISOString()
+                };
+                return [...prevPag, novoPag];
+              });
             }
 
             return atualizados;
@@ -1071,6 +1088,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                   agendamentoId: id
                 });
               }
+            } else if (status === 'pendente') {
+              setPagamentos(prevPag => {
+                const existente = prevPag.find(p => p.agendamento_id === id);
+                if (existente) {
+                  return prevPag.map(p => p.id === existente.id ? { ...p, status: 'pendente' } : p);
+                }
+                const ag = prev.find(a => a.id === id);
+                const valSinal = ag ? (ag.valor_sinal || ag.valor_total || 0) : 0;
+                const novoPag: Pagamento = {
+                  id: 'p_' + gerarId(),
+                  agendamento_id: id,
+                  tipo: 'pix',
+                  valor: valSinal,
+                  status: 'pendente',
+                  data_pagamento: ag?.inicio || new Date().toISOString()
+                };
+                return [...prevPag, novoPag];
+              });
             }
           } else if (event.data?.type === 'VALOR_SINAL_UPDATED') {
             const { id, valorSinal } = event.data;
@@ -1609,6 +1644,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ? { ...p, status: 'estornado' }
         : p
       ));
+    } else if (status === 'pendente') {
+      setPagamentos(prev => {
+        const existente = prev.find(p => p.agendamento_id === id);
+        if (existente) {
+          return prev.map(p => p.id === existente.id ? { ...p, status: 'pendente' } : p);
+        }
+        const ag = agendamentos.find(a => a.id === id);
+        const valSinal = ag ? (ag.valor_sinal || ag.valor_total || 0) : 0;
+        const novoPag: Pagamento = {
+          id: 'p_' + gerarId(),
+          agendamento_id: id,
+          tipo: 'pix',
+          valor: valSinal,
+          status: 'pendente',
+          data_pagamento: ag?.inicio || new Date().toISOString()
+        };
+        return [...prev, novoPag];
+      });
     }
 
     atualizarStatusAgendamentoSupabase(id, status, canceladoPor, motivo, confirmadoPor);
@@ -1675,17 +1728,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const confirmarSinal = (agendamentoId: string, valor: number, metodo: MetodoPagamento) => {
-    setAgendamentos(prev => prev.map(a => {
-      if (a.id === agendamentoId && a.status === 'pendente') {
-        return { ...a, status: 'confirmado' };
-      }
-      return a;
-    }));
+    updateAgendamentoStatus(agendamentoId, 'confirmado', undefined, undefined, 'admin');
 
     setPagamentos(prev => {
-      const existente = prev.find(p => p.agendamento_id === agendamentoId && p.valor === valor && p.status === 'pendente');
+      const existente = prev.find(p => p.agendamento_id === agendamentoId && (p.status === 'pendente' || p.valor === valor));
       if (existente) {
-        return prev.map(p => p.id === existente.id ? { ...p, status: 'sinal pago', tipo: metodo, data_pagamento: new Date().toISOString() } : p);
+        return prev.map(p => p.id === existente.id ? { ...p, status: 'sinal pago', tipo: metodo, valor: valor || p.valor, data_pagamento: new Date().toISOString() } : p);
       } else {
         const novoPag: Pagamento = {
           id: 'p_' + gerarId(),

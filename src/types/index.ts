@@ -157,6 +157,11 @@ export interface ConfigSalao {
     lista_espera: string;
     contato_geral?: string;
   };
+  meta_whatsapp?: {
+    phoneNumberId: string;
+    accessToken: string;
+    ativo: boolean;
+  };
 }
 
 export const REGRA_DEVOLUCAO_PADRAO = 'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.';
