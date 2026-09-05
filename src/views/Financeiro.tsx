@@ -252,12 +252,12 @@ export const Financeiro: React.FC = () => {
     pagamentos.forEach(p => {
       if (p.status === 'pendente' && !lista.some(item => item.agendamento_id === p.agendamento_id)) {
         const agend = agendamentos.find(a => a.id === p.agendamento_id);
-        if (agend && (agend.status === 'confirmado' || agend.status === 'concluido' || agend.status === 'cancelado')) {
+        if (!agend || agend.status !== 'pendente') {
           return;
         }
-        const matchData = (agend?.inicio || p.data_pagamento)?.startsWith(mesSelecionadoStr);
+        const matchData = agend.inicio?.startsWith(mesSelecionadoStr);
         if (!matchData) return;
-        if (profissionalFiltro !== 'todas' && agend && agend.profissional_id !== profissionalFiltro) {
+        if (profissionalFiltro !== 'todas' && agend.profissional_id !== profissionalFiltro) {
           return;
         }
         lista.push(p);

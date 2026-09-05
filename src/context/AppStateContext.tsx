@@ -741,6 +741,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     localStorage.setItem('nail_agendamentos', JSON.stringify(agendamentos));
+
+    // Limpeza automática de pagamentos e itens órfãos cujos agendamentos foram excluídos
+    const idsValidos = new Set(agendamentos.map(a => a.id));
+    setPagamentos(prev => {
+      const filtrados = prev.filter(p => !p.agendamento_id || idsValidos.has(p.agendamento_id));
+      if (filtrados.length !== prev.length) {
+        try { localStorage.setItem('nail_pagamentos', JSON.stringify(filtrados)); } catch (e) {}
+        return filtrados;
+      }
+      return prev;
+    });
+
+    setItensAgendamento(prev => {
+      let mudou = false;
+      const novo: { [key: string]: string[] } = {};
+      Object.keys(prev).forEach(key => {
+        if (idsValidos.has(key)) {
+          novo[key] = prev[key];
+        } else {
+          mudou = true;
+        }
+      });
+      if (mudou) {
+        try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(novo)); } catch (e) {}
+        return novo;
+      }
+      return prev;
+    });
   }, [agendamentos]);
 
   useEffect(() => {
