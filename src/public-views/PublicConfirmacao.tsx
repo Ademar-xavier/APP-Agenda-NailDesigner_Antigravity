@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   Heart,
   Copy,
-  Check
+  Check,
+  RotateCcw
 } from 'lucide-react';
 import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
@@ -81,6 +82,7 @@ export const PublicConfirmacao: React.FC = () => {
     instrucoes_pix: '',
     regra_devolucao_sinal: REGRA_DEVOLUCAO_PADRAO,
     cancelamento_limite_horas: 24,
+    limite_horas_sinal: 2,
     meta_whatsapp: undefined as { phoneNumberId: string; accessToken: string; ativo: boolean } | undefined
   });
   const [dadosProfissional, setDadosProfissional] = useState<{
@@ -279,6 +281,7 @@ export const PublicConfirmacao: React.FC = () => {
             instrucoes_pix: configSalaoContext.instrucoes_pix || '',
             regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
             cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24,
+            limite_horas_sinal: configSalaoContext.regras?.limite_horas_sinal || 2,
             meta_whatsapp: configSalaoContext.meta_whatsapp
           });
         } else {
@@ -299,6 +302,7 @@ export const PublicConfirmacao: React.FC = () => {
               instrucoes_pix: cs.instrucoes_pix || '',
               regra_devolucao_sinal: cs.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
               cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24,
+              limite_horas_sinal: cs.regras?.limite_horas_sinal || 2,
               meta_whatsapp: cs.meta_whatsapp
             });
 
@@ -602,7 +606,7 @@ export const PublicConfirmacao: React.FC = () => {
         <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5 animate-pulse">
           <img 
             src="./logo.png?v=3" 
-            alt="Sheila Santos Nails" 
+            alt={dadosSalao.nome || 'Salão de Beleza'} 
             className="w-full h-full object-cover rounded-full"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
@@ -610,7 +614,7 @@ export const PublicConfirmacao: React.FC = () => {
           />
         </div>
         <h2 className="text-base font-serif font-bold text-[#5A4535]">Carregando agendamento...</h2>
-        <p className="text-xs text-[#8C7A6B] mt-1">Conectando ao sistema Sheila Santos Nails</p>
+        <p className="text-xs text-[#8C7A6B] mt-1">Conectando ao sistema {dadosSalao.nome || 'Salão de Beleza'}</p>
       </div>
     );
   }
@@ -623,7 +627,7 @@ export const PublicConfirmacao: React.FC = () => {
           <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto border-2 border-[#FCE4EC] overflow-hidden shadow-sm p-0.5">
             <img 
               src="./logo.png?v=3" 
-              alt="Sheila Santos Nails" 
+              alt={dadosSalao.nome || 'Salão de Beleza'} 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -872,6 +876,10 @@ export const PublicConfirmacao: React.FC = () => {
                             <span className="font-bold text-amber-950 block mb-0.5">📌 Política de Devolução do Sinal:</span>
                             {(dadosSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO).replace('{horas}', String(dadosSalao.cancelamento_limite_horas || 24))}
                           </div>
+                          <div className="bg-amber-100/70 p-2 rounded-lg border border-amber-300 text-[10px] text-amber-900 flex items-center gap-1.5">
+                            <Clock size={12} className="shrink-0 text-amber-700" />
+                            <span>Envie seu comprovante em até <strong>{dadosSalao.limite_horas_sinal || 2} horas</strong> para garantir seu horário antes da liberação da vaga.</span>
+                          </div>
                         </div>
                       )}
 
@@ -908,15 +916,29 @@ export const PublicConfirmacao: React.FC = () => {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setModalCancelarAberto(true)}
-                      disabled={processandoAcao}
-                      className="w-full py-2.5 px-4 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <XCircle size={15} />
-                      <span>Não Poderei Comparecer (Liberar Vaga)</span>
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <a
+                        href={gerarLinkWhatsApp(
+                          dadosSalao.telefone,
+                          `Olá! Gostaria de reagendar meu agendamento #${agendamento.id} para outra data ou horário.`
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 px-3 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <RotateCcw size={14} />
+                        <span>Solicitar Reagendamento</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => setModalCancelarAberto(true)}
+                        disabled={processandoAcao}
+                        className="flex-1 py-2.5 px-3 bg-white hover:bg-rose-50 border border-[#EFECE6] hover:border-rose-300 text-[#8C7A6B] hover:text-rose-700 rounded-xl font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <XCircle size={14} />
+                        <span>Liberar Vaga</span>
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   /* FLUXO SEM SINAL: O CLIENTE CONFIRMA DIRETAMENTE EM 1 TOQUE */

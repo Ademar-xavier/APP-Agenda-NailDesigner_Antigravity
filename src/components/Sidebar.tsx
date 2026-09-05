@@ -61,14 +61,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleNavigate = (viewId: string) => {
     setCurrentView(viewId);
-    window.scrollTo(0, 0);
+    // Apenas a coluna da direita sobe para o topo ao navegar; o menu lateral se mantém na posição
     const main = document.getElementById('main-content-scroll');
-    if (main) main.scrollTop = 0;
-    if (document.documentElement) document.documentElement.scrollTop = 0;
-    if (document.body) document.body.scrollTop = 0;
-    document.querySelectorAll('.overflow-y-auto, .overflow-auto').forEach(el => {
-      el.scrollTop = 0;
-    });
+    if (main) {
+      main.scrollTop = 0;
+    }
   };
 
   if (!isAdmin) return null;

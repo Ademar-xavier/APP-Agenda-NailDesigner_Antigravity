@@ -779,12 +779,6 @@ export const Confirmacoes: React.FC = () => {
                 )}
               </div>
               <span>{tab.label}</span>
-              {tab.temAviso && (
-                <span className="relative flex h-2 w-2" title="Há novos avisos não lidos nesta aba">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                </span>
-              )}
               {tab.count > 0 && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                   active ? 'bg-[#8C6D58] text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
@@ -831,19 +825,11 @@ export const Confirmacoes: React.FC = () => {
                       }}
                       className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-[#FFF9E6] text-[#B78103] flex items-center justify-center font-bold text-xs">
-                          {initials}
-                        </div>
-                        {temAviso && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                          </span>
-                        )}
+                      <div className="w-10 h-10 rounded-full bg-[#FFF9E6] text-[#B78103] flex items-center justify-center font-bold text-xs shrink-0">
+                        {initials}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
                           {temAviso && (
                             <span className="relative flex h-2 w-2" title="Novo aviso desta cliente">
@@ -851,6 +837,22 @@ export const Confirmacoes: React.FC = () => {
                               <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                             </span>
                           )}
+                          {(() => {
+                            const sinalPendente = Number(a.valor_sinal || 0) > 0;
+                            const limiteHoras = configSalao.regras?.limite_horas_sinal || 2;
+                            const criadoMs = a.criado_em ? new Date(a.criado_em).getTime() : 0;
+                            const horasPassadas = criadoMs ? (Date.now() - criadoMs) / (1000 * 60 * 60) : 0;
+                            const expirou = sinalPendente && horasPassadas >= limiteHoras;
+                            if (expirou) {
+                              return (
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1 shrink-0" title={`Sinal pendente há mais de ${limiteHoras}h`}>
+                                  <Clock size={10} className="text-amber-700" />
+                                  <span>Sinal Expirado (+{limiteHoras}h)</span>
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">{formatarDataHora(a.inicio)}</p>
                       </div>
@@ -924,16 +926,8 @@ export const Confirmacoes: React.FC = () => {
                       }}
                       className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-[#EBF7EE] text-[#2B7A4B] flex items-center justify-center font-bold text-xs">
-                          {initials}
-                        </div>
-                        {temAviso && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                          </span>
-                        )}
+                      <div className="w-10 h-10 rounded-full bg-[#EBF7EE] text-[#2B7A4B] flex items-center justify-center font-bold text-xs shrink-0">
+                        {initials}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -1080,16 +1074,8 @@ export const Confirmacoes: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center font-bold text-xs border border-[#EFECE6]">
-                          {initials}
-                        </div>
-                        {temAviso && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                          </span>
-                        )}
+                      <div className="w-10 h-10 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center font-bold text-xs border border-[#EFECE6] shrink-0">
+                        {initials}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
@@ -1160,16 +1146,8 @@ export const Confirmacoes: React.FC = () => {
                       }}
                       className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full bg-red-50 text-red-700 flex items-center justify-center font-bold text-xs border border-red-100">
-                          {initials}
-                        </div>
-                        {temAviso && (
-                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                          </span>
-                        )}
+                      <div className="w-10 h-10 rounded-full bg-red-50 text-red-700 flex items-center justify-center font-bold text-xs border border-red-100 shrink-0">
+                        {initials}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
