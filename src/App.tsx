@@ -114,20 +114,22 @@ function AppContent() {
   // Efeito para scrollar todo o conteúdo para o topo ao trocar de aba (Desktop, Web e Android WebView)
   useEffect(() => {
     const rolarParaTopo = () => {
-      // 1. Container principal do desktop/tablet
+      // 1. Container principal da coluna da direita no desktop
       const mainContent = document.getElementById('main-content-scroll');
       if (mainContent) {
         mainContent.scrollTop = 0;
+        // Apenas containers internos da coluna de conteúdo da direita
+        mainContent.querySelectorAll('.overflow-y-auto, .overflow-auto').forEach(el => {
+          el.scrollTop = 0;
+        });
       }
-      // 2. Janela e documentos raiz (crítico no Android e celulares móveis)
-      window.scrollTo(0, 0);
-      if (document.documentElement) document.documentElement.scrollTop = 0;
-      if (document.body) document.body.scrollTop = 0;
 
-      // 3. Qualquer container com scroll interno
-      document.querySelectorAll('.overflow-y-auto, .overflow-auto').forEach(el => {
-        el.scrollTop = 0;
-      });
+      // 2. No celular / telas menores (<768px), rola janela para o topo
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        window.scrollTo(0, 0);
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+      }
     };
 
     rolarParaTopo();
