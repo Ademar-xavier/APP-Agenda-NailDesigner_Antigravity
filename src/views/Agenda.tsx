@@ -107,6 +107,8 @@ export const Agenda: React.FC<AgendaProps> = ({
   // Novo Agendamento Formulário
   const [clienteExistente, setClienteExistente] = useState<boolean>(true);
   const [clienteId, setClienteId] = useState<string>('');
+  const [buscaClienteModal, setBuscaClienteModal] = useState<string>('');
+  const [dropdownClienteAberto, setDropdownClienteAberto] = useState<boolean>(false);
   const [novoClienteNome, setNovoClienteNome] = useState<string>('');
   const [novoClienteFone, setNovoClienteFone] = useState<string>('');
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
@@ -129,6 +131,25 @@ export const Agenda: React.FC<AgendaProps> = ({
       return profSelecionada.servicos_habilitados.includes(s.id);
     });
   }, [servicos, profSelecionada]);
+
+  // Filtro de Clientes com busca por digitação rápida
+  const clientesFiltradasModal = useMemo(() => {
+    const q = buscaClienteModal.trim().toLowerCase();
+    const qDigits = buscaClienteModal.replace(/\D/g, '');
+    return [...clientes]
+      .filter(c => {
+        if (!q) return true;
+        const matchNome = c.nome.toLowerCase().includes(q);
+        const matchTel = qDigits && c.telefone ? c.telefone.replace(/\D/g, '').includes(qDigits) : false;
+        return matchNome || matchTel;
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
+  }, [clientes, buscaClienteModal]);
+
+  const clienteSelecionadoObj = useMemo(() => {
+    if (!clienteId) return null;
+    return clientes.find(c => c.id === clienteId) || null;
+  }, [clientes, clienteId]);
 
   // Resumo Inteligente de Tempo Total e Retorno de Manutenção
   const resumoServicosSelecionados = useMemo(() => {
@@ -227,6 +248,8 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   const handleCloseLocalModal = () => {
     setLocalNewAgendamentoOpen(false);
+    setBuscaClienteModal('');
+    setDropdownClienteAberto(false);
     closeNewAgendamentoModal();
   };
 
@@ -874,19 +897,108 @@ export const Agenda: React.FC<AgendaProps> = ({
                       </div>
 
                       {clienteExistente ? (
-                        <div>
-                          <select
-                            value={clienteId}
-                            onChange={(e) => setClienteId(e.target.value)}
-                            className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
-                          >
-                            <option value="">-- Selecione a Cliente --</option>
-                            {[...clientes]
-                              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
-                              .map(c => (
-                                <option key={c.id} value={c.id}>{c.nome} ({c.telefone})</option>
-                              ))}
-                          </select>
+                        <div className="space-y-1 relative">
+                          {clienteSelecionadoObj ? (
+                            <div className="flex items-center justify-between p-3 bg-white border border-[#8C6D58]/40 rounded-xl shadow-2xs">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-[#FAF6F0] text-[#8C6D58] border border-[#EFECE6] flex items-center justify-center font-bold text-xs">
+                                  {clienteSelecionadoObj.nome.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <span className="text-xs font-bold text-[#5A4535] block leading-tight">{clienteSelecionadoObj.nome}</span>
+                                  <span className="text-[11px] text-[#8C7A6B] block">{clienteSelecionadoObj.telefone || 'Sem telefone'}</span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setClienteId('');
+                                  setBuscaClienteModal('');
+                                  setDropdownClienteAberto(true);
+                                }}
+                                className="text-xs font-semibold text-[#8C6D58] hover:text-[#5A4535] hover:underline px-2 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Trocar</span>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <div className="flex items-center gap-2 border border-[#EFECE6] rounded-xl px-3 py-2.5 bg-[#FAF9F6] focus-within:border-[#8C6D58] focus-within:bg-white transition-all shadow-2xs">
+                                <Search size={15} className="text-[#8C7A6B] shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="Digite para buscar por nome ou telefone..."
+                                  value={buscaClienteModal}
+                                  onChange={(e) => {
+                                    setBuscaClienteModal(e.target.value);
+                                    setDropdownClienteAberto(true);
+                                  }}
+                                  onFocus={() => setDropdownClienteAberto(true)}
+                                  className="w-full text-xs text-[#5A4535] bg-transparent outline-none border-none focus:ring-0 p-0 placeholder:text-[#A88690]"
+                                />
+                                {buscaClienteModal && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setBuscaClienteModal('')}
+                                    className="text-[#8C7A6B] hover:text-[#5A4535] p-0.5 cursor-pointer"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
+                              </div>
+
+                              {dropdownClienteAberto && (
+                                <div className="absolute top-full left-0 right-0 mt-1 border border-[#EFECE6] rounded-xl bg-white shadow-xl max-h-48 overflow-y-auto z-50 divide-y divide-[#FAF9F6]">
+                                  {clientesFiltradasModal.length === 0 ? (
+                                    <div className="p-3 text-center space-y-2">
+                                      <p className="text-xs text-[#8C7A6B]">Nenhuma cliente cadastrada encontrada.</p>
+                                      {buscaClienteModal.trim() && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setClienteExistente(false);
+                                            setNovoClienteNome(buscaClienteModal);
+                                            setDropdownClienteAberto(false);
+                                          }}
+                                          className="text-xs font-bold text-[#8C6D58] hover:underline flex items-center justify-center gap-1 mx-auto cursor-pointer"
+                                        >
+                                          <Plus size={12} />
+                                          <span>Cadastrar "{buscaClienteModal}" como Nova Cliente</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    clientesFiltradasModal.map(c => (
+                                      <button
+                                        key={c.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setClienteId(c.id);
+                                          setBuscaClienteModal('');
+                                          setDropdownClienteAberto(false);
+                                        }}
+                                        className="w-full text-left p-2.5 hover:bg-[#FAF9F6] flex items-center justify-between transition-colors group cursor-pointer"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-7 h-7 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center font-bold text-[10px] group-hover:bg-[#8C6D58] group-hover:text-white transition-colors">
+                                            {c.nome.substring(0, 2).toUpperCase()}
+                                          </div>
+                                          <div>
+                                            <p className="text-xs font-bold text-[#5A4535] group-hover:text-[#8C6D58] transition-colors">{c.nome}</p>
+                                            <p className="text-[10px] text-[#8C7A6B]">{c.telefone || 'Sem telefone'}</p>
+                                          </div>
+                                        </div>
+                                        <span className="text-[10px] font-semibold text-[#8C6D58] opacity-0 group-hover:opacity-100 transition-opacity">
+                                          Selecionar
+                                        </span>
+                                      </button>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">

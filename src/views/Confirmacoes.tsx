@@ -37,7 +37,9 @@ export const Confirmacoes: React.FC = () => {
     confirmarAcao,
     mostrarAlerta,
     updateAgendamentoStatus,
-    checkConflitoHorario
+    checkConflitoHorario,
+    avisosNaoLidos,
+    marcarAvisoComoLido
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -700,6 +702,35 @@ export const Confirmacoes: React.FC = () => {
     }
   }, [analiseManut.livres]);
 
+  // Detecção de avisos não lidos por aba para exibir a bolinha piscando
+  const temAvisoAConfirmar = useMemo(() => {
+    return avisosNaoLidos.some(av => {
+      if (av.tipo === 'agendamento' || av.tipo === 'pagamento_sinal') return true;
+      const ag = agendamentos.find(a => a.id === av.agendamentoId);
+      return ag && ag.status === 'pendente';
+    });
+  }, [avisosNaoLidos, agendamentos]);
+
+  const temAvisoConfirmados = useMemo(() => {
+    return avisosNaoLidos.some(av => {
+      if (av.tipo === 'confirmacao') return true;
+      const ag = agendamentos.find(a => a.id === av.agendamentoId);
+      return ag && ag.status === 'confirmado';
+    });
+  }, [avisosNaoLidos, agendamentos]);
+
+  const temAvisoEspera = useMemo(() => {
+    return avisosNaoLidos.some(av => av.tipo === 'espera' || !!av.listaEsperaId);
+  }, [avisosNaoLidos]);
+
+  const temAvisoCancelados = useMemo(() => {
+    return avisosNaoLidos.some(av => {
+      if (av.tipo === 'cancelamento') return true;
+      const ag = agendamentos.find(a => a.id === av.agendamentoId);
+      return ag && ag.status === 'cancelado';
+    });
+  }, [avisosNaoLidos, agendamentos]);
+
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
@@ -720,11 +751,11 @@ export const Confirmacoes: React.FC = () => {
       {/* Tabs */}
       <div className="flex border-b border-[#EFECE6] mb-5 overflow-x-auto gap-2">
         {[
-          { id: 'a_confirmar', label: 'A confirmar', count: aConfirmar.length, icon: BellRing },
-          { id: 'confirmados', label: 'Confirmados', count: confirmados.length, icon: UserCheck },
-          { id: 'manutencao', label: 'Manutenção a confirmar', count: manutencoesAConfirmar.length, icon: RotateCcw },
-          { id: 'lista_espera', label: 'Lista de espera', count: listaEsperaAtiva.length, icon: Users },
-          { id: 'cancelados', label: 'Cancelados', count: cancelados.length, icon: XCircle }
+          { id: 'a_confirmar', label: 'A confirmar', count: aConfirmar.length, icon: BellRing, temAviso: temAvisoAConfirmar },
+          { id: 'confirmados', label: 'Confirmados', count: confirmados.length, icon: UserCheck, temAviso: temAvisoConfirmados },
+          { id: 'manutencao', label: 'Manutenção a confirmar', count: manutencoesAConfirmar.length, icon: RotateCcw, temAviso: false },
+          { id: 'lista_espera', label: 'Lista de espera', count: listaEsperaAtiva.length, icon: Users, temAviso: temAvisoEspera },
+          { id: 'cancelados', label: 'Cancelados', count: cancelados.length, icon: XCircle, temAviso: temAvisoCancelados }
         ].map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
@@ -732,14 +763,28 @@ export const Confirmacoes: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as AbaConfirmacao)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 active 
                   ? 'border-[#8C6D58] text-[#8C6D58]' 
                   : 'border-transparent text-[#8C7A6B] hover:text-[#5A4535]'
               }`}
             >
-              <Icon size={14} />
+              <div className="relative flex items-center">
+                <Icon size={14} />
+                {tab.temAviso && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                  </span>
+                )}
+              </div>
               <span>{tab.label}</span>
+              {tab.temAviso && (
+                <span className="relative flex h-2 w-2" title="Há novos avisos não lidos nesta aba">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                </span>
+              )}
               {tab.count > 0 && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                   active ? 'bg-[#8C6D58] text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
@@ -768,21 +813,45 @@ export const Confirmacoes: React.FC = () => {
               aConfirmar.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
+                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
                 
                 return (
                   <div 
                     key={a.id} 
-                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
+                    className={`p-4 bg-white border rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-colors ${
+                      temAviso 
+                        ? 'border-rose-300 ring-1 ring-rose-200/60 bg-rose-50/15' 
+                        : 'border-[#EFECE6] hover:border-[#8C6D58]'
+                    }`}
                   >
                     <button 
-                      onClick={() => setSelectedAgendamentoId(a.id)}
-                      className="flex flex-1 items-center gap-3 text-left focus:outline-none"
+                      onClick={() => {
+                        marcarAvisoComoLido(a.id);
+                        setSelectedAgendamentoId(a.id);
+                      }}
+                      className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="w-10 h-10 rounded-full bg-[#FFF9E6] text-[#B78103] flex items-center justify-center font-bold text-xs">
-                        {initials}
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-[#FFF9E6] text-[#B78103] flex items-center justify-center font-bold text-xs">
+                          {initials}
+                        </div>
+                        {temAviso && (
+                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                          </span>
+                        )}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                          {temAviso && (
+                            <span className="relative flex h-2 w-2" title="Novo aviso desta cliente">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">{formatarDataHora(a.inicio)}</p>
                       </div>
                     </button>
@@ -790,23 +859,29 @@ export const Confirmacoes: React.FC = () => {
                     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       <button
                         onClick={() => handleEnviarMensagemWhatsApp(a, 'confirmacao')}
-                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors"
+                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                         title="Enviar mensagem no WhatsApp solicitando confirmação"
                       >
                         <MessageCircle size={14} className="text-[#25D366]" />
                         <span>Pedir confirmação</span>
                       </button>
                       <button
-                        onClick={() => updateAgendamentoStatus(a.id, 'confirmado')}
-                        className="flex items-center gap-1 px-3.5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                        onClick={() => {
+                          marcarAvisoComoLido(a.id);
+                          updateAgendamentoStatus(a.id, 'confirmado');
+                        }}
+                        className="flex items-center gap-1 px-3.5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                         title="Confirmar este agendamento e mover para Confirmados"
                       >
                         <UserCheck size={14} />
                         <span>Confirmar</span>
                       </button>
                       <button
-                        onClick={() => setSelectedAgendamentoId(a.id)}
-                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
+                        onClick={() => {
+                          marcarAvisoComoLido(a.id);
+                          setSelectedAgendamentoId(a.id);
+                        }}
+                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] cursor-pointer"
                       >
                         Ver detalhes
                       </button>
@@ -831,21 +906,45 @@ export const Confirmacoes: React.FC = () => {
               confirmados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
+                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
                 
                 return (
                   <div 
                     key={a.id} 
-                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
+                    className={`p-4 bg-white border rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-colors ${
+                      temAviso 
+                        ? 'border-rose-300 ring-1 ring-rose-200/60 bg-rose-50/15' 
+                        : 'border-[#EFECE6] hover:border-[#8C6D58]'
+                    }`}
                   >
                     <button 
-                      onClick={() => setSelectedAgendamentoId(a.id)}
-                      className="flex flex-1 items-center gap-3 text-left focus:outline-none"
+                      onClick={() => {
+                        marcarAvisoComoLido(a.id);
+                        setSelectedAgendamentoId(a.id);
+                      }}
+                      className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="w-10 h-10 rounded-full bg-[#EBF7EE] text-[#2B7A4B] flex items-center justify-center font-bold text-xs">
-                        {initials}
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-[#EBF7EE] text-[#2B7A4B] flex items-center justify-center font-bold text-xs">
+                          {initials}
+                        </div>
+                        {temAviso && (
+                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                          </span>
+                        )}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                          {temAviso && (
+                            <span className="relative flex h-2 w-2" title="Novo aviso desta cliente">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">{formatarDataHora(a.inicio)}</p>
                       </div>
                     </button>
@@ -853,14 +952,17 @@ export const Confirmacoes: React.FC = () => {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEnviarMensagemWhatsApp(a, 'lembrete')}
-                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors"
+                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors cursor-pointer"
                       >
                         <MessageCircle size={14} className="text-[#25D366]" />
                         <span>Lembrete</span>
                       </button>
                       <button
-                        onClick={() => setSelectedAgendamentoId(a.id)}
-                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
+                        onClick={() => {
+                          marcarAvisoComoLido(a.id);
+                          setSelectedAgendamentoId(a.id);
+                        }}
+                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] cursor-pointer"
                       >
                         Ver detalhes
                       </button>
@@ -966,18 +1068,39 @@ export const Confirmacoes: React.FC = () => {
                 const client = clientes.find(c => c.id === w.cliente_id);
                 const serv = servicos.find(s => s.id === w.servico_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
+                const temAviso = avisosNaoLidos.some(av => av.listaEsperaId === w.id);
                 
                 return (
                   <div 
                     key={w.id} 
-                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
+                    className={`p-4 bg-white border rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-colors ${
+                      temAviso 
+                        ? 'border-rose-300 ring-1 ring-rose-200/60 bg-rose-50/15' 
+                        : 'border-[#EFECE6] hover:border-[#8C6D58]'
+                    }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center font-bold text-xs border border-[#EFECE6]">
-                        {initials}
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-[#FAF6F0] text-[#8C6D58] flex items-center justify-center font-bold text-xs border border-[#EFECE6]">
+                          {initials}
+                        </div>
+                        {temAviso && (
+                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                          </span>
+                        )}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                          {temAviso && (
+                            <span className="relative flex h-2 w-2" title="Novo aviso de lista de espera">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">
                           {serv?.nome} · Preferência: {formatarDataBrasileira(w.data_preferida)} ({w.periodo_preferido})
                         </p>
@@ -989,8 +1112,11 @@ export const Confirmacoes: React.FC = () => {
                         Aguardando
                       </span>
                       <button
-                        onClick={() => handleOpenConfirmarVaga(w)}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        onClick={() => {
+                          marcarAvisoComoLido(w.id);
+                          handleOpenConfirmarVaga(w);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
                       >
                         <Send size={12} />
                         <span>Definir horário e agendar</span>
@@ -1016,21 +1142,45 @@ export const Confirmacoes: React.FC = () => {
               cancelados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
+                const temAviso = avisosNaoLidos.some(av => av.agendamentoId === a.id);
                 
                 return (
                   <div 
                     key={a.id} 
-                    className="p-4 bg-white border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:border-[#8C6D58] transition-colors"
+                    className={`p-4 bg-white border rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 transition-colors ${
+                      temAviso 
+                        ? 'border-rose-300 ring-1 ring-rose-200/60 bg-rose-50/15' 
+                        : 'border-[#EFECE6] hover:border-[#8C6D58]'
+                    }`}
                   >
                     <button 
-                      onClick={() => setSelectedAgendamentoId(a.id)}
-                      className="flex flex-1 items-center gap-3 text-left focus:outline-none"
+                      onClick={() => {
+                        marcarAvisoComoLido(a.id);
+                        setSelectedAgendamentoId(a.id);
+                      }}
+                      className="flex flex-1 items-center gap-3 text-left focus:outline-none cursor-pointer"
                     >
-                      <div className="w-10 h-10 rounded-full bg-red-50 text-red-700 flex items-center justify-center font-bold text-xs border border-red-100">
-                        {initials}
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full bg-red-50 text-red-700 flex items-center justify-center font-bold text-xs border border-red-100">
+                          {initials}
+                        </div>
+                        {temAviso && (
+                          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                          </span>
+                        )}
                       </div>
                       <div>
-                        <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-[#5A4535]">{client?.nome}</h4>
+                          {temAviso && (
+                            <span className="relative flex h-2 w-2" title="Novo aviso de cancelamento">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-[#8C7A6B] mt-0.5">
                           {formatarDataHora(a.inicio)} · <span className="font-semibold text-red-600">Motivo: {a.motivo_cancelamento || 'Não informado'}</span>
                         </p>
@@ -1039,8 +1189,11 @@ export const Confirmacoes: React.FC = () => {
                     
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => setSelectedAgendamentoId(a.id)}
-                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0]"
+                        onClick={() => {
+                          marcarAvisoComoLido(a.id);
+                          setSelectedAgendamentoId(a.id);
+                        }}
+                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] cursor-pointer"
                       >
                         Ver detalhes
                       </button>
@@ -1051,13 +1204,16 @@ export const Confirmacoes: React.FC = () => {
                             mensagem: 'Tem certeza de que deseja excluir permanentemente este registro de cancelamento?',
                             tipo: 'erro',
                             textoConfirmar: 'Excluir',
-                            onConfirm: () => deleteAgendamento(a.id)
+                            onConfirm: () => {
+                              marcarAvisoComoLido(a.id);
+                              deleteAgendamento(a.id);
+                            }
                           });
                         }}
-                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl transition-colors"
-                        title="Excluir histórico de cancelamento"
+                        className="p-2 text-[#8C7A6B] hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                        title="Excluir histórico deste cancelamento"
                       >
-                        <Trash2 size={15} />
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </div>
