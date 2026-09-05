@@ -443,6 +443,7 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   agendamentoId?: string;
   listaEsperaId?: string;
   clienteNome?: string;
+  clienteId?: string;
 }) => {
   // 1. BroadcastChannel local (para abas no mesmo aparelho)
   try {
@@ -459,15 +460,11 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   // 2. Supabase Realtime Broadcast (entre todos os aparelhos/celulares conectados via internet)
   try {
     const canal = supabase.channel('nail_app_realtime_broadcast');
-    canal.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        canal.send({
-          type: 'broadcast',
-          event: 'CLIENTE_ACAO',
-          payload: notificacao
-        });
-      }
-    });
+    canal.send({
+      type: 'broadcast',
+      event: 'CLIENTE_ACAO',
+      payload: notificacao
+    }).catch(() => {});
   } catch (err) {
     console.error('Erro no broadcast realtime:', err);
   }
@@ -487,7 +484,11 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
       ...notificacao
     };
 
-    const filtrados = avisosExistentes.filter(a => !(a.agendamentoId && a.agendamentoId === notificacao.agendamentoId && a.tipo === notificacao.tipo));
+    const filtrados = avisosExistentes.filter(a => {
+      if (notificacao.agendamentoId && a.agendamentoId === notificacao.agendamentoId && a.tipo === notificacao.tipo) return false;
+      if (notificacao.listaEsperaId && a.listaEsperaId === notificacao.listaEsperaId) return false;
+      return true;
+    });
     const atualizados = [novoAviso, ...filtrados].slice(0, 50);
 
     await supabase.from('configuracoes').upsert({
@@ -518,16 +519,14 @@ export const persistirAvisosNaoLidosSupabase = async (avisos: any[]) => {
     });
 
     // Avisa todos os dispositivos conectados para atualizarem a lista em tempo real
-    const canal = supabase.channel('nail_app_realtime_broadcast');
-    canal.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        canal.send({
-          type: 'broadcast',
-          event: 'AVISOS_SYNC',
-          payload: { avisos }
-        });
-      }
-    });
+    try {
+      const canal = supabase.channel('nail_app_realtime_broadcast');
+      canal.send({
+        type: 'broadcast',
+        event: 'AVISOS_SYNC',
+        payload: { avisos }
+      }).catch(() => {});
+    } catch (e) {}
   } catch (e) {
     console.error('Erro ao atualizar avisos no Supabase:', e);
   }

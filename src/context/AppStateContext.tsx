@@ -36,7 +36,7 @@ import {
   salvarUsuarioSupabase,
   persistirAvisosNaoLidosSupabase
 } from '../services/supabase';
-import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
+import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus, inicializarCanalNotificacoes } from '../services/notificacoesMobile';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
@@ -136,7 +136,7 @@ interface AppStateContextType {
   concluirAtendimento: (id: string, valorRestante: number, metodo: MetodoPagamento, dataProximaManutencao?: string) => void;
   
   // Ações de Lista de Espera
-  addListaEspera: (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>) => void;
+  addListaEspera: (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>) => ListaEspera;
   updateListaEsperaStatus: (id: string, status: ListaEspera['status']) => void;
   atenderListaEspera: (id: string, agendamentoId: string) => void;
   
@@ -368,15 +368,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const id = (a.id || '').toLowerCase().trim();
         const agId = (a.agendamentoId || '').toLowerCase().replace(/^#/, '').trim();
         const leId = (a.listaEsperaId || '').toLowerCase().replace(/^#/, '').trim();
+        const cliId = ((a as any).clienteId || '').toLowerCase().trim();
+        const cliNome = (a.clienteNome || '').toLowerCase().trim();
         const detalhes = (a.detalhes || '').toLowerCase();
+        const titulo = (a.titulo || '').toLowerCase();
+        const mensagem = (a.mensagem || '').toLowerCase();
 
         // Se corresponder ao id direto ou normalizado
         if (id === alvo || id === alvoLimpo) return false;
         if (id === `aviso_rec_${alvoLimpo}` || id.endsWith(`_${alvoLimpo}`)) return false;
         if (agId && (agId === alvo || agId === alvoLimpo)) return false;
         if (leId && (leId === alvo || leId === alvoLimpo)) return false;
-        // Se o campo detalhes contém o código exato (ex: #a123 ou a123)
+        if (cliId && (cliId === alvo || cliId === alvoLimpo)) return false;
+        if (cliNome && (cliNome === alvo || cliNome === alvoLimpo)) return false;
+        // Se o campo detalhes, mensagem ou título contém o código exato
         if (alvoLimpo && (detalhes.includes(`#${alvoLimpo}`) || detalhes.includes(alvoLimpo))) return false;
+        if (alvoLimpo && (mensagem.includes(`#${alvoLimpo}`) || titulo.includes(`#${alvoLimpo}`))) return false;
 
         return true;
       });
@@ -447,8 +454,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setNotificacaoClienteAcao(null);
   };
 
-  // Desbloqueia AudioContext na primeira interação e solicita permissão de Notificação nativa
+  // Desbloqueia AudioContext na primeira interação e inicializa canal de Notificações
   useEffect(() => {
+    inicializarCanalNotificacoes().catch(() => {});
+
     const unlockAudioAndNotification = () => {
       try {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -911,58 +920,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setConfigSalao(cfg);
           try { localStorage.setItem('nail_config_salao', JSON.stringify(cfg)); } catch (e) {}
 
-          // Sincronização de Avisos Não Lidos da Nuvem para o Aparelho Novo
+          // Sincronização de Avisos Não Lidos da Nuvem para este Aparelho (Fonte da Verdade: Nuvem)
           const avisosNuvem = dados.configuracoes.config_salao.avisos_nao_lidos;
           if (Array.isArray(avisosNuvem)) {
-            setAvisosNaoLidos(prev => {
-              const mapa = new Map<string, AvisoCliente>();
-              avisosNuvem.forEach((av: AvisoCliente) => {
-                const k = av.agendamentoId ? `${av.agendamentoId}_${av.tipo}` : av.id;
-                mapa.set(k, av);
-              });
-              prev.forEach(av => {
-                const k = av.agendamentoId ? `${av.agendamentoId}_${av.tipo}` : av.id;
-                if (!mapa.has(k)) {
-                  mapa.set(k, av);
-                }
-              });
-              const unificados = Array.from(mapa.values()).sort((a, b) => 
-                new Date(b.criadoEm || 0).getTime() - new Date(a.criadoEm || 0).getTime()
-              );
-              salvarAvisosLocalStorage(unificados);
-              return unificados;
-            });
+            setAvisosNaoLidos(avisosNuvem);
+            salvarAvisosLocalStorage(avisosNuvem);
           }
         }
-
-        // Se um novo aparelho foi instalado e não há avisos salvos, mas existem agendamentos pendentes
-        setAvisosNaoLidos(prev => {
-          if (prev.length === 0 && dados.agendamentos && dados.agendamentos.length > 0) {
-            const pendentes = dados.agendamentos.filter((a: any) => a.status === 'pendente');
-            if (pendentes.length > 0) {
-              const novosAvisos: AvisoCliente[] = pendentes.map((a: any) => {
-                const cli = (dados.clientes || []).find((c: any) => c.id === a.cliente_id);
-                const horaStr = a.inicio ? a.inicio.split('T')[1]?.substring(0, 5) : '';
-                const dataStr = a.inicio ? new Date(a.inicio).toLocaleDateString('pt-BR') : '';
-                return {
-                  id: 'aviso_rec_' + a.id,
-                  tipo: 'agendamento' as const,
-                  titulo: 'Agendamento Aguardando Confirmação 💅',
-                  mensagem: `${cli?.nome || 'Cliente'} para o dia ${dataStr} às ${horaStr}.`,
-                  detalhes: `Código #${a.id} • Aguardando sinal`,
-                  hora: horaStr,
-                  agendamentoId: a.id,
-                  clienteNome: cli?.nome,
-                  criadoEm: a.criado_em || new Date().toISOString(),
-                  lido: false
-                };
-              });
-              salvarAvisosLocalStorage(novosAvisos);
-              return novosAvisos;
-            }
-          }
-          return prev;
-        });
         if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
           setTecnicas(dados.configuracoes.tecnicas);
           try { localStorage.setItem('nail_tecnicas', JSON.stringify(dados.configuracoes.tecnicas)); } catch (e) {}
@@ -1199,6 +1163,51 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             map.set(payload.new.id, payload.new as Servico);
             return Array.from(map.values());
           });
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, (payload: any) => {
+        if (payload.new?.config_salao) {
+          const cfg = payload.new.config_salao;
+          if (cfg) {
+            setConfigSalao(prev => ({ ...prev, ...cfg }));
+            try { localStorage.setItem('nail_config_salao', JSON.stringify(cfg)); } catch (e) {}
+          }
+
+          const avisosNuvem = payload.new.config_salao?.avisos_nao_lidos;
+          if (Array.isArray(avisosNuvem)) {
+            setAvisosNaoLidos(prev => {
+              // Identifica avisos novos que acabaram de chegar da nuvem
+              const idsLocais = new Set(prev.map(a => a.id));
+              const novissimos = avisosNuvem.filter(a => !idsLocais.has(a.id));
+
+              // Se há avisos novos criados nos últimos 2 minutos por clientes, dispara alarme no topo do aparelho
+              novissimos.forEach(av => {
+                const agora = Date.now();
+                const criadoEmMs = new Date(av.criadoEm || agora).getTime();
+                if (agora - criadoEmMs < 120000) {
+                  dispararNotificacaoBarraStatus(av.titulo, av.mensagem, av.detalhes, av.agendamentoId);
+                  tocarAlertaSonoro();
+                  setNotificacaoClienteAcao({
+                    id: av.id,
+                    hora: av.hora || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+                    tipo: av.tipo,
+                    titulo: av.titulo,
+                    mensagem: av.mensagem,
+                    detalhes: av.detalhes,
+                    agendamentoId: av.agendamentoId,
+                    listaEsperaId: av.listaEsperaId,
+                    clienteNome: av.clienteNome
+                  });
+                  setTimeout(() => {
+                    setNotificacaoClienteAcao(p => (p?.id === av.id ? null : p));
+                  }, 9000);
+                }
+              });
+
+              salvarAvisosLocalStorage(avisosNuvem);
+              return avisosNuvem;
+            });
+          }
         }
       })
       .subscribe();
@@ -1978,7 +1987,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Lista de Espera ---
-  const addListaEspera = (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>) => {
+  const addListaEspera = (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>): ListaEspera => {
     const novoItem: ListaEspera = {
       ...item,
       id: 'w_' + gerarId(),
@@ -1987,6 +1996,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     setListaEspera(prev => [...prev, novoItem]);
     salvarListaEsperaSupabase(novoItem);
+    return novoItem;
   };
 
   const updateListaEsperaStatus = (id: string, status: ListaEspera['status']) => {

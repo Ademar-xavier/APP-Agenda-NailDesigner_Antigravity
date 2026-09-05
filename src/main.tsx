@@ -7,8 +7,8 @@ import { iniciarProtecaoAntiClone } from './services/securityShield';
 // Ativa Escudo de Segurança Cibernética, Anti-Clonagem e Proteção de Código-Fonte
 iniciarProtecaoAntiClone();
 
-// Registro do Service Worker para PWA (Instalação no celular)
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// Registro do Service Worker para PWA (Instalação no celular e notificações push)
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').then((reg) => {
       reg.update();
