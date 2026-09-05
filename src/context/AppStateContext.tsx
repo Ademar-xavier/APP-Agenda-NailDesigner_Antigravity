@@ -1094,7 +1094,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 if (existente) {
                   return prevPag.map(p => p.id === existente.id ? { ...p, status: 'pendente' } : p);
                 }
-                const ag = prev.find(a => a.id === id);
+                const ag = agendamentos.find(a => a.id === id);
                 const valSinal = ag ? (ag.valor_sinal || ag.valor_total || 0) : 0;
                 const novoPag: Pagamento = {
                   id: 'p_' + gerarId(),
