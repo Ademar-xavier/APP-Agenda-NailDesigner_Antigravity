@@ -13,6 +13,7 @@ import {
   Material,
   ModalAlertaConfig,
   NotificacaoClienteAcao,
+  AvisoCliente,
   REGRA_DEVOLUCAO_PADRAO
 } from '../types';
 import { 
@@ -207,6 +208,9 @@ interface AppStateContextType {
   fecharNotificacaoClienteAcao: () => void;
   dispararNotificacaoCliente: (notif: Omit<NotificacaoClienteAcao, 'id' | 'hora'>) => void;
   tocarAlertaSonoro: () => void;
+  avisosNaoLidos: AvisoCliente[];
+  marcarAvisoComoLido: (idOuRefId: string) => void;
+  marcarTodosAvisosComoLidos: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -309,7 +313,73 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Notificação Visual (Popup) e Sonora para ações de clientes em tempo real
   const [notificacaoClienteAcao, setNotificacaoClienteAcao] = useState<NotificacaoClienteAcao | null>(null);
 
+  // Lista de Avisos Não Lidos (persistente em localStorage para o card do Dashboard e indicadores nas abas)
+  const [avisosNaoLidos, setAvisosNaoLidos] = useState<AvisoCliente[]>(() => {
+    try {
+      const salvo = localStorage.getItem('nail_app_avisos_nao_lidos_v1');
+      if (salvo) {
+        return JSON.parse(salvo);
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const salvarAvisosLocalStorage = (avisos: AvisoCliente[]) => {
+    try {
+      localStorage.setItem('nail_app_avisos_nao_lidos_v1', JSON.stringify(avisos));
+    } catch (e) {}
+  };
+
+  const adicionarAvisoNaoLido = (avisoData: Omit<AvisoCliente, 'id' | 'criadoEm' | 'lido'>) => {
+    const novoAviso: AvisoCliente = {
+      id: 'aviso_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      criadoEm: new Date().toISOString(),
+      lido: false,
+      ...avisoData
+    };
+
+    setAvisosNaoLidos(prev => {
+      // Evita duplicatas do mesmo agendamento com o mesmo tipo
+      const filtrados = prev.filter(a => !(a.agendamentoId && a.agendamentoId === novoAviso.agendamentoId && a.tipo === novoAviso.tipo));
+      const atualizados = [novoAviso, ...filtrados];
+      salvarAvisosLocalStorage(atualizados);
+      return atualizados;
+    });
+  };
+
+  const marcarAvisoComoLido = (idOuRefId: string) => {
+    if (!idOuRefId) return;
+    const alvo = idOuRefId.toLowerCase().trim();
+    setAvisosNaoLidos(prev => {
+      const atualizados = prev.filter(a => 
+        a.id.toLowerCase() !== alvo && 
+        (!a.agendamentoId || a.agendamentoId.toLowerCase() !== alvo) &&
+        (!a.listaEsperaId || a.listaEsperaId.toLowerCase() !== alvo)
+      );
+      salvarAvisosLocalStorage(atualizados);
+      return atualizados;
+    });
+  };
+
+  const marcarTodosAvisosComoLidos = () => {
+    setAvisosNaoLidos([]);
+    salvarAvisosLocalStorage([]);
+  };
+
   const dispararNotificacaoCliente = (notif: Omit<NotificacaoClienteAcao, 'id' | 'hora'>) => {
+    // Registra imediatamente na lista de avisos não lidos para o Dashboard e Confirmações
+    const horaAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    adicionarAvisoNaoLido({
+      tipo: notif.tipo,
+      titulo: notif.titulo,
+      mensagem: notif.mensagem,
+      detalhes: notif.detalhes,
+      hora: horaAgora,
+      agendamentoId: notif.agendamentoId,
+      listaEsperaId: notif.listaEsperaId,
+      clienteNome: notif.clienteNome
+    });
+
     // Verifica se os alertas estão habilitados nas configurações (padrão true)
     let sonoroAtivo = true;
     let visualAtivo = true;
@@ -333,7 +403,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (visualAtivo) {
       const novaNotif: NotificacaoClienteAcao = {
         id: Math.random().toString(36).substring(2, 9),
-        hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        hora: horaAgora,
         ...notif
       };
       setNotificacaoClienteAcao(novaNotif);
@@ -2104,7 +2174,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       notificacaoClienteAcao,
       fecharNotificacaoClienteAcao,
       dispararNotificacaoCliente,
-      tocarAlertaSonoro
+      tocarAlertaSonoro,
+      avisosNaoLidos,
+      marcarAvisoComoLido,
+      marcarTodosAvisosComoLidos
     }}>
       {children}
     </AppStateContext.Provider>

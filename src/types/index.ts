@@ -176,6 +176,22 @@ export interface NotificacaoClienteAcao {
   detalhes?: string;
   hora: string;
   agendamentoId?: string;
+  listaEsperaId?: string;
+  clienteNome?: string;
+}
+
+export interface AvisoCliente {
+  id: string;
+  tipo: 'agendamento' | 'confirmacao' | 'espera' | 'cancelamento' | 'pagamento_sinal';
+  titulo: string;
+  mensagem: string;
+  detalhes?: string;
+  hora: string;
+  criadoEm: string;
+  agendamentoId?: string;
+  listaEsperaId?: string;
+  clienteNome?: string;
+  lido: boolean;
 }
 
 export interface Despesa {

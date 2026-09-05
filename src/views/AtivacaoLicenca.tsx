@@ -23,7 +23,7 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
   onVoltarAgendamento 
 }) => {
   const [chave, setChave] = useState('');
-  const [titular, setTitular] = useState('Sheila Santos');
+  const [titular, setTitular] = useState('');
   const [feedback, setFeedback] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
   const [ativando, setAtivando] = useState(false);
 
@@ -33,7 +33,7 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
     setFeedback(null);
 
     try {
-      const res = await ativarChaveLicenca(chave, titular);
+      const res = await ativarChaveLicenca(chave, titular || 'Salão / Profissional');
       setAtivando(false);
       setFeedback(res);
 
@@ -48,14 +48,9 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
     }
   };
 
-  const preencherChaveDemonstracao = (chaveExemplo: string) => {
-    setChave(chaveExemplo);
-    setFeedback(null);
-  };
-
   const handleComprarWhatsApp = () => {
     const msg = encodeURIComponent(
-      'Olá! Gostaria de comprar ou ativar uma Chave de Licença para o aplicativo Agenda Nail Designer.'
+      'Olá! Gostaria de comprar ou ativar uma Chave de Licença para o aplicativo Beauty Gestão & Agenda Pro.'
     );
     // WhatsApp comercial para venda de licenças
     window.open(`https://api.whatsapp.com/send?phone=5535997141856&text=${msg}`, '_blank');
@@ -70,8 +65,8 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
             <Lock size={18} className="text-[#F9EFE6]" />
           </div>
           <div>
-            <h1 className="font-serif font-bold text-sm tracking-wide text-white">Sheila Santos</h1>
-            <p className="text-[10px] text-[#A69485] uppercase tracking-wider font-semibold">Sistema de Gestão & Agenda</p>
+            <h1 className="font-serif font-bold text-sm tracking-wide text-white">Beauty Gestão & Agenda Pro</h1>
+            <p className="text-[10px] text-[#A69485] uppercase tracking-wider font-semibold">Sistema Profissional de Gestão & Agendamento</p>
           </div>
         </div>
 
@@ -126,7 +121,7 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="EX: SHEILA-VIP-2026"
+                  placeholder="DIGITE SUA CHAVE DE ATIVAÇÃO"
                   value={chave}
                   onChange={(e) => setChave(e.target.value.toUpperCase())}
                   className="w-full bg-[#11100F] border border-[#3E352E] focus:border-[#8C6D58] focus:ring-1 focus:ring-[#8C6D58] rounded-2xl px-4 py-3.5 text-sm font-mono tracking-widest text-center text-white placeholder:text-[#5A4F46] outline-none transition-all uppercase font-bold"
@@ -143,7 +138,7 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
                 type="text"
                 value={titular}
                 onChange={(e) => setTitular(e.target.value)}
-                placeholder="Nome da titular da licença"
+                placeholder="Ex: Studio Beleza & Arte / Nome da Titular"
                 className="w-full bg-[#11100F] border border-[#3E352E] focus:border-[#8C6D58] rounded-2xl px-4 py-2.5 text-xs text-white placeholder:text-[#5A4F46] outline-none transition-all"
               />
             </div>
@@ -167,22 +162,6 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
               )}
             </button>
           </form>
-
-          {/* Atalho de Chave Oficial Sheila */}
-          <div className="pt-2 border-t border-[#2E2823]">
-            <p className="text-[11px] text-[#A69485] text-center mb-2">
-              Chave oficial da Sheila Santos:
-            </p>
-            <button
-              type="button"
-              onClick={() => preencherChaveDemonstracao('SHEILA-VIP-2026')}
-              className="w-full py-2 bg-[#25211E] hover:bg-[#2F2A26] border border-[#3E352E] rounded-xl text-xs font-mono font-bold text-[#E8C9B5] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-              title="Clique para preencher a chave oficial da Sheila"
-            >
-              <Crown size={14} className="text-amber-400" />
-              <span>SHEILA-VIP-2026 (Vitalício)</span>
-            </button>
-          </div>
 
           {/* Planos e Venda de Licenças */}
           <div className="bg-[#141211] border border-[#2A2420] rounded-2xl p-4 space-y-3">

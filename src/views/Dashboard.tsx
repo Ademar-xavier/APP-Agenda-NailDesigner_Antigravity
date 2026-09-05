@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   DollarSign, 
   Calendar, 
@@ -10,10 +10,15 @@ import {
   MessageCircle,
   ArrowRight,
   Sparkles,
-  Users
+  Users,
+  BellRing,
+  CheckCircle2,
+  X,
+  Check,
+  ExternalLink
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Cliente, REGRA_DEVOLUCAO_PADRAO } from '../types';
+import { Cliente, REGRA_DEVOLUCAO_PADRAO, AvisoCliente } from '../types';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
 interface DashboardProps {
@@ -39,8 +44,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     currentUser,
     listaEspera,
     servicos,
-    equipe
+    equipe,
+    avisosNaoLidos,
+    marcarAvisoComoLido,
+    marcarTodosAvisosComoLidos
   } = useAppState();
+
+  const [avisoSelecionadoModal, setAvisoSelecionadoModal] = useState<AvisoCliente | null>(null);
 
   const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
   const mesAtualStr = dataBaseStr.slice(0, 7); // Mês atual em tempo real (YYYY-MM)
@@ -312,6 +322,120 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* CARD DE AVISOS NÃO LIDOS DAS CLIENTES */}
+      {avisosNaoLidos.length > 0 ? (
+        <div className="bg-white rounded-2xl border border-rose-200/80 p-5 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EFECE6] pb-3">
+            <div className="flex items-center gap-3">
+              <div className="relative p-2.5 bg-rose-50 text-rose-600 rounded-xl shrink-0">
+                <BellRing size={22} />
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-600"></span>
+                </span>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-serif font-bold text-base text-[#5A4535]">
+                    Avisos Recentes das Clientes
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
+                    {avisosNaoLidos.length} não lido{avisosNaoLidos.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <p className="text-xs text-[#8C7A6B]">
+                  Clique no aviso para ler os detalhes e dar baixa (ou acesse a aba Confirmações)
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={marcarTodosAvisosComoLidos}
+              className="px-3 py-1.5 text-xs font-semibold text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] border border-[#EFECE6] rounded-xl transition-colors shrink-0 self-start sm:self-auto cursor-pointer"
+            >
+              Dar Baixa em Todos
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
+            {avisosNaoLidos.map((av) => (
+              <div
+                key={av.id}
+                onClick={() => setAvisoSelecionadoModal(av)}
+                className="p-3.5 rounded-xl border border-[#EFECE6] hover:border-[#8C6D58] bg-[#FAF9F6] hover:bg-white transition-all cursor-pointer shadow-2xs group flex flex-col justify-between gap-2 text-left"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                      av.tipo === 'confirmacao'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : av.tipo === 'cancelamento'
+                        ? 'bg-rose-100 text-rose-800'
+                        : av.tipo === 'espera'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-pink-100 text-pink-800'
+                    }`}>
+                      {av.tipo === 'confirmacao' ? 'Presença Confirmada' :
+                       av.tipo === 'cancelamento' ? 'Cancelamento' :
+                       av.tipo === 'espera' ? 'Fila de Espera' : 'Novo Agendamento'}
+                    </span>
+                    <span className="text-[10px] text-[#8C7A6B] font-mono">{av.hora}</span>
+                  </div>
+
+                  <h4 className="font-bold text-xs text-[#5A4535] group-hover:text-[#8C6D58] transition-colors line-clamp-1">
+                    {av.titulo}
+                  </h4>
+
+                  <p className="text-xs text-[#5A4535] leading-snug line-clamp-2">
+                    {av.mensagem}
+                  </p>
+
+                  {av.detalhes && (
+                    <p className="text-[10px] text-[#8C7A6B] italic truncate">
+                      {av.detalhes}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[#EFECE6]/60 text-[11px]">
+                  <span className="font-semibold text-[#8C6D58] group-hover:underline flex items-center gap-1">
+                    <span>Ler e dar baixa</span>
+                    <ArrowRight size={11} />
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      marcarAvisoComoLido(av.id);
+                    }}
+                    className="p-1 px-2 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1"
+                    title="Dar baixa neste aviso imediatamente"
+                  >
+                    <Check size={12} />
+                    <span>Baixar</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white/70 border border-[#EFECE6] rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-[#8C7A6B] shadow-2xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+            <span className="font-medium">Nenhum aviso pendente das clientes no momento. Todos os horários e avisos foram lidos.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCurrentView('confirmacoes')}
+            className="text-[11px] font-bold text-[#8C6D58] hover:underline self-start sm:self-auto cursor-pointer"
+          >
+            Acessar Tela de Confirmações &rarr;
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Left (List / Agenda) - Right (Confirmations / Maintenance) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -653,6 +777,99 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
       </div>
+
+      {/* MODAL DE LEITURA DO AVISO */}
+      {avisoSelecionadoModal && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setAvisoSelecionadoModal(null)}
+        >
+          <div 
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-[#EFECE6] space-y-5 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-[#EFECE6] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  avisoSelecionadoModal.tipo === 'confirmacao'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : avisoSelecionadoModal.tipo === 'cancelamento'
+                    ? 'bg-rose-100 text-rose-700'
+                    : avisoSelecionadoModal.tipo === 'espera'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-pink-100 text-pink-700'
+                }`}>
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535] leading-tight">
+                    {avisoSelecionadoModal.titulo}
+                  </h3>
+                  <p className="text-[10px] text-[#8C7A6B] font-mono mt-0.5">
+                    Recebido às {avisoSelecionadoModal.hora}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAvisoSelecionadoModal(null)}
+                className="p-1 rounded-full text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4">
+              <div>
+                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                  Mensagem
+                </span>
+                <p className="text-sm font-semibold text-[#5A4535] mt-1 leading-relaxed">
+                  {avisoSelecionadoModal.mensagem}
+                </p>
+              </div>
+
+              {avisoSelecionadoModal.detalhes && (
+                <div className="pt-2 border-t border-[#EFECE6]">
+                  <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                    Detalhes Adicionais
+                  </span>
+                  <p className="text-xs text-[#5A4535] mt-0.5">
+                    {avisoSelecionadoModal.detalhes}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  marcarAvisoComoLido(avisoSelecionadoModal.id);
+                  setAvisoSelecionadoModal(null);
+                }}
+                className="w-full sm:flex-1 py-2.5 px-4 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Check size={14} />
+                <span>Dar Baixa (Marcar Lido)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  marcarAvisoComoLido(avisoSelecionadoModal.id);
+                  setAvisoSelecionadoModal(null);
+                  setCurrentView('confirmacoes');
+                }}
+                className="w-full sm:flex-1 py-2.5 px-4 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <ExternalLink size={13} />
+                <span>Ir para Confirmações</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

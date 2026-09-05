@@ -1687,8 +1687,9 @@ export const Configuracoes: React.FC = () => {
                     </div>
                   </div>
 
-                  <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white border border-[#E5D5C5] text-[#5A4535] shadow-2xs">
-                    {licencaAtual?.chave || 'CHAVE NÃO DEFINIDA'}
+                  <span className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-white border border-[#E5D5C5] text-[#5A4535] shadow-2xs flex items-center gap-1.5" title="Código de acesso criptografado e protegido contra cópia">
+                    <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                    <span>••••-••••-•••• (Ativada & Protegida)</span>
                   </span>
                 </div>
 
@@ -1739,7 +1740,7 @@ export const Configuracoes: React.FC = () => {
                   <input
                     type="text"
                     required
-                    placeholder="EX: SHEILA-VIP-2026 OU VITA-XXXX-XXXX"
+                    placeholder="DIGITE A NOVA CHAVE DE ATIVAÇÃO"
                     value={novaChaveInput}
                     onChange={(e) => setNovaChaveInput(e.target.value.toUpperCase())}
                     className="flex-1 border border-[#EFECE6] rounded-xl px-4 py-2.5 text-xs text-[#5A4535] bg-[#FAF9F6] font-mono uppercase font-bold"
