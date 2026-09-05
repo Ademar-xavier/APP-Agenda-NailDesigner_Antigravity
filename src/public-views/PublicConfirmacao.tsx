@@ -20,7 +20,7 @@ import {
   Check,
   RotateCcw
 } from 'lucide-react';
-import { supabase, atualizarStatusAgendamentoSupabase } from '../services/supabase';
+import { supabase, atualizarStatusAgendamentoSupabase, enviarNotificacaoRealtimeMultiDispositivos } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
 import { REGRA_DEVOLUCAO_PADRAO } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
@@ -437,22 +437,15 @@ export const PublicConfirmacao: React.FC = () => {
         }
       } catch (err) {}
 
-      try {
-        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-          const bc = new BroadcastChannel('nail_agenda_sync');
-          bc.postMessage({
-            type: 'CLIENTE_ACAO',
-            notificacao: {
-              tipo: 'confirmacao',
-              titulo: 'Presença Confirmada! ✅',
-              mensagem: `A cliente ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
-              detalhes: `Horário #${agendamento.id}`,
-              agendamentoId: agendamento.id
-            }
-          });
-          bc.close();
-        }
-      } catch (err) {}
+      // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+      enviarNotificacaoRealtimeMultiDispositivos({
+        tipo: 'confirmacao',
+        titulo: 'Presença Confirmada! ✅',
+        mensagem: `A cliente ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
+        detalhes: `Horário #${agendamento.id}`,
+        agendamentoId: agendamento.id,
+        clienteNome: cliente?.nome
+      });
     } catch (e) {
       console.error('Erro ao confirmar:', e);
       alert('Não foi possível confirmar no momento. Por favor, tente novamente ou entre em contato pelo WhatsApp.');
@@ -498,22 +491,15 @@ export const PublicConfirmacao: React.FC = () => {
         }
       } catch (err) {}
 
-      try {
-        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-          const bc = new BroadcastChannel('nail_agenda_sync');
-          bc.postMessage({
-            type: 'CLIENTE_ACAO',
-            notificacao: {
-              tipo: 'cancelamento',
-              titulo: 'Horário Cancelado ❌',
-              mensagem: `A cliente ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
-              detalhes: `Motivo: ${motivoFinal}`,
-              agendamentoId: agendamento.id
-            }
-          });
-          bc.close();
-        }
-      } catch (err) {}
+      // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+      enviarNotificacaoRealtimeMultiDispositivos({
+        tipo: 'cancelamento',
+        titulo: 'Horário Cancelado ❌',
+        mensagem: `A cliente ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
+        detalhes: `Motivo: ${motivoFinal}`,
+        agendamentoId: agendamento.id,
+        clienteNome: cliente?.nome
+      });
     } catch (e) {
       console.error('Erro ao cancelar:', e);
       alert('Não foi possível registrar o cancelamento. Por favor, avise-nos pelo WhatsApp.');
@@ -888,22 +874,14 @@ export const PublicConfirmacao: React.FC = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => {
-                          try {
-                            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-                              const bc = new BroadcastChannel('nail_agenda_sync');
-                              bc.postMessage({
-                                type: 'CLIENTE_ACAO',
-                                notificacao: {
-                                  tipo: 'pagamento_sinal',
-                                  titulo: 'Comprovante Pix Informado! 💵',
-                                  mensagem: `A cliente ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
-                                  detalhes: `Agendamento #${agendamento.id}`,
-                                  agendamentoId: agendamento.id
-                                }
-                              });
-                              bc.close();
-                            }
-                          } catch (err) {}
+                          enviarNotificacaoRealtimeMultiDispositivos({
+                            tipo: 'pagamento_sinal',
+                            titulo: 'Comprovante Pix Informado! 💵',
+                            mensagem: `A cliente ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
+                            detalhes: `Agendamento #${agendamento.id}`,
+                            agendamentoId: agendamento.id,
+                            clienteNome: cliente?.nome
+                          });
                         }}
                         className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
                       >

@@ -19,6 +19,7 @@ import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 import { gerarLinkWhatsApp, getConfirmationUrl } from '../utils/urlHelper';
+import { enviarNotificacaoRealtimeMultiDispositivos } from '../services/supabase';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -281,22 +282,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         }
       } catch (err) {}
 
-      try {
-        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-          const bc = new BroadcastChannel('nail_agenda_sync');
-          bc.postMessage({
-            type: 'CLIENTE_ACAO',
-            notificacao: {
-              tipo: 'agendamento',
-              titulo: 'Novo Agendamento Recebido! 💅',
-              mensagem: `${nome} agendou para ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`,
-              detalhes: `Código #${res.agendamento.id}`,
-              agendamentoId: res.agendamento.id
-            }
-          });
-          bc.close();
-        }
-      } catch (err) {}
+      // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+      enviarNotificacaoRealtimeMultiDispositivos({
+        tipo: 'agendamento',
+        titulo: 'Novo Agendamento Recebido! 💅',
+        mensagem: `${nome} agendou para ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`,
+        detalhes: `Código #${res.agendamento.id} • ${valorSinalFinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
+        agendamentoId: res.agendamento.id,
+        clienteNome: nome
+      });
     }
   };
 
@@ -343,21 +337,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       }
     } catch (err) {}
 
-    try {
-      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-        const bc = new BroadcastChannel('nail_agenda_sync');
-        bc.postMessage({
-          type: 'CLIENTE_ACAO',
-          notificacao: {
-            tipo: 'espera',
-            titulo: 'Nova Inscrição na Lista de Espera ⏳',
-            mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}.`,
-            detalhes: `Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`
-          }
-        });
-        bc.close();
-      }
-    } catch (err) {}
+    // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+    enviarNotificacaoRealtimeMultiDispositivos({
+      tipo: 'espera',
+      titulo: 'Nova Inscrição na Lista de Espera ⏳',
+      mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}.`,
+      detalhes: `Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`,
+      clienteNome: nome
+    });
 
     setStep(7);
   };

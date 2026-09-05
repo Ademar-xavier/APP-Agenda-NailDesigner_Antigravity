@@ -433,3 +433,102 @@ export const carregarDadosNuvemSupabase = async () => {
     return null;
   }
 };
+
+// --- SINCRONIZAÇÃO E NOTIFICAÇÃO REALTIME MULTI-DISPOSITIVOS ---
+export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
+  tipo: 'agendamento' | 'confirmacao' | 'cancelamento' | 'pagamento_sinal' | 'espera';
+  titulo: string;
+  mensagem: string;
+  detalhes?: string;
+  agendamentoId?: string;
+  listaEsperaId?: string;
+  clienteNome?: string;
+}) => {
+  // 1. BroadcastChannel local (para abas no mesmo aparelho)
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('nail_agenda_sync');
+      bc.postMessage({
+        type: 'CLIENTE_ACAO',
+        notificacao
+      });
+      bc.close();
+    }
+  } catch (err) {}
+
+  // 2. Supabase Realtime Broadcast (entre todos os aparelhos/celulares conectados via internet)
+  try {
+    const canal = supabase.channel('nail_app_realtime_broadcast');
+    canal.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        canal.send({
+          type: 'broadcast',
+          event: 'CLIENTE_ACAO',
+          payload: notificacao
+        });
+      }
+    });
+  } catch (err) {
+    console.error('Erro no broadcast realtime:', err);
+  }
+
+  // 3. Persistência na nuvem (Supabase configuracoes -> config_salao.avisos_nao_lidos)
+  try {
+    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+    const configSalao = data?.config_salao || {};
+    const avisosExistentes: any[] = Array.isArray(configSalao.avisos_nao_lidos) ? configSalao.avisos_nao_lidos : [];
+
+    const horaAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const novoAviso = {
+      id: 'aviso_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      criadoEm: new Date().toISOString(),
+      lido: false,
+      hora: horaAgora,
+      ...notificacao
+    };
+
+    const filtrados = avisosExistentes.filter(a => !(a.agendamentoId && a.agendamentoId === notificacao.agendamentoId && a.tipo === notificacao.tipo));
+    const atualizados = [novoAviso, ...filtrados].slice(0, 50);
+
+    await supabase.from('configuracoes').upsert({
+      id: 'salao_principal',
+      config_salao: {
+        ...configSalao,
+        avisos_nao_lidos: atualizados
+      },
+      atualizado_em: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Erro ao persistir aviso no Supabase:', err);
+  }
+};
+
+// --- PERSISTIR LISTA DE AVISOS ATUALIZADA (QUANDO DER BAIXA / MARCAR COMO LIDO) ---
+export const persistirAvisosNaoLidosSupabase = async (avisos: any[]) => {
+  try {
+    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+    const configSalao = data?.config_salao || {};
+    await supabase.from('configuracoes').upsert({
+      id: 'salao_principal',
+      config_salao: {
+        ...configSalao,
+        avisos_nao_lidos: avisos
+      },
+      atualizado_em: new Date().toISOString()
+    });
+
+    // Avisa todos os dispositivos conectados para atualizarem a lista em tempo real
+    const canal = supabase.channel('nail_app_realtime_broadcast');
+    canal.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        canal.send({
+          type: 'broadcast',
+          event: 'AVISOS_SYNC',
+          payload: { avisos }
+        });
+      }
+    });
+  } catch (e) {
+    console.error('Erro ao atualizar avisos no Supabase:', e);
+  }
+};

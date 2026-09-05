@@ -33,28 +33,15 @@ import {
   salvarDespesaSupabase,
   deletarDespesaSupabase,
   salvarConfiguracoesSupabase,
-  salvarUsuarioSupabase
+  salvarUsuarioSupabase,
+  persistirAvisosNaoLidosSupabase
 } from '../services/supabase';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
 // Emite sinal sonoro suave e elegante (dois tons em acorde harmônico) usando a Web Audio API nativa
-export const tocarAlertaSonoro = () => {
+const emitirTonsHarmonicos = (ctx: AudioContext) => {
   try {
-    // Vibração háptica no celular
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try { navigator.vibrate([150, 80, 150]); } catch (err) {}
-    }
-
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-
-    // Em dispositivos móveis (Android/iOS), se o contexto iniciar suspenso, retoma
-    if (ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
-    }
-
     const now = ctx.currentTime;
 
     // Tom 1 (G5 - 783.99 Hz)
@@ -80,6 +67,28 @@ export const tocarAlertaSonoro = () => {
     gain2.connect(ctx.destination);
     osc2.start(now + 0.12);
     osc2.stop(now + 0.6);
+  } catch (err) {}
+};
+
+export const tocarAlertaSonoro = () => {
+  try {
+    // Vibração háptica no celular
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([150, 80, 150]); } catch (err) {}
+    }
+
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+
+    // Em dispositivos móveis (Android/iOS), se o contexto estiver suspenso, retoma antes de emitir
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        emitirTonsHarmonicos(ctx);
+      }).catch(() => {});
+    } else {
+      emitirTonsHarmonicos(ctx);
+    }
   } catch (e) {
     console.warn('Alerta sonoro não pôde ser executado:', e);
   }
@@ -343,6 +352,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const filtrados = prev.filter(a => !(a.agendamentoId && a.agendamentoId === novoAviso.agendamentoId && a.tipo === novoAviso.tipo));
       const atualizados = [novoAviso, ...filtrados];
       salvarAvisosLocalStorage(atualizados);
+      persistirAvisosNaoLidosSupabase(atualizados);
       return atualizados;
     });
   };
@@ -357,6 +367,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         (!a.listaEsperaId || a.listaEsperaId.toLowerCase() !== alvo)
       );
       salvarAvisosLocalStorage(atualizados);
+      persistirAvisosNaoLidosSupabase(atualizados);
       return atualizados;
     });
   };
@@ -364,6 +375,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const marcarTodosAvisosComoLidos = () => {
     setAvisosNaoLidos([]);
     salvarAvisosLocalStorage([]);
+    persistirAvisosNaoLidosSupabase([]);
   };
 
   const dispararNotificacaoCliente = (notif: Omit<NotificacaoClienteAcao, 'id' | 'hora'>) => {
@@ -411,15 +423,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setNotificacaoClienteAcao(prev => (prev?.id === novaNotif.id ? null : prev));
       }, 9000);
     }
+
+    // Dispara notificação nativa do sistema operacional caso permitida
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(notif.titulo, {
+          body: `${notif.mensagem}${notif.detalhes ? ' • ' + notif.detalhes : ''}`,
+          icon: './logo.png?v=3',
+          badge: './logo.png?v=3'
+        });
+      }
+    } catch (e) {}
   };
 
   const fecharNotificacaoClienteAcao = () => {
     setNotificacaoClienteAcao(null);
   };
 
-  // Desbloqueia AudioContext na primeira interação do usuário para permitir autoplay de áudio
+  // Desbloqueia AudioContext na primeira interação e solicita permissão de Notificação nativa
   useEffect(() => {
-    const unlockAudio = () => {
+    const unlockAudioAndNotification = () => {
       try {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtx) {
@@ -427,14 +450,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           if (ctx.state === 'suspended') ctx.resume();
         }
       } catch (e) {}
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
+
+      try {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+      } catch (e) {}
+
+      window.removeEventListener('click', unlockAudioAndNotification);
+      window.removeEventListener('touchstart', unlockAudioAndNotification);
     };
-    window.addEventListener('click', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true });
+    window.addEventListener('click', unlockAudioAndNotification, { once: true });
+    window.addEventListener('touchstart', unlockAudioAndNotification, { once: true });
     return () => {
-      window.removeEventListener('click', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudioAndNotification);
+      window.removeEventListener('touchstart', unlockAudioAndNotification);
     };
   }, []);
 
@@ -876,7 +906,59 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           };
           setConfigSalao(cfg);
           try { localStorage.setItem('nail_config_salao', JSON.stringify(cfg)); } catch (e) {}
+
+          // Sincronização de Avisos Não Lidos da Nuvem para o Aparelho Novo
+          const avisosNuvem = dados.configuracoes.config_salao.avisos_nao_lidos;
+          if (Array.isArray(avisosNuvem)) {
+            setAvisosNaoLidos(prev => {
+              const mapa = new Map<string, AvisoCliente>();
+              avisosNuvem.forEach((av: AvisoCliente) => {
+                const k = av.agendamentoId ? `${av.agendamentoId}_${av.tipo}` : av.id;
+                mapa.set(k, av);
+              });
+              prev.forEach(av => {
+                const k = av.agendamentoId ? `${av.agendamentoId}_${av.tipo}` : av.id;
+                if (!mapa.has(k)) {
+                  mapa.set(k, av);
+                }
+              });
+              const unificados = Array.from(mapa.values()).sort((a, b) => 
+                new Date(b.criadoEm || 0).getTime() - new Date(a.criadoEm || 0).getTime()
+              );
+              salvarAvisosLocalStorage(unificados);
+              return unificados;
+            });
+          }
         }
+
+        // Se um novo aparelho foi instalado e não há avisos salvos, mas existem agendamentos pendentes
+        setAvisosNaoLidos(prev => {
+          if (prev.length === 0 && dados.agendamentos && dados.agendamentos.length > 0) {
+            const pendentes = dados.agendamentos.filter((a: any) => a.status === 'pendente');
+            if (pendentes.length > 0) {
+              const novosAvisos: AvisoCliente[] = pendentes.map((a: any) => {
+                const cli = (dados.clientes || []).find((c: any) => c.id === a.cliente_id);
+                const horaStr = a.inicio ? a.inicio.split('T')[1]?.substring(0, 5) : '';
+                const dataStr = a.inicio ? new Date(a.inicio).toLocaleDateString('pt-BR') : '';
+                return {
+                  id: 'aviso_rec_' + a.id,
+                  tipo: 'agendamento' as const,
+                  titulo: 'Agendamento Aguardando Confirmação 💅',
+                  mensagem: `${cli?.nome || 'Cliente'} para o dia ${dataStr} às ${horaStr}.`,
+                  detalhes: `Código #${a.id} • Aguardando sinal`,
+                  hora: horaStr,
+                  agendamentoId: a.id,
+                  clienteNome: cli?.nome,
+                  criadoEm: a.criado_em || new Date().toISOString(),
+                  lido: false
+                };
+              });
+              salvarAvisosLocalStorage(novosAvisos);
+              return novosAvisos;
+            }
+          }
+          return prev;
+        });
         if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
           setTecnicas(dados.configuracoes.tecnicas);
           try { localStorage.setItem('nail_tecnicas', JSON.stringify(dados.configuracoes.tecnicas)); } catch (e) {}
@@ -1211,7 +1293,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (err) {}
 
-    // 4. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
+    // 4. Ouvinte Supabase Realtime Broadcast Multi-Dispositivos (comunicação instantânea pela nuvem < 50ms)
+    const realtimeBroadcastChannel = supabase
+      .channel('nail_app_realtime_broadcast')
+      .on('broadcast', { event: 'CLIENTE_ACAO' }, (event: any) => {
+        if (event.payload) {
+          dispararNotificacaoCliente(event.payload);
+          sincronizarComNuvem(false);
+        }
+      })
+      .on('broadcast', { event: 'AVISOS_SYNC' }, (event: any) => {
+        if (event.payload?.avisos && Array.isArray(event.payload.avisos)) {
+          setAvisosNaoLidos(event.payload.avisos);
+          salvarAvisosLocalStorage(event.payload.avisos);
+        }
+      })
+      .subscribe();
+
+    // 5. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
     const handleReSync = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         sincronizarComNuvem(false);
@@ -1220,13 +1319,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.addEventListener('focus', handleReSync);
     document.addEventListener('visibilitychange', handleReSync);
 
-    // 5. Polling contínuo leve a cada 15 segundos para garantir paridade total
+    // 6. Polling contínuo leve a cada 15 segundos para garantir paridade total
     const pollInterval = setInterval(() => {
       sincronizarComNuvem(false);
     }, 15000);
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(realtimeBroadcastChannel);
       bc?.close();
       window.removeEventListener('focus', handleReSync);
       document.removeEventListener('visibilitychange', handleReSync);

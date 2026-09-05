@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -109,6 +109,24 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [clienteId, setClienteId] = useState<string>('');
   const [buscaClienteModal, setBuscaClienteModal] = useState<string>('');
   const [dropdownClienteAberto, setDropdownClienteAberto] = useState<boolean>(false);
+  const buscaClienteRef = useRef<HTMLDivElement>(null);
+
+  // Fecha dropdown de busca ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (buscaClienteRef.current && !buscaClienteRef.current.contains(event.target as Node)) {
+        setDropdownClienteAberto(false);
+      }
+    };
+    if (dropdownClienteAberto) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [dropdownClienteAberto]);
   const [novoClienteNome, setNovoClienteNome] = useState<string>('');
   const [novoClienteFone, setNovoClienteFone] = useState<string>('');
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
@@ -934,7 +952,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                               </button>
                             </div>
                           ) : (
-                            <div className="relative">
+                            <div className="relative" ref={buscaClienteRef}>
                               <div className="flex items-center gap-2 border border-[#EFECE6] rounded-xl px-3 py-2.5 bg-[#FAF9F6] focus-within:border-[#8C6D58] focus-within:bg-white transition-all shadow-2xs">
                                 <Search size={15} className="text-[#8C7A6B] shrink-0" />
                                 <input
