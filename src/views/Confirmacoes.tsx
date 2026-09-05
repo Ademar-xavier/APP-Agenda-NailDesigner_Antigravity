@@ -98,14 +98,19 @@ export const Confirmacoes: React.FC = () => {
           ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
           : '';
 
+        const prof = equipe.find(e => e.id === a.profissional_id);
+        const chavePixEfetiva = (prof?.usar_pix_proprio && prof?.chave_pix?.trim())
+          ? prof.chave_pix.trim()
+          : configSalao.chave_pix;
+
         msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
           cliente: clientName,
           servico: servText,
-          profissional: 'Sheila',
+          profissional: prof?.nome || 'Sheila',
           data: new Date(a.inicio).toLocaleDateString('pt-BR'),
           hora: horaStr,
           sinal: String(a.valor_sinal),
-          chave_pix: configSalao.chave_pix,
+          chave_pix: chavePixEfetiva,
           link_reserva: linkConfirmacao,
           link_confirmacao: linkConfirmacao,
           salao: configSalao.nome || 'Sheila Santos Nails'
@@ -467,14 +472,19 @@ export const Confirmacoes: React.FC = () => {
         ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
         : '';
 
+      const prof = equipe.find(e => e.id === a.profissional_id);
+      const chavePixEfetiva = (prof?.usar_pix_proprio && prof?.chave_pix?.trim())
+        ? prof.chave_pix.trim()
+        : configSalao.chave_pix;
+
       msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
         cliente: client.nome,
         servico: servText,
-        profissional: 'Sheila',
+        profissional: prof?.nome || 'Sheila',
         data: new Date(a.inicio).toLocaleDateString('pt-BR'),
         hora: horaStr,
         sinal: String(a.valor_sinal),
-        chave_pix: configSalao.chave_pix,
+        chave_pix: chavePixEfetiva,
         link_reserva: linkConfirmacao,
         link_confirmacao: linkConfirmacao,
         salao: configSalao.nome || 'Sheila Santos Nails'
@@ -540,6 +550,21 @@ export const Confirmacoes: React.FC = () => {
       return;
     }
 
+    const telLimpo = client.telefone ? client.telefone.replace(/\D/g, '') : '';
+    const temWhatsAppValido = telLimpo.length >= 10;
+
+    if (!temWhatsAppValido) {
+      confirmarAcao({
+        titulo: 'Telefone Sem WhatsApp Válido',
+        mensagem: `A cliente "${client.nome}" não possui telefone com DDD completo cadastrado para disparo de WhatsApp (${client.telefone || 'sem telefone'}). Deseja remover da lista de espera sem enviar mensagem?`,
+        tipo: 'aviso',
+        textoConfirmar: 'Remover Sem Avisar',
+        textoCancelar: 'Voltar',
+        onConfirm: () => updateListaEsperaStatus(w.id, 'cancelado')
+      });
+      return;
+    }
+
     confirmarAcao({
       titulo: 'Remover da Lista de Espera',
       mensagem: `Deseja realmente remover ${client.nome} da lista de espera e enviar o aviso de impossibilidade de encaixe por WhatsApp?`,
@@ -548,7 +573,6 @@ export const Confirmacoes: React.FC = () => {
       onConfirm: () => {
         updateListaEsperaStatus(w.id, 'cancelado');
         
-        const fone = client.telefone.replace(/\D/g, '');
         const dataFormatada = w.data_preferida.split('-').reverse().join('/');
         const periodoLabel = w.periodo_preferido === 'manha' ? 'Manhã' : 
                              w.periodo_preferido === 'tarde' ? 'Tarde' : 
@@ -557,7 +581,19 @@ export const Confirmacoes: React.FC = () => {
         const msg = `Olá, ${client.nome}! Infelizmente não conseguimos uma vaga para encaixe no dia ${dataFormatada} (${periodoLabel}) como solicitado. Havendo novas oportunidades e desistências futuras, entraremos em contato. Agradecemos muito a sua compreensão! 💕`;
         
         const url = gerarLinkWhatsApp(client.telefone, msg);
-        if (url) window.open(url, '_blank');
+        if (url) {
+          try {
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          } catch (e) {
+            window.location.href = url;
+          }
+        }
       }
     });
   };

@@ -198,6 +198,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
           : '';
 
+        const chavePixEfetiva = (prof?.usar_pix_proprio && prof?.chave_pix?.trim())
+          ? prof.chave_pix.trim()
+          : configSalao.chave_pix;
+
         msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
           cliente: cliente.nome,
           servico: servText,
@@ -205,7 +209,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           data: dataFormatada,
           hora: horaStr,
           sinal: String(agendamento.valor_sinal),
-          chave_pix: configSalao.chave_pix,
+          chave_pix: chavePixEfetiva,
           link_reserva: linkConfirmacao,
           link_confirmacao: linkConfirmacao,
           salao: configSalao.nome || 'Sheila Santos Nails'
@@ -324,6 +328,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const regraTextoBase = configSalao.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO;
     const regraDevolucaoTexto = `\n\n📌 *Política de devolução/cancelamento:*\n${regraTextoBase.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`;
 
+    const chavePixEfetiva = (prof?.usar_pix_proprio && prof?.chave_pix?.trim())
+      ? prof.chave_pix.trim()
+      : configSalao.chave_pix;
+
     let msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
       cliente: cliente.nome,
       servico: servText,
@@ -331,7 +339,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       data: dataFormatada,
       hora: horaStr,
       sinal: String(valor),
-      chave_pix: configSalao.chave_pix,
+      chave_pix: chavePixEfetiva,
       link_reserva: linkConfirmacao,
       link_confirmacao: linkConfirmacao,
       salao: configSalao.nome || 'Sheila Santos Nails'

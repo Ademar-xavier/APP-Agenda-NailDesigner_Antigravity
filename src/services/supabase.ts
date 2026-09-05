@@ -98,12 +98,14 @@ export const atualizarStatusAgendamentoSupabase = async (
   id: string, 
   status: string, 
   canceladoPor?: string, 
-  motivo?: string
+  motivo?: string,
+  confirmadoPor?: 'cliente' | 'admin'
 ) => {
   try {
     const updates: any = { status };
     if (canceladoPor) updates.cancelado_por = canceladoPor;
     if (motivo) updates.motivo_cancelamento = motivo;
+    if (confirmadoPor) updates.confirmado_por = confirmadoPor;
 
     // 1. Atualizar localStorage imediatamente para sincronia no mesmo navegador
     try {
@@ -116,7 +118,8 @@ export const atualizarStatusAgendamentoSupabase = async (
               ...a, 
               status, 
               ...(canceladoPor ? { cancelado_por: canceladoPor } : {}), 
-              ...(motivo ? { motivo_cancelamento: motivo } : {}) 
+              ...(motivo ? { motivo_cancelamento: motivo } : {}),
+              ...(confirmadoPor ? { confirmado_por: confirmadoPor } : {})
             };
           }
           return a;
@@ -129,7 +132,7 @@ export const atualizarStatusAgendamentoSupabase = async (
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const bc = new BroadcastChannel('nail_agenda_sync');
-        bc.postMessage({ type: 'STATUS_UPDATED', id, status, canceladoPor, motivo });
+        bc.postMessage({ type: 'STATUS_UPDATED', id, status, canceladoPor, motivo, confirmadoPor });
         bc.close();
       }
     } catch (err) {}
@@ -312,12 +315,20 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
     if (usuario.servicos_habilitados && Array.isArray(usuario.servicos_habilitados)) {
       payload.servicos_habilitados = usuario.servicos_habilitados;
     }
+    if (usuario.chave_pix !== undefined) {
+      payload.chave_pix = usuario.chave_pix;
+    }
+    if (usuario.usar_pix_proprio !== undefined) {
+      payload.usar_pix_proprio = usuario.usar_pix_proprio;
+    }
 
     let { error } = await supabase.from('usuarios').upsert(payload);
 
-    // Se a tabela usuarios não tiver a coluna servicos_habilitados ainda, salva os dados básicos
+    // Se a tabela usuarios não tiver colunas extras ainda, faz fallback seguro
     if (error && error.code === 'PGRST204') {
       delete payload.servicos_habilitados;
+      delete payload.chave_pix;
+      delete payload.usar_pix_proprio;
       const res = await supabase.from('usuarios').upsert(payload);
       error = res.error;
     }

@@ -12,11 +12,13 @@ import {
   Copy,
   Heart,
   Users,
-  RotateCcw
+  RotateCcw,
+  MessageCircle
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
+import { gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -69,11 +71,18 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const [codigoReserva, setCodigoReserva] = useState<string>('');
   const [valorSinal, setValorSinal] = useState<number>(0);
   const [valorTotal, setValorTotal] = useState<number>(0);
+  const [profissionalConfirmadaId, setProfissionalConfirmadaId] = useState<string>('');
   const [copiado, setCopiado] = useState<boolean>(false);
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
+
+  const profEfetiva = (equipe || []).find(e => e.id === (profissionalConfirmadaId || profissionalId));
+  const usarPixProfissional = !!(profEfetiva?.usar_pix_proprio && profEfetiva?.chave_pix?.trim());
+  const chavePixAtiva = usarPixProfissional ? profEfetiva!.chave_pix!.trim() : configSalao.chave_pix;
+  const titularPixAtivo = usarPixProfissional ? profEfetiva!.nome : (configSalao.proprietaria || 'Sheila Santos');
+  const telefoneWhatsAppAtivo = (usarPixProfissional && profEfetiva?.telefone) ? profEfetiva.telefone.replace(/\D/g, '') : configSalao.telefone;
 
   const profSelecionada = equipe.find(e => e.id === profissionalId);
   const servsDisponiveis = useMemo(() => {
@@ -212,6 +221,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       setCodigoReserva(res.agendamento.id);
       setValorSinal(sinalTotal);
       setValorTotal(precoTotal);
+      setProfissionalConfirmadaId(profFinalId);
       setStep(5);
 
       // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
@@ -306,7 +316,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   };
 
   const handleCopiarPix = () => {
-    navigator.clipboard.writeText(configSalao.chave_pix);
+    if (!chavePixAtiva) return;
+    navigator.clipboard.writeText(chavePixAtiva);
     setCopiado(true);
     setTimeout(() => setCopiado(false), 2000);
   };
@@ -867,8 +878,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
                 <div className="flex items-center justify-between bg-white border border-[#FFEBAA] rounded-xl px-3 py-2">
                   <div className="overflow-hidden pr-2">
-                    <p className="text-[9px] font-bold text-[#A88690] uppercase">Chave Pix Copia-e-Cola</p>
-                    <p className="font-semibold truncate text-[11px] mt-0.5">{configSalao.chave_pix}</p>
+                    <p className="text-[9px] font-bold text-[#A88690] uppercase">
+                      Chave Pix Copia-e-Cola ({titularPixAtivo})
+                    </p>
+                    <p className="font-semibold truncate text-[11px] mt-0.5">{chavePixAtiva}</p>
                   </div>
                   <button
                     onClick={handleCopiarPix}
@@ -882,6 +895,34 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   {configSalao.instrucoes_pix}
                 </p>
               </div>
+            )}
+
+            {valorSinal > 0 ? (
+              <a
+                href={gerarLinkWhatsApp(
+                  telefoneWhatsAppAtivo,
+                  `Olá, ${titularPixAtivo}! ✨ Segue o comprovante do sinal de ${formatarMoeda(valorSinal)} referente ao meu agendamento #${codigoReserva} para o dia ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`
+                ) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={16} />
+                <span>Enviar Comprovante pelo WhatsApp</span>
+              </a>
+            ) : (
+              <a
+                href={gerarLinkWhatsApp(
+                  telefoneWhatsAppAtivo,
+                  `Olá, ${titularPixAtivo}! ✅ Acabei de agendar pelo aplicativo para o dia ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado} (Agendamento #${codigoReserva}). Até breve! 💕`
+                ) || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
+              >
+                <MessageCircle size={16} />
+                <span>Avisar {titularPixAtivo} pelo WhatsApp</span>
+              </a>
             )}
 
             <button
@@ -1000,6 +1041,19 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             <p className="text-xs text-[#A88690] leading-relaxed">
               Entraremos em contato via WhatsApp caso haja alguma desistência de horário.
             </p>
+
+            <a
+              href={gerarLinkWhatsApp(
+                configSalao.telefone,
+                `Olá, Sheila! ✨ Acabei de me inscrever na lista de espera para o dia ${formatarDataLocal(dataSelecionada)} (${periodoPreferido === 'qualquer' ? 'qualquer horário' : periodoPreferido}). Meu nome é ${nome}. Obrigada! 💕`
+              ) || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
+            >
+              <MessageCircle size={16} />
+              <span>Avisar Salão pelo WhatsApp</span>
+            </a>
 
             <button
               onClick={() => {

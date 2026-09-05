@@ -38,7 +38,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     obterServicosDeAgendamento,
     currentUser,
     listaEspera,
-    servicos
+    servicos,
+    equipe
   } = useAppState();
 
   const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
@@ -145,14 +146,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ? `\n\n📌 *Política de devolução/cancelamento:*\n${templateRegra.replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}`
         : '';
 
+      const profId = extra?.profissionalId || (extra?.agendamentoId ? agendamentos.find(a => a.id === extra.agendamentoId)?.profissional_id : undefined);
+      const prof = profId ? equipe.find(e => e.id === profId) : undefined;
+      const chavePixEfetiva = (prof?.usar_pix_proprio && prof?.chave_pix?.trim())
+        ? prof.chave_pix.trim()
+        : configSalao.chave_pix;
+
       msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
         cliente: cliente.nome,
         servico: extra?.servico || 'serviço',
-        profissional: currentUser?.nome || 'Sheila',
+        profissional: prof?.nome || currentUser?.nome || 'Sheila',
         data: extra?.data || 'data',
         hora: extra?.hora || 'hora',
         sinal: String(extra?.sinal || 0),
-        chave_pix: configSalao.chave_pix,
+        chave_pix: chavePixEfetiva,
         link_reserva: linkReserva,
         link_confirmacao: linkReserva,
         salao: configSalao.nome || 'Sheila Santos Nails'
@@ -497,6 +504,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                                 handleEnviarMensagemWhatsApp(client, 'confirmacao', {
                                   agendamentoId: a.id,
+                                  profissionalId: a.profissional_id,
                                   servico: servText,
                                   data: dataFormatada,
                                   hora: horaStr,

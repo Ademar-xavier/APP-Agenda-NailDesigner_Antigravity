@@ -8,6 +8,8 @@ export interface Usuario {
   foto?: string;
   senha?: string;
   servicos_habilitados?: string[]; // IDs dos serviços que esta profissional realiza
+  chave_pix?: string; // Chave Pix própria da profissional
+  usar_pix_proprio?: boolean; // Se true, o Pix dos agendamentos dela vai para a chave própria ao invés da proprietária
 }
 
 export interface Cliente {
@@ -62,6 +64,7 @@ export interface Agendamento {
   origem: 'cliente' | 'admin';
   motivo_cancelamento?: string;
   cancelado_por?: 'cliente' | 'admin';
+  confirmado_por?: 'cliente' | 'admin';
   criado_em: string;
 }
 
