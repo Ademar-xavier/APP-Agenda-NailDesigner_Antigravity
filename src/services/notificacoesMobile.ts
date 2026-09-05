@@ -87,6 +87,8 @@ export const dispararNotificacaoBarraStatus = async (
             title: titulo,
             body: corpo,
             channelId: 'agendamentos_nail',
+            smallIcon: 'ic_launcher',
+            iconColor: '#C71585',
             extra: { agendamentoId }
           }
         ]
@@ -101,25 +103,31 @@ export const dispararNotificacaoBarraStatus = async (
   // No Android móvel PWA, o construtor `new Notification(...)` é bloqueado; DEVE-SE usar `registration.showNotification`
   try {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-      const reg = await Promise.race([
-        navigator.serviceWorker.ready,
-        new Promise<ServiceWorkerRegistration | undefined>((resolve) => setTimeout(() => resolve(undefined), 800))
-      ]) || await navigator.serviceWorker.getRegistration();
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        try { await Notification.requestPermission(); } catch (e) {}
+      }
 
-      if (reg && typeof reg.showNotification === 'function') {
-        await reg.showNotification(titulo, {
-          body: corpo,
-          icon: './logo.png?v=3',
-          badge: './logo.png?v=3',
-          vibrate: [250, 100, 250],
-          tag: agendamentoId ? `nail_${agendamentoId}` : `nail_${Date.now()}`,
-          renotify: true,
-          data: {
-            agendamentoId,
-            url: window.location.origin
-          }
-        } as any);
-        return;
+      if (typeof Notification === 'undefined' || Notification.permission === 'granted') {
+        const reg = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<ServiceWorkerRegistration | undefined>((resolve) => setTimeout(() => resolve(undefined), 800))
+        ]) || await navigator.serviceWorker.getRegistration();
+
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(titulo, {
+            body: corpo,
+            icon: './logo.png?v=3',
+            badge: './logo.png?v=3',
+            vibrate: [250, 100, 250],
+            tag: agendamentoId ? `nail_${agendamentoId}` : `nail_${Date.now()}`,
+            renotify: true,
+            data: {
+              agendamentoId,
+              url: window.location.origin
+            }
+          } as any);
+          return;
+        }
       }
     }
   } catch (err) {

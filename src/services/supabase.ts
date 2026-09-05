@@ -69,8 +69,32 @@ export const salvarServicoSupabase = async (servico: any) => {
 };
 
 // --- SALVAR / ATUALIZAR AGENDAMENTOS ---
-export const salvarAgendamentoSupabase = async (agendamento: Agendamento, servicosIds: string[] = []) => {
+export const salvarAgendamentoSupabase = async (
+  agendamento: Agendamento, 
+  servicosIds: string[] = [],
+  clienteInfo?: Partial<Cliente>
+) => {
   try {
+    // 1. Garante que o cliente existe no banco antes de inserir o agendamento (evita violar agendamentos_cliente_id_fkey)
+    if (agendamento.cliente_id && agendamento.cliente_id !== 'bloqueado') {
+      const { data: cliExistente } = await supabase.from('clientes').select('id').eq('id', agendamento.cliente_id).maybeSingle();
+      if (!cliExistente) {
+        let cliParaSalvar: any = clienteInfo;
+        if (!cliParaSalvar) {
+          try {
+            const raw = localStorage.getItem('nail_clientes');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              cliParaSalvar = parsed.find((c: any) => c.id === agendamento.cliente_id);
+            }
+          } catch (e) {}
+        }
+        if (cliParaSalvar) {
+          await salvarClienteSupabase(cliParaSalvar);
+        }
+      }
+    }
+
     const { error } = await supabase.from('agendamentos').upsert({
       id: agendamento.id,
       cliente_id: agendamento.cliente_id,
@@ -87,7 +111,26 @@ export const salvarAgendamentoSupabase = async (agendamento: Agendamento, servic
       itens_servicos: servicosIds,
       criado_em: agendamento.criado_em || new Date().toISOString()
     });
-    if (error) console.error('Erro ao salvar agendamento no Supabase:', error);
+    if (error) {
+      console.error('Erro ao salvar agendamento no Supabase:', error);
+      if (error.code === '23503' && clienteInfo) {
+        await salvarClienteSupabase(clienteInfo as Cliente);
+        await supabase.from('agendamentos').upsert({
+          id: agendamento.id,
+          cliente_id: agendamento.cliente_id,
+          profissional_id: agendamento.profissional_id || 'u1',
+          inicio: agendamento.inicio,
+          fim: agendamento.fim,
+          status: agendamento.status,
+          valor_total: Number(agendamento.valor_total) || 0,
+          valor_sinal: Number(agendamento.valor_sinal) || 0,
+          observacoes: agendamento.observacoes || null,
+          origem: agendamento.origem || 'cliente',
+          itens_servicos: servicosIds,
+          criado_em: agendamento.criado_em || new Date().toISOString()
+        });
+      }
+    }
   } catch (e) {
     console.error('Falha na requisição salvarAgendamentoSupabase:', e);
   }
@@ -203,8 +246,28 @@ export const deletarAgendamentoSupabase = async (id: string) => {
 };
 
 // --- SALVAR / ATUALIZAR LISTA DE ESPERA ---
-export const salvarListaEsperaSupabase = async (item: ListaEspera) => {
+export const salvarListaEsperaSupabase = async (item: ListaEspera, clienteInfo?: Partial<Cliente>) => {
   try {
+    // Garante que o cliente existe no banco antes de inserir na lista de espera (evita violar lista_espera_cliente_id_fkey)
+    if (item.cliente_id) {
+      const { data: cliExistente } = await supabase.from('clientes').select('id').eq('id', item.cliente_id).maybeSingle();
+      if (!cliExistente) {
+        let cliParaSalvar: any = clienteInfo;
+        if (!cliParaSalvar) {
+          try {
+            const raw = localStorage.getItem('nail_clientes');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              cliParaSalvar = parsed.find((c: any) => c.id === item.cliente_id);
+            }
+          } catch (e) {}
+        }
+        if (cliParaSalvar) {
+          await salvarClienteSupabase(cliParaSalvar);
+        }
+      }
+    }
+
     const { error } = await supabase.from('lista_espera').upsert({
       id: item.id,
       cliente_id: item.cliente_id,
@@ -214,7 +277,21 @@ export const salvarListaEsperaSupabase = async (item: ListaEspera) => {
       status: item.status,
       criado_em: item.criado_em || new Date().toISOString()
     });
-    if (error) console.error('Erro ao salvar lista de espera no Supabase:', error);
+    if (error) {
+      console.error('Erro ao salvar lista de espera no Supabase:', error);
+      if (error.code === '23503' && clienteInfo) {
+        await salvarClienteSupabase(clienteInfo as Cliente);
+        await supabase.from('lista_espera').upsert({
+          id: item.id,
+          cliente_id: item.cliente_id,
+          servico_id: item.servico_id,
+          data_preferida: item.data_preferida,
+          periodo_preferido: item.periodo_preferido,
+          status: item.status,
+          criado_em: item.criado_em || new Date().toISOString()
+        });
+      }
+    }
   } catch (e) {
     console.error('Falha em salvarListaEsperaSupabase:', e);
   }
@@ -434,6 +511,43 @@ export const carregarDadosNuvemSupabase = async () => {
   }
 };
 
+// --- CANAL DE BROADCAST REALTIME PERSISTENTE ---
+let sharedBroadcastChannel: any = null;
+let broadcastSubscribedPromise: Promise<void> | null = null;
+
+export const getRealtimeBroadcastChannel = (): any => {
+  if (!sharedBroadcastChannel) {
+    sharedBroadcastChannel = supabase.channel('nail_app_realtime_broadcast');
+    broadcastSubscribedPromise = new Promise((resolve) => {
+      sharedBroadcastChannel.subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          resolve();
+        }
+      });
+    });
+  }
+  return sharedBroadcastChannel;
+};
+
+export const enviarBroadcastRealtime = async (event: string, payload: any) => {
+  try {
+    const canal = getRealtimeBroadcastChannel();
+    if (broadcastSubscribedPromise) {
+      await Promise.race([
+        broadcastSubscribedPromise,
+        new Promise((resolve) => setTimeout(resolve, 800))
+      ]);
+    }
+    await canal.send({
+      type: 'broadcast',
+      event,
+      payload
+    });
+  } catch (err) {
+    console.warn('Erro ao enviar broadcast realtime:', err);
+  }
+};
+
 // --- SINCRONIZAÇÃO E NOTIFICAÇÃO REALTIME MULTI-DISPOSITIVOS ---
 export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   tipo: 'agendamento' | 'confirmacao' | 'cancelamento' | 'pagamento_sinal' | 'espera';
@@ -458,16 +572,7 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   } catch (err) {}
 
   // 2. Supabase Realtime Broadcast (entre todos os aparelhos/celulares conectados via internet)
-  try {
-    const canal = supabase.channel('nail_app_realtime_broadcast');
-    canal.send({
-      type: 'broadcast',
-      event: 'CLIENTE_ACAO',
-      payload: notificacao
-    }).catch(() => {});
-  } catch (err) {
-    console.error('Erro no broadcast realtime:', err);
-  }
+  await enviarBroadcastRealtime('CLIENTE_ACAO', notificacao);
 
   // 3. Persistência na nuvem (Supabase configuracoes -> config_salao.avisos_nao_lidos)
   try {
@@ -518,15 +623,8 @@ export const persistirAvisosNaoLidosSupabase = async (avisos: any[]) => {
       atualizado_em: new Date().toISOString()
     });
 
-    // Avisa todos os dispositivos conectados para atualizarem a lista em tempo real
-    try {
-      const canal = supabase.channel('nail_app_realtime_broadcast');
-      canal.send({
-        type: 'broadcast',
-        event: 'AVISOS_SYNC',
-        payload: { avisos }
-      }).catch(() => {});
-    } catch (e) {}
+    // Avisa todos os dispositivos conectados para atualizarem a lista em tempo real com broadcast garantido
+    await enviarBroadcastRealtime('AVISOS_SYNC', { avisos });
   } catch (e) {
     console.error('Erro ao atualizar avisos no Supabase:', e);
   }
