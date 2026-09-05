@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy, X } from 'lucide-react';
+import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy, X, ChevronRight } from 'lucide-react';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -419,10 +419,10 @@ function AppContent() {
         </div>
       )}
 
-      {/* POPUP VISUAL DE AÇÃO DA CLIENTE (Tempo Real) */}
+      {/* POPUP VISUAL DE AÇÃO DA CLIENTE (Push Banner no Topo no Celular / Canto Inferior no Desktop) */}
       {notificacaoClienteAcao && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] max-w-md w-[92%] sm:w-full animate-in slide-in-from-top-6 fade-in duration-300">
-          <div className="bg-[#1C1917] text-white p-4 rounded-2xl shadow-2xl border border-[#8C6D58]/40 backdrop-blur-md flex items-start gap-3 relative overflow-hidden">
+        <div className="fixed top-2 left-2 right-2 md:top-auto md:bottom-4 md:right-4 md:left-auto z-[999999] max-w-md md:max-w-sm w-auto pointer-events-auto animate-in slide-in-from-top-4 md:animate-bounce-short fade-in duration-300">
+          <div className="bg-[#1C1917]/95 text-white p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 backdrop-blur-md flex flex-col gap-2 relative overflow-hidden">
             {/* Barra de brilho no topo */}
             <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${
               notificacaoClienteAcao.tipo === 'confirmacao'
@@ -434,57 +434,77 @@ function AppContent() {
                 : 'from-[#DB7093] to-[#8C6D58]'
             }`} />
 
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-              notificacaoClienteAcao.tipo === 'confirmacao'
-                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                : notificacaoClienteAcao.tipo === 'cancelamento'
-                ? 'bg-rose-950 text-rose-400 border border-rose-800'
-                : notificacaoClienteAcao.tipo === 'espera'
-                ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                : 'bg-pink-950 text-pink-300 border border-pink-800'
-            }`}>
-              <Sparkles size={20} />
+            {/* Cabeçalho estilo notificação push Android / iOS */}
+            <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1 border-b border-white/5">
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center p-0.5 overflow-hidden">
+                  <img src="./logo.png?v=3" alt="App" className="w-full h-full object-cover rounded-full" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </div>
+                <span className="font-semibold text-zinc-200">Sheila Santos Nails</span>
+                <span>•</span>
+                <span className="text-[10px] font-mono">{notificacaoClienteAcao.hora}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={fecharNotificacaoClienteAcao}
+                className="text-zinc-400 hover:text-white p-0.5 rounded-lg transition-colors"
+                title="Fechar aviso"
+              >
+                <X size={14} />
+              </button>
             </div>
 
-            <div className="flex-1 min-w-0 pr-6">
-              <div className="flex items-center gap-2">
-                <h4 className="font-bold text-xs text-white leading-tight">{notificacaoClienteAcao.titulo}</h4>
-                <span className="text-[10px] text-zinc-400 font-mono">({notificacaoClienteAcao.hora})</span>
+            {/* Conteúdo da notificação */}
+            <div className="flex items-start gap-3 pt-0.5">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                notificacaoClienteAcao.tipo === 'confirmacao'
+                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                  : notificacaoClienteAcao.tipo === 'cancelamento'
+                  ? 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
+                  : notificacaoClienteAcao.tipo === 'espera'
+                  ? 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
+                  : 'bg-pink-950/80 text-pink-300 border border-pink-800/60'
+              }`}>
+                <Sparkles size={18} />
               </div>
-              <p className="text-xs text-zinc-300 mt-1 leading-snug">{notificacaoClienteAcao.mensagem}</p>
-              {notificacaoClienteAcao.detalhes && (
-                <p className="text-[11px] text-[#D37F64] font-semibold mt-0.5">{notificacaoClienteAcao.detalhes}</p>
-              )}
 
-              <div className="flex items-center gap-2 mt-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentView('agenda');
-                    fecharNotificacaoClienteAcao();
-                  }}
-                  className="px-3 py-1 bg-[#8C6D58] hover:bg-[#725743] text-white text-[11px] font-bold rounded-lg transition-colors shadow-sm"
-                >
-                  Ver na Agenda
-                </button>
-                <button
-                  type="button"
-                  onClick={fecharNotificacaoClienteAcao}
-                  className="px-2.5 py-1 text-zinc-400 hover:text-white text-[11px] font-medium transition-colors"
-                >
-                  Dispensar
-                </button>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-xs sm:text-sm text-white leading-tight">
+                  {notificacaoClienteAcao.titulo}
+                </h4>
+                <p className="text-xs text-zinc-300 mt-1 leading-snug">
+                  {notificacaoClienteAcao.mensagem}
+                </p>
+                {notificacaoClienteAcao.detalhes && (
+                  <p className="text-[11px] text-[#E0A899] font-medium mt-0.5">
+                    {notificacaoClienteAcao.detalhes}
+                  </p>
+                )}
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={fecharNotificacaoClienteAcao}
-              className="absolute top-3 right-3 text-zinc-400 hover:text-white p-1 rounded-lg transition-colors"
-              title="Fechar aviso"
-            >
-              <X size={16} />
-            </button>
+            {/* Ações da notificação */}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={fecharNotificacaoClienteAcao}
+                className="px-3 py-1 text-zinc-400 hover:text-white text-[11px] font-medium transition-colors"
+              >
+                Dispensar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView('agenda');
+                  fecharNotificacaoClienteAcao();
+                }}
+                className="px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] active:scale-95 text-white text-[11px] font-bold rounded-xl transition-all shadow-sm flex items-center gap-1"
+              >
+                <span>Ver na Agenda</span>
+                <ChevronRight size={12} />
+              </button>
+            </div>
           </div>
         </div>
       )}

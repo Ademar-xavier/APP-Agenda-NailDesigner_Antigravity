@@ -18,7 +18,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
-import { gerarLinkWhatsApp } from '../utils/urlHelper';
+import { gerarLinkWhatsApp, getConfirmationUrl } from '../utils/urlHelper';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -172,8 +172,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     if (!nome || !telefone) return;
 
     // 1. Identificar ou Cadastrar Cliente
+    const telDigits = telefone.replace(/\D/g, '');
+    const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === telDigits);
+    const isClienteNovo = !cliExistente;
+
     let cId = '';
-    const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === telefone.replace(/\D/g, ''));
     if (cliExistente) {
       cId = cliExistente.id;
     } else {
@@ -184,6 +187,34 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       });
       cId = novoCli.id;
     }
+
+    // Regras de Cobrança do Sinal:
+    const cobrarTodos = !!configSalao.regras?.sinal_obrigatorio_todos;
+    const cobrarNovos = !!(configSalao.regras?.sinal_obrigatorio_novos ?? configSalao.regras?.sinal_obrigatorio_geral ?? true);
+
+    let deveCobrarSinal = false;
+    if (cobrarTodos) {
+      deveCobrarSinal = true;
+    } else if (cobrarNovos && isClienteNovo) {
+      deveCobrarSinal = true;
+    }
+
+    // Cálculo do valor do sinal
+    let valorSinalFinal = 0;
+    if (deveCobrarSinal) {
+      const somaServs = servicosSelecionados.reduce((acc, id) => {
+        const s = servicos.find(item => item.id === id);
+        if (!s) return acc;
+        if (s.sinal_tipo === 'fixo') return acc + (s.sinal_valor || 0);
+        if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * (s.sinal_valor || 0) / 100);
+        return acc;
+      }, 0);
+
+      // Se os serviços somaram > 0 usa esse valor, senão usa o sinal_padrao das configurações (ou 15)
+      valorSinalFinal = somaServs > 0 ? somaServs : (configSalao.regras?.sinal_padrao || 15);
+    }
+
+    const statusFinal = valorSinalFinal > 0 ? 'pendente' : 'confirmado';
 
     // 2. Definir Profissional Atendente
     const dataInicioStr = `${dataSelecionada}T${horarioSelecionado}:00`;
@@ -210,16 +241,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       cliente_id: cId,
       profissional_id: profFinalId,
       inicio: dataInicioStr,
-      status: sinalTotal > 0 ? 'pendente' : 'confirmado',
+      status: statusFinal,
       valor_total: precoTotal,
-      valor_sinal: sinalTotal,
+      valor_sinal: valorSinalFinal,
       observacoes: obsComProf,
       origem: 'cliente'
     }, servicosSelecionados);
 
     if (res.success && res.agendamento) {
       setCodigoReserva(res.agendamento.id);
-      setValorSinal(sinalTotal);
+      setValorSinal(valorSinalFinal);
       setValorTotal(precoTotal);
       setProfissionalConfirmadaId(profFinalId);
       setStep(5);
@@ -230,7 +261,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
         const dataFmt = formatarDataLocal(dataSelecionada);
         const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
-        const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${sinalTotal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
+        const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
         if (telDest) {
           enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
         }
@@ -810,9 +841,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               <div className="w-12 h-12 rounded-full bg-[#EBF7EE] border border-[#C2EAD0] text-[#2B7A4B] flex items-center justify-center mx-auto">
                 <Check size={24} />
               </div>
-              <h3 className="font-serif font-bold text-lg text-[#5A3F45]">Agendamento Pré-Reservado!</h3>
+              <h3 className="font-serif font-bold text-lg text-[#5A3F45]">
+                {valorSinal > 0 ? 'Agendamento Pré-Reservado!' : 'Agendamento Confirmado com Sucesso!'}
+              </h3>
               <p className="text-xs text-[#A88690]">
-                Olá, {nome}! Seu horário está garantido. Siga as orientações Pix abaixo para confirmá-lo.
+                {valorSinal > 0 
+                  ? `Olá, ${nome}! Seu horário está garantido. Siga as orientações Pix abaixo para confirmá-lo:`
+                  : `Olá, ${nome}! Seu horário foi confirmado com sucesso. Te esperamos no salão! 💕`}
               </p>
             </div>
 
@@ -897,6 +932,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   {configSalao.instrucoes_pix}
                 </p>
               </div>
+            )}
+
+            {valorSinal > 0 && codigoReserva && (
+              <a
+                href={getConfirmationUrl(codigoReserva)}
+                className="w-full flex items-center justify-center gap-2 bg-[#8C6D58] hover:bg-[#725743] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm"
+              >
+                <span>Acompanhar Reserva & Enviar Comprovante</span>
+                <ChevronRight size={14} />
+              </a>
             )}
 
             <button

@@ -563,12 +563,11 @@ export const PublicConfirmacao: React.FC = () => {
   const titularPixParaPagamento = usarPixProf
     ? (dadosProfissional!.nome || profissionalNome || 'Profissional')
     : (dadosSalao.proprietaria || 'Sheila Santos');
-  const telefoneDestinatario = (usarPixProf && dadosProfissional?.telefone)
+  const telefoneDestinatario = (dadosProfissional?.telefone && dadosProfissional.telefone.trim())
     ? dadosProfissional.telefone.replace(/\D/g, '')
     : dadosSalao.telefone;
-  const nomeDestinatario = usarPixProf
-    ? (dadosProfissional!.nome || profissionalNome || 'Sheila')
-    : (dadosSalao.proprietaria || 'Sheila');
+  const nomeDestinatario = dadosProfissional?.nome || profissionalNome || dadosSalao.proprietaria || 'Sheila';
+  const primeiroNomeProfissional = (nomeDestinatario || 'Sheila').trim().split(' ')[0];
 
   // Link do WhatsApp com mensagem pronta
   const linkWhatsAppSalao = agendamento ? gerarLinkWhatsApp(
@@ -905,7 +904,7 @@ export const PublicConfirmacao: React.FC = () => {
                       </a>
 
                       <p className="text-[10px] text-center text-amber-800/80">
-                        Após você enviar o comprovante, Sheila confirmará seu horário e este painel será atualizado automaticamente! ✨
+                        Após você enviar o comprovante, {primeiroNomeProfissional} confirmará seu horário e este painel será atualizado automaticamente! ✨
                       </p>
                     </div>
 
@@ -1027,7 +1026,7 @@ export const PublicConfirmacao: React.FC = () => {
             >
               <span className="flex items-center gap-2 font-bold text-xs">
                 <MessageCircle size={16} className="text-emerald-600" />
-                Dúvidas? Fale com Sheila no WhatsApp
+                Dúvidas? Fale com {primeiroNomeProfissional} no WhatsApp
               </span>
               <ChevronRight size={14} className="text-emerald-600" />
             </a>
@@ -1036,17 +1035,24 @@ export const PublicConfirmacao: React.FC = () => {
         </div>
 
         {/* RODAPÉ DISCRETO */}
-        <div className="text-center pt-2 pb-6 space-y-2">
+        <div className="text-center pt-2 pb-6 space-y-2.5">
           <p className="text-[11px] text-[#8C7A6B] flex items-center justify-center gap-1">
-            <span>Desenvolvido com carinho para clientes</span>
+            <span>Desenvolvido com carinho para você</span>
             <Heart size={12} className="text-[#8C6D58] fill-[#8C6D58]" />
           </p>
-          <div>
+          <div className="flex flex-col items-center gap-1.5">
+            <a 
+              href={getBookingUrl()} 
+              className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] hover:underline transition-colors flex items-center gap-1.5 bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-full shadow-2xs"
+            >
+              <CalendarIcon size={13} />
+              <span>Agendamento Online · Página da Cliente</span>
+            </a>
             <a 
               href="#admin" 
-              className="text-[10px] text-[#A69B91] hover:text-[#5A4535] transition-colors"
+              className="text-[9px] text-[#C4B8B0] hover:text-[#8C7A6B] transition-colors"
             >
-              Acesso Profissional / Área da Equipe
+              Acesso do Salão / Área Restrita
             </a>
           </div>
         </div>

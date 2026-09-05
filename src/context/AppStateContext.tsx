@@ -40,9 +40,20 @@ export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin'
 // Emite sinal sonoro suave e elegante (dois tons em acorde harmônico) usando a Web Audio API nativa
 export const tocarAlertaSonoro = () => {
   try {
+    // Vibração háptica no celular
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try { navigator.vibrate([150, 80, 150]); } catch (err) {}
+    }
+
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
+
+    // Em dispositivos móveis (Android/iOS), se o contexto iniciar suspenso, retoma
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
     const now = ctx.currentTime;
 
     // Tom 1 (G5 - 783.99 Hz)
@@ -50,7 +61,7 @@ export const tocarAlertaSonoro = () => {
     const gain1 = ctx.createGain();
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(783.99, now);
-    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.setValueAtTime(0.3, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
     osc1.connect(gain1);
     gain1.connect(ctx.destination);
@@ -62,7 +73,7 @@ export const tocarAlertaSonoro = () => {
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(1046.50, now + 0.12);
-    gain2.gain.setValueAtTime(0.25, now + 0.12);
+    gain2.gain.setValueAtTime(0.35, now + 0.12);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
@@ -250,6 +261,9 @@ const configSalaoInicial: ConfigSalao = {
   regras: {
     cancelamento_limite_horas: 24,
     sinal_obrigatorio_geral: true,
+    sinal_obrigatorio_todos: false,
+    sinal_obrigatorio_novos: true,
+    sinal_padrao: 15,
     lembrete_horas_antecedencia: 24,
     alerta_sonoro_ativo: true,
     alerta_visual_ativo: true
