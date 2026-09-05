@@ -34,7 +34,8 @@ import {
   deletarDespesaSupabase,
   salvarConfiguracoesSupabase,
   salvarUsuarioSupabase,
-  persistirAvisosNaoLidosSupabase
+  persistirAvisosNaoLidosSupabase,
+  getRealtimeBroadcastChannel
 } from '../services/supabase';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus, inicializarCanalNotificacoes } from '../services/notificacoesMobile';
 
@@ -1046,12 +1047,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return [payload.new as Agendamento, ...prev];
           });
           if (payload.new?.origem === 'cliente') {
+            const cli = clientes.find(c => c.id === payload.new.cliente_id);
+            const cliNome = cli?.nome || 'Cliente';
+            const dataFmt = payload.new.inicio ? new Date(payload.new.inicio).toLocaleDateString('pt-BR') : '';
+            const horaFmt = payload.new.inicio?.split('T')[1]?.substring(0, 5) || '';
+
             dispararNotificacaoCliente({
               tipo: 'agendamento',
               titulo: 'Novo Agendamento Recebido! 💅',
-              mensagem: 'Uma cliente realizou um agendamento online.',
-              detalhes: `Código #${payload.new.id}`,
-              agendamentoId: payload.new.id
+              mensagem: `${cliNome} agendou para ${dataFmt} às ${horaFmt}.`,
+              detalhes: `Código #${payload.new.id} • ${payload.new.valor_sinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
+              agendamentoId: payload.new.id,
+              clienteNome: cliNome
             });
           }
         } else if (payload.eventType === 'UPDATE') {
@@ -1309,8 +1316,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {}
 
     // 4. Ouvinte Supabase Realtime Broadcast Multi-Dispositivos (comunicação instantânea pela nuvem < 50ms)
-    const realtimeBroadcastChannel = supabase
-      .channel('nail_app_realtime_broadcast')
+    const realtimeBroadcastChannel = getRealtimeBroadcastChannel()
       .on('broadcast', { event: 'CLIENTE_ACAO' }, (event: any) => {
         if (event.payload) {
           dispararNotificacaoCliente(event.payload);
@@ -1322,8 +1328,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setAvisosNaoLidos(event.payload.avisos);
           salvarAvisosLocalStorage(event.payload.avisos);
         }
-      })
-      .subscribe();
+      });
 
     // 5. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
     const handleReSync = () => {

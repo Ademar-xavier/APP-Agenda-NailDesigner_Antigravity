@@ -19,7 +19,12 @@ import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 import { gerarLinkWhatsApp, getConfirmationUrl } from '../utils/urlHelper';
-import { enviarNotificacaoRealtimeMultiDispositivos } from '../services/supabase';
+import { 
+  enviarNotificacaoRealtimeMultiDispositivos,
+  salvarClienteSupabase,
+  salvarAgendamentoSupabase,
+  salvarListaEsperaSupabase
+} from '../services/supabase';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -182,7 +187,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const horariosDisponiveis = obterHorariosDisponiveis();
 
   // Finalizar Agendamento
-  const handleFinalizarAgendamento = (e: React.FormEvent) => {
+  const handleFinalizarAgendamento = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome || !telefone) return;
 
@@ -192,8 +197,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     const isClienteNovo = !cliExistente;
 
     let cId = '';
+    let clienteParaSalvar: any = undefined;
     if (cliExistente) {
       cId = cliExistente.id;
+      clienteParaSalvar = cliExistente;
     } else {
       const novoCli = addCliente({
         nome,
@@ -201,6 +208,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         consentimento_imagem: true
       });
       cId = novoCli.id;
+      clienteParaSalvar = novoCli;
+      // Garante persistência imediata do cliente no Supabase antes de criar agendamento
+      await salvarClienteSupabase(novoCli);
     }
 
     // Regras de Cobrança do Sinal:
@@ -264,6 +274,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }, servicosSelecionados);
 
     if (res.success && res.agendamento) {
+      // Garante persistência no Supabase com integridade referencial antes de mudar de etapa
+      await salvarAgendamentoSupabase(res.agendamento, servicosSelecionados, clienteParaSalvar);
+
       setCodigoReserva(res.agendamento.id);
       setValorSinal(valorSinalFinal);
       setValorTotal(precoTotal);
@@ -296,7 +309,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   };
 
   // Finalizar Lista de Espera
-  const handleFinalizarListaEspera = (e: React.FormEvent) => {
+  const handleFinalizarListaEspera = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorWaitlist('');
 
@@ -306,9 +319,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
 
     let cId = '';
+    let clienteParaSalvar: any = undefined;
     const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === telefone.replace(/\D/g, ''));
     if (cliExistente) {
       cId = cliExistente.id;
+      clienteParaSalvar = cliExistente;
     } else {
       const novoCli = addCliente({
         nome,
@@ -316,6 +331,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         consentimento_imagem: true
       });
       cId = novoCli.id;
+      clienteParaSalvar = novoCli;
+      // Garante persistência imediata do cliente antes de registrar na fila
+      await salvarClienteSupabase(novoCli);
     }
 
     // Adiciona na lista de espera
@@ -326,6 +344,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       data_preferida: dataSelecionada,
       periodo_preferido: periodoPreferido
     });
+
+    // Garante persistência no Supabase com integridade referencial
+    await salvarListaEsperaSupabase(waitlistItem, clienteParaSalvar);
 
     // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
     try {

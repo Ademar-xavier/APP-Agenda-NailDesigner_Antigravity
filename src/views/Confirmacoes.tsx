@@ -877,7 +877,7 @@ export const Confirmacoes: React.FC = () => {
               aConfirmar.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = temAvisoAgendamento(a.id);
+                const temAviso = temAvisoAgendamento(a, client?.nome);
                 
                 return (
                   <div 
@@ -978,7 +978,7 @@ export const Confirmacoes: React.FC = () => {
               confirmados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = temAvisoAgendamento(a.id);
+                const temAviso = temAvisoAgendamento(a, client?.nome);
                 
                 return (
                   <div 
@@ -1200,7 +1200,7 @@ export const Confirmacoes: React.FC = () => {
               cancelados.map((a) => {
                 const client = clientes.find(c => c.id === a.cliente_id);
                 const initials = client?.nome.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '?';
-                const temAviso = temAvisoAgendamento(a.id);
+                const temAviso = temAvisoAgendamento(a, client?.nome);
                 
                 return (
                   <div 
