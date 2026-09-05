@@ -145,6 +145,8 @@ export interface ConfigSalao {
   regras: {
     cancelamento_limite_horas: number;
     sinal_obrigatorio_geral: boolean;
+    sinal_obrigatorio_todos?: boolean;
+    sinal_obrigatorio_novos?: boolean;
     sinal_padrao?: number;
     lembrete_horas_antecedencia: number;
     alerta_sonoro_ativo?: boolean;

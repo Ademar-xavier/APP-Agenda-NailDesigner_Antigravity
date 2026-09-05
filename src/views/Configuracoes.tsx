@@ -285,7 +285,9 @@ export const Configuracoes: React.FC = () => {
     'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.'
   );
   const [cancelamentoLimite, setCancelamentoLimite] = useState(configSalao.regras.cancelamento_limite_horas);
-  const [sinalObrigatorio, setSinalObrigatorio] = useState(configSalao.regras.sinal_obrigatorio_geral);
+  const [sinalObrigatorioTodos, setSinalObrigatorioTodos] = useState(configSalao.regras.sinal_obrigatorio_todos || false);
+  const [sinalObrigatorioNovos, setSinalObrigatorioNovos] = useState(configSalao.regras.sinal_obrigatorio_novos ?? configSalao.regras.sinal_obrigatorio_geral ?? true);
+  const [sinalPadrao, setSinalPadrao] = useState(configSalao.regras.sinal_padrao ?? 15);
   const [alertaSonoro, setAlertaSonoro] = useState(configSalao.regras?.alerta_sonoro_ativo !== false);
   const [alertaVisual, setAlertaVisual] = useState(configSalao.regras?.alerta_visual_ativo !== false);
 
@@ -392,7 +394,10 @@ export const Configuracoes: React.FC = () => {
       regras: {
         ...configSalao.regras,
         cancelamento_limite_horas: cancelamentoLimite,
-        sinal_obrigatorio_geral: sinalObrigatorio,
+        sinal_obrigatorio_geral: sinalObrigatorioNovos,
+        sinal_obrigatorio_todos: sinalObrigatorioTodos,
+        sinal_obrigatorio_novos: sinalObrigatorioNovos,
+        sinal_padrao: sinalPadrao,
         alerta_sonoro_ativo: alertaSonoro,
         alerta_visual_ativo: alertaVisual
       }
@@ -739,14 +744,72 @@ export const Configuracoes: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2">
-                    <input 
-                      type="checkbox" id="sinal_obr" checked={sinalObrigatorio} onChange={(e) => setSinalObrigatorio(e.target.checked)}
-                      className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58]"
-                    />
-                    <label htmlFor="sinal_obr" className="text-xs text-[#5A4535] font-semibold cursor-pointer">
-                      Exigir sinal de agendamento por padrão para novas clientes
-                    </label>
+                  {/* Regras de Cobrança do Sinal de Reserva */}
+                  <div className="md:col-span-2 pt-3 border-t border-[#EFECE6] space-y-2.5">
+                    <span className="block text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">
+                      Políticas de Cobrança de Sinal Pix
+                    </span>
+
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-2.5 p-2.5 bg-white border border-[#EFECE6] rounded-xl cursor-pointer hover:border-[#8C6D58] transition-colors shadow-2xs">
+                        <input 
+                          type="checkbox" 
+                          id="sinal_todos" 
+                          checked={sinalObrigatorioTodos} 
+                          onChange={(e) => setSinalObrigatorioTodos(e.target.checked)}
+                          className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4 mt-0.5"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">
+                            Cobrar sinal de agendamento de TODOS os clientes (inclusive antigos)
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B] block leading-snug">
+                            Quando ativado, todo agendamento pelo site/app entrará como "A Confirmar" aguardando o pagamento do sinal Pix.
+                          </span>
+                        </div>
+                      </label>
+
+                      <label className={`flex items-start gap-2.5 p-2.5 bg-white border border-[#EFECE6] rounded-xl cursor-pointer hover:border-[#8C6D58] transition-colors shadow-2xs ${sinalObrigatorioTodos ? 'opacity-60 pointer-events-none' : ''}`}>
+                        <input 
+                          type="checkbox" 
+                          id="sinal_novos" 
+                          checked={sinalObrigatorioNovos} 
+                          onChange={(e) => setSinalObrigatorioNovos(e.target.checked)}
+                          disabled={sinalObrigatorioTodos}
+                          className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4 mt-0.5"
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">
+                            Exigir sinal de agendamento por padrão para novas clientes (não cadastradas)
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B] block leading-snug">
+                            {sinalObrigatorioTodos
+                              ? 'A cobrança já está ativa para todos os clientes.'
+                              : 'Se a cobrança para todos estiver desativada, cobra o sinal apenas de quem não estiver na lista de clientes (verificado pelo WhatsApp). Clientes já cadastradas confirmam direto sem cobrança.'}
+                          </span>
+                        </div>
+                      </label>
+
+                      <div className="flex flex-wrap items-center gap-2.5 p-2.5 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl">
+                        <span className="text-xs font-bold text-[#5A4535]">
+                          Valor Padrão do Sinal de Reserva:
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-[#8C6D58]">R$</span>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={sinalPadrao}
+                            onChange={(e) => setSinalPadrao(Math.max(1, Number(e.target.value) || 0))}
+                            className="w-20 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white font-bold text-center focus:outline-none focus:border-[#8C6D58]"
+                          />
+                        </div>
+                        <span className="text-[10px] text-[#8C7A6B]">
+                          (Utilizado se o procedimento selecionado não tiver sinal individual cadastrado)
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Alertas Sonoros e Visuais no App */}
