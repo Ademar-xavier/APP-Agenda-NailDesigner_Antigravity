@@ -148,6 +148,8 @@ export interface ConfigSalao {
     sinal_obrigatorio_todos?: boolean;
     sinal_obrigatorio_novos?: boolean;
     sinal_padrao?: number;
+    antecedencia_minima_minutos?: number;
+    limite_horas_sinal?: number;
     lembrete_horas_antecedencia: number;
     alerta_sonoro_ativo?: boolean;
     alerta_visual_ativo?: boolean;

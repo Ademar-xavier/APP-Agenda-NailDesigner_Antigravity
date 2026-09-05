@@ -288,6 +288,8 @@ export const Configuracoes: React.FC = () => {
   const [sinalObrigatorioTodos, setSinalObrigatorioTodos] = useState(configSalao.regras.sinal_obrigatorio_todos || false);
   const [sinalObrigatorioNovos, setSinalObrigatorioNovos] = useState(configSalao.regras.sinal_obrigatorio_novos ?? configSalao.regras.sinal_obrigatorio_geral ?? true);
   const [sinalPadrao, setSinalPadrao] = useState(configSalao.regras.sinal_padrao ?? 15);
+  const [antecedenciaMinima, setAntecedenciaMinima] = useState(configSalao.regras?.antecedencia_minima_minutos ?? 30);
+  const [limiteHorasSinal, setLimiteHorasSinal] = useState(configSalao.regras?.limite_horas_sinal ?? 2);
   const [alertaSonoro, setAlertaSonoro] = useState(configSalao.regras?.alerta_sonoro_ativo !== false);
   const [alertaVisual, setAlertaVisual] = useState(configSalao.regras?.alerta_visual_ativo !== false);
 
@@ -398,6 +400,8 @@ export const Configuracoes: React.FC = () => {
         sinal_obrigatorio_todos: sinalObrigatorioTodos,
         sinal_obrigatorio_novos: sinalObrigatorioNovos,
         sinal_padrao: sinalPadrao,
+        antecedencia_minima_minutos: antecedenciaMinima,
+        limite_horas_sinal: limiteHorasSinal,
         alerta_sonoro_ativo: alertaSonoro,
         alerta_visual_ativo: alertaVisual
       }
@@ -808,6 +812,51 @@ export const Configuracoes: React.FC = () => {
                         <span className="text-[10px] text-[#8C7A6B]">
                           (Utilizado se o procedimento selecionado não tiver sinal individual cadastrado)
                         </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-white border border-[#EFECE6] rounded-xl shadow-2xs">
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">
+                            Antecedência Mínima para Agendar no Mesmo Dia:
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B] block">
+                            Bloqueia agendamentos em cima da hora na data de hoje (ex: mínimo 30 min).
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            step="15"
+                            value={antecedenciaMinima}
+                            onChange={(e) => setAntecedenciaMinima(Math.max(0, Number(e.target.value) || 0))}
+                            className="w-18 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-[#FAF9F6] font-bold text-center focus:outline-none focus:border-[#8C6D58]"
+                          />
+                          <span className="text-xs text-[#8C7A6B] font-medium">minutos</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-white border border-[#EFECE6] rounded-xl shadow-2xs">
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">
+                            Tolerância para Pagamento do Sinal Pix:
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B] block">
+                            Tempo máximo aguardando o comprovante antes de sinalizar como expirado (padrão: 2h).
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="1"
+                            max="72"
+                            step="1"
+                            value={limiteHorasSinal}
+                            onChange={(e) => setLimiteHorasSinal(Math.max(1, Number(e.target.value) || 1))}
+                            className="w-18 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-[#FAF9F6] font-bold text-center focus:outline-none focus:border-[#8C6D58]"
+                          />
+                          <span className="text-xs text-[#8C7A6B] font-medium">horas</span>
+                        </div>
                       </div>
                     </div>
                   </div>

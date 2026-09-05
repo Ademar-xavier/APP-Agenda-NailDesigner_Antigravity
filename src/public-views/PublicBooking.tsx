@@ -130,7 +130,21 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     
     const slots: string[] = [];
 
+    const agora = new Date();
+    const anoH = agora.getFullYear();
+    const mesH = String(agora.getMonth() + 1).padStart(2, '0');
+    const diaH = String(agora.getDate()).padStart(2, '0');
+    const hojeStr = `${anoH}-${mesH}-${diaH}`;
+    const isHoje = dataSelecionada === hojeStr;
+    const agoraMinutos = agora.getHours() * 60 + agora.getMinutes();
+    const antecedenciaMinutos = configSalao.regras?.antecedencia_minima_minutos ?? 30;
+    const corteMinutos = agoraMinutos + antecedenciaMinutos;
+
     for (let min = inicioMinutos; min <= fimMinutos - duracaoTotal; min += 30) {
+      if (isHoje && min < corteMinutos) {
+        continue; // Não disponibiliza horários que já passaram ou dentro da margem de antecedência
+      }
+
       const hStr = String(Math.floor(min / 60)).padStart(2, '0');
       const mStr = String(min % 60).padStart(2, '0');
       const slot = `${hStr}:${mStr}`;
@@ -373,22 +387,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       <div className="absolute top-[-10%] left-[-10%] w-72 h-72 rounded-full bg-[#FFD1DC] opacity-40 blur-3xl pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 rounded-full bg-[#E57399] opacity-20 blur-3xl pointer-events-none" />
 
-      {/* Botão de Atalho Administrativo no Topo */}
-      <div className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-4 py-2.5 flex justify-between items-center text-xs relative z-20 shadow-sm">
+      {/* Barra de Identificação Superior da Cliente */}
+      <div className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-4 py-2.5 flex justify-center items-center text-xs relative z-20 shadow-sm">
         <span className="flex items-center gap-1.5 font-semibold">
           <Heart size={12} className="fill-white animate-pulse" />
-          <span>Agendamento Online · Sheila Santos</span>
+          <span>Agendamento Online · {configSalao.nome || 'Salão de Beleza'}</span>
         </span>
-        <button
-          onClick={() => {
-            logout();
-            window.location.hash = 'admin';
-            setIsAdmin(true);
-          }}
-          className="bg-white text-[#C71585] px-3 py-1 rounded-lg font-bold hover:bg-[#FFF0F4] transition-colors shadow-sm"
-        >
-          Painel Administrativo
-        </button>
       </div>
 
       {/* Conteúdo Principal do Fluxo */}
@@ -399,7 +403,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           <div className="w-32 h-32 md:w-36 md:h-36 rounded-full bg-white border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-lg p-0.5">
             <img 
               src="./logo.png?v=3" 
-              alt="Logo Sheila Santos Nails Designer" 
+              alt={`Logo ${configSalao.nome || 'Salão de Beleza'}`} 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -931,6 +935,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 <p className="text-[9px] text-[#A1813A] italic">
                   {configSalao.instrucoes_pix}
                 </p>
+
+                <div className="pt-2 border-t border-[#FFEBAA] text-[10px] text-[#856404] leading-relaxed">
+                  <span className="font-bold text-[#634a02] block mb-0.5">📌 Política de Devolução do Sinal:</span>
+                  {(configSalao.regra_devolucao_sinal || 'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.').replace('{horas}', String(configSalao.regras?.cancelamento_limite_horas || 24))}
+                </div>
+
+                <div className="bg-amber-100/70 p-2.5 rounded-xl border border-amber-300 text-[10px] text-amber-900 flex items-center gap-2">
+                  <Clock size={13} className="shrink-0 text-amber-700" />
+                  <span>Envie seu comprovante em até <strong>{configSalao.regras?.limite_horas_sinal || 2} horas</strong> para garantir seu horário antes da liberação da vaga.</span>
+                </div>
               </div>
             )}
 
@@ -1081,7 +1095,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
       {/* Footer */}
       <footer className="text-center text-[10px] text-[#A88690] mt-6 flex items-center justify-center gap-1 relative z-10">
-        <span>Sheila Santos Nails Designer © 2026</span>
+        <span>{configSalao.nome || 'Salão de Beleza'} © {new Date().getFullYear()}</span>
         <Heart size={10} className="fill-[#DB7093] text-[#DB7093]" />
       </footer>
     </div>

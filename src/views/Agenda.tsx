@@ -328,6 +328,14 @@ export const Agenda: React.FC<AgendaProps> = ({
     const livres: string[] = [];
     const ocupados: { hora: string; motivo: string }[] = [];
 
+    const agora = new Date();
+    const anoH = agora.getFullYear();
+    const mesH = String(agora.getMonth() + 1).padStart(2, '0');
+    const diaH = String(agora.getDate()).padStart(2, '0');
+    const hojeStr = `${anoH}-${mesH}-${diaH}`;
+    const isHoje = dataSelecionada === hojeStr;
+    const agoraMinutos = agora.getHours() * 60 + agora.getMinutes();
+
     // Avalia cada intervalo de 30 em 30 minutos dentro do expediente
     for (let m = minInicio; m <= minFim - duracaoMinutosAtual; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
@@ -348,7 +356,10 @@ export const Agenda: React.FC<AgendaProps> = ({
       let conflito = false;
       let motivoConflito = '';
 
-      if (!isBloqueio) {
+      if (isHoje && m < agoraMinutos) {
+        conflito = true;
+        motivoConflito = 'Horário já ultrapassado';
+      } else if (!isBloqueio) {
         conflito = checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
 
         if (conflito) {
