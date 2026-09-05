@@ -226,12 +226,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
       // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
       try {
-        const telDest = profSelecionada?.telefone || configSalao.telefone;
+        const profFinalObj = equipe.find(e => e.id === profFinalId);
+        const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
         const dataFmt = formatarDataLocal(dataSelecionada);
         const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
         const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${sinalTotal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
         if (telDest) {
-          enviarMensagemTextoMeta(telDest, msgProf).catch(() => {});
+          enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
         }
       } catch (err) {}
 
@@ -288,11 +289,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
     // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
     try {
-      const telDest = configSalao.telefone;
+      const profEspera = equipe.find(e => e.id === profissionalId);
+      const telDest = profEspera?.telefone || configSalao.telefone;
       const dataFmt = formatarDataLocal(dataSelecionada);
       const msgProf = `🔔 *Nova Inscrição na Lista de Espera!*\n\nOlá! A cliente *${nome}* (${telefone}) acabou de entrar na fila de espera para o dia *${dataFmt}* (${periodoPreferido === 'qualquer' ? 'qualquer período' : periodoPreferido}).\n\n👉 Acesse o app para conferir!`;
       if (telDest) {
-        enviarMensagemTextoMeta(telDest, msgProf).catch(() => {});
+        enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
       }
     } catch (err) {}
 
@@ -897,34 +899,6 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               </div>
             )}
 
-            {valorSinal > 0 ? (
-              <a
-                href={gerarLinkWhatsApp(
-                  telefoneWhatsAppAtivo,
-                  `Olá, ${titularPixAtivo}! ✨ Segue o comprovante do sinal de ${formatarMoeda(valorSinal)} referente ao meu agendamento #${codigoReserva} para o dia ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`
-                ) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
-              >
-                <MessageCircle size={16} />
-                <span>Enviar Comprovante pelo WhatsApp</span>
-              </a>
-            ) : (
-              <a
-                href={gerarLinkWhatsApp(
-                  telefoneWhatsAppAtivo,
-                  `Olá, ${titularPixAtivo}! ✅ Acabei de agendar pelo aplicativo para o dia ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado} (Agendamento #${codigoReserva}). Até breve! 💕`
-                ) || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
-              >
-                <MessageCircle size={16} />
-                <span>Avisar {titularPixAtivo} pelo WhatsApp</span>
-              </a>
-            )}
-
             <button
               onClick={() => {
                 setStep(1);
@@ -1041,19 +1015,6 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             <p className="text-xs text-[#A88690] leading-relaxed">
               Entraremos em contato via WhatsApp caso haja alguma desistência de horário.
             </p>
-
-            <a
-              href={gerarLinkWhatsApp(
-                configSalao.telefone,
-                `Olá, Sheila! ✨ Acabei de me inscrever na lista de espera para o dia ${formatarDataLocal(dataSelecionada)} (${periodoPreferido === 'qualquer' ? 'qualquer horário' : periodoPreferido}). Meu nome é ${nome}. Obrigada! 💕`
-              ) || '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
-            >
-              <MessageCircle size={16} />
-              <span>Avisar Salão pelo WhatsApp</span>
-            </a>
 
             <button
               onClick={() => {

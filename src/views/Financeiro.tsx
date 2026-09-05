@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -204,19 +204,67 @@ export const Financeiro: React.FC = () => {
     .sort((a, b) => b.total - a.total);
 
   // --- PAGAMENTOS PENDENTES ---
-  const pagamentosPendentes = pagamentos.filter((p: any) => {
-    const matchMes = p.status === 'pendente' && p.data_pagamento?.startsWith(mesSelecionadoStr);
-    if (!matchMes) return false;
-    const agend = agendamentos.find(a => a.id === p.agendamento_id);
-    // Se o agendamento já foi confirmado, concluído ou cancelado, não é mais um pagamento pendente
-    if (agend && (agend.status === 'confirmado' || agend.status === 'concluido' || agend.status === 'cancelado')) {
-      return false;
-    }
-    if (profissionalFiltro !== 'todas') {
-      return agend?.profissional_id === profissionalFiltro;
-    }
-    return true;
-  });
+  // Inclui todos os agendamentos que estão com status 'pendente' (A Confirmar) no mês selecionado
+  const pagamentosPendentes = useMemo(() => {
+    // 1. Agendamentos pendentes deste mês
+    const agendamentosPendentesMes = agendamentos.filter(a => {
+      const matchMes = a.inicio?.startsWith(mesSelecionadoStr);
+      const isPendente = a.status === 'pendente';
+      if (!matchMes || !isPendente) return false;
+      if (profissionalFiltro !== 'todas') {
+        return a.profissional_id === profissionalFiltro;
+      }
+      return true;
+    });
+
+    const lista: Array<{
+      id: string;
+      agendamento_id: string;
+      valor: number;
+      tipo: string;
+      status: string;
+      data_pagamento?: string;
+    }> = [];
+
+    // Para cada agendamento pendente do mês, adiciona o pagamento existente ou sintetiza
+    agendamentosPendentesMes.forEach(a => {
+      const pag = pagamentos.find(p => p.agendamento_id === a.id);
+      if (pag) {
+        lista.push({
+          ...pag,
+          valor: pag.valor || a.valor_sinal || a.valor_total || 0,
+          status: 'pendente'
+        });
+      } else {
+        lista.push({
+          id: 'pend_' + a.id,
+          agendamento_id: a.id,
+          valor: a.valor_sinal || a.valor_total || 0,
+          tipo: 'pix',
+          status: 'pendente',
+          data_pagamento: a.inicio
+        });
+      }
+    });
+
+    // 2. Pagamentos com status 'pendente' que porventura existam no array pagamentos
+    pagamentos.forEach(p => {
+      if (p.status === 'pendente' && !lista.some(item => item.agendamento_id === p.agendamento_id)) {
+        const agend = agendamentos.find(a => a.id === p.agendamento_id);
+        if (agend && (agend.status === 'confirmado' || agend.status === 'concluido' || agend.status === 'cancelado')) {
+          return;
+        }
+        const matchData = (agend?.inicio || p.data_pagamento)?.startsWith(mesSelecionadoStr);
+        if (!matchData) return;
+        if (profissionalFiltro !== 'todas' && agend && agend.profissional_id !== profissionalFiltro) {
+          return;
+        }
+        lista.push(p);
+      }
+    });
+
+    return lista;
+  }, [agendamentos, pagamentos, mesSelecionadoStr, profissionalFiltro]);
 
   const despesasMes = despesas.filter(d => d.data.startsWith(mesSelecionadoStr));
 

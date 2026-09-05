@@ -15,11 +15,15 @@ export interface MetaButtonOption {
 const STORAGE_KEY = 'nail_meta_whatsapp_config';
 
 // Carrega as credenciais salvas (ou lê das variáveis de ambiente .env se houver)
-export const obterConfigMetaWhatsApp = (): MetaWhatsAppConfig => {
+export const obterConfigMetaWhatsApp = (overrideConfig?: MetaWhatsAppConfig): MetaWhatsAppConfig => {
+  if (overrideConfig && overrideConfig.phoneNumberId && overrideConfig.accessToken) {
+    return overrideConfig;
+  }
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      if (parsed.phoneNumberId && parsed.accessToken) return parsed;
     }
   } catch (e) {
     console.error('Erro ao ler config da Meta:', e);
@@ -55,15 +59,17 @@ export const enviarMensagemBotaoMeta = async ({
   textoCorpo,
   botoes,
   headerText,
-  footerText = 'Sheila Santos Nails Designer'
+  footerText = 'Sheila Santos Nails Designer',
+  configOverride
 }: {
   destinatario: string;
   textoCorpo: string;
   botoes: MetaButtonOption[];
   headerText?: string;
   footerText?: string;
+  configOverride?: MetaWhatsAppConfig;
 }): Promise<{ sucesso: boolean; mensagem: string }> => {
-  const config = obterConfigMetaWhatsApp();
+  const config = obterConfigMetaWhatsApp(configOverride);
 
   if (!config.phoneNumberId || !config.accessToken) {
     return {
@@ -131,9 +137,10 @@ export const enviarMensagemBotaoMeta = async ({
 // Envia mensagem simples de texto (ex: confirmação ou agradecimento)
 export const enviarMensagemTextoMeta = async (
   destinatario: string,
-  texto: string
+  texto: string,
+  configOverride?: MetaWhatsAppConfig
 ): Promise<{ sucesso: boolean; mensagem: string }> => {
-  const config = obterConfigMetaWhatsApp();
+  const config = obterConfigMetaWhatsApp(configOverride);
 
   if (!config.phoneNumberId || !config.accessToken) {
     return {
