@@ -85,6 +85,9 @@ export interface Agendamento {
   confirmado_por?: 'cliente' | 'admin';
   produtos?: ItemComandaProduto[]; // Produtos consumidos/comprados no atendimento
   pago_com_clube?: boolean; // Se foi baixado do saldo de assinatura recorrente
+  recorrencia_grupo_id?: string; // ID comum compartilhado entre agendamentos da mesma série recorrente
+  recorrencia_tipo?: 'nenhuma' | 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
+  recorrencia_posicao?: string; // Ex: "1 de 4", "2 de 4"
   criado_em: string;
 }
 
@@ -352,6 +355,7 @@ export interface PlanoAssinatura {
   qtd_procedimentos_mes: number; // soma total de procedimentos no mês
   servicos_permitidos_ids: string[];
   validade_dias: number;
+  frequencia_dias?: number; // Intervalo de retorno padrão em dias (ex: 7 = semanal, 15 = quinzenal, 20 = manutenção, 30 = mensal)
   ativo: boolean;
   destaque_catalogo?: boolean; // Se marcado, exibe o selo "Plano Recomendado" no catálogo online
 }
@@ -362,6 +366,7 @@ export interface AssinaturaCliente {
   data_inicio: string;
   data_renovacao: string;
   itens_saldo?: ItemSaldoAssinatura[]; // Saldo individual por procedimento
+  frequencia_dias?: number; // Periodicidade de retorno contratada (ex: 7, 15, 20, 30 dias)
   saldo_restante: number;
   total_mes: number;
   status: 'ativo' | 'pausado' | 'cancelado';

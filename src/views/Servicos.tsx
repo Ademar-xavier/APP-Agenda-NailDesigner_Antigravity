@@ -117,6 +117,7 @@ export const Servicos: React.FC = () => {
   const [planoServicosIds, setPlanoServicosIds] = useState<string[]>([]);
   const [planoQuantidadesServicos, setPlanoQuantidadesServicos] = useState<{ [servicoId: string]: number }>({});
   const [planoProfissionaisServicos, setPlanoProfissionaisServicos] = useState<{ [servicoId: string]: string }>({});
+  const [planoFrequenciaDias, setPlanoFrequenciaDias] = useState<number>(7);
   const [planoDestaqueCatalogo, setPlanoDestaqueCatalogo] = useState(false);
 
   // Filtros de busca
@@ -420,6 +421,7 @@ export const Servicos: React.FC = () => {
     setPlanoServicosIds([]);
     setPlanoQuantidadesServicos({});
     setPlanoProfissionaisServicos({});
+    setPlanoFrequenciaDias(7);
     setPlanoDestaqueCatalogo(false);
     setModalPlanoAberto(true);
   };
@@ -431,6 +433,7 @@ export const Servicos: React.FC = () => {
     setPlanoPrecoMensal(plano.preco_mensal);
     setPlanoQtdProcedimentos(plano.qtd_procedimentos_mes);
     setPlanoValidadeDias(plano.validade_dias || 30);
+    setPlanoFrequenciaDias(plano.frequencia_dias || 7);
     setPlanoServicosIds(plano.servicos_permitidos_ids || []);
 
     const qtds: { [servicoId: string]: number } = {};
@@ -527,6 +530,7 @@ export const Servicos: React.FC = () => {
         preco_mensal: Number(planoPrecoMensal),
         qtd_procedimentos_mes: totalProcedimentos,
         validade_dias: Number(planoValidadeDias),
+        frequencia_dias: Number(planoFrequenciaDias) || 7,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
         destaque_catalogo: planoDestaqueCatalogo
@@ -538,6 +542,7 @@ export const Servicos: React.FC = () => {
         preco_mensal: Number(planoPrecoMensal),
         qtd_procedimentos_mes: totalProcedimentos,
         validade_dias: Number(planoValidadeDias),
+        frequencia_dias: Number(planoFrequenciaDias) || 7,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
         ativo: true,
@@ -1074,7 +1079,27 @@ export const Servicos: React.FC = () => {
                         </div>
                         <div className="flex items-center justify-between text-xs text-[#5A4535] pt-1.5 border-t border-[#EFECE6]/60">
                           <span>Sessões inclusas:</span>
-                          <span className="font-bold text-[#8C6D58]">{plano.qtd_procedimentos_mes} sessões semanais</span>
+                          <span className="font-bold text-[#8C6D58]">
+                            {(() => {
+                              const f = plano.frequencia_dias || 7;
+                              const fLabel = f === 14 || f === 15 ? 'quinzenais' : f === 20 ? 'a cada 20 dias' : f === 30 ? 'mensais' : f === 7 ? 'semanais' : `a cada ${f} dias`;
+                              return `${plano.qtd_procedimentos_mes} sessões ${fLabel}`;
+                            })()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-[#5A4535] pt-1.5 border-t border-[#EFECE6]/60">
+                          <span>Frequência de retorno:</span>
+                          <span className="font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-md text-[10px]">
+                            {(() => {
+                              const f = plano.frequencia_dias || 7;
+                              if (f === 15) return 'Quinzenal (a cada 15 dias)';
+                              if (f === 14) return 'Quinzenal (a cada 14 dias)';
+                              if (f === 20) return 'Manutenção (a cada 20 dias)';
+                              if (f === 30) return 'Mensal (a cada 30 dias)';
+                              if (f === 7) return 'Semanal (a cada 7 dias)';
+                              return `A cada ${f} dias`;
+                            })()}
+                          </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-[#5A4535] pt-1.5 border-t border-[#EFECE6]/60">
                           <span>Duração por sessão:</span>
@@ -2137,7 +2162,7 @@ export const Servicos: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Valor Mensal (R$) *</label>
                   <input
@@ -2165,7 +2190,42 @@ export const Servicos: React.FC = () => {
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
-                <div className="col-span-2 sm:col-span-1">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Frequência Retorno *</label>
+                  <select
+                    value={[7, 14, 15, 20, 21, 30].includes(planoFrequenciaDias) ? planoFrequenciaDias : 'custom'}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        setPlanoFrequenciaDias(10);
+                      } else {
+                        setPlanoFrequenciaDias(Number(e.target.value));
+                      }
+                    }}
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-2 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
+                  >
+                    <option value={7}>Semanal (7 dias)</option>
+                    <option value={15}>Quinzenal (15 dias)</option>
+                    <option value={14}>Quinzenal (14 dias)</option>
+                    <option value={20}>A cada 20 dias</option>
+                    <option value={21}>A cada 21 dias</option>
+                    <option value={30}>Mensal (30 dias)</option>
+                    <option value="custom">Personalizado...</option>
+                  </select>
+                  {![7, 14, 15, 20, 21, 30].includes(planoFrequenciaDias) && (
+                    <div className="mt-1 flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={planoFrequenciaDias}
+                        onChange={(e) => setPlanoFrequenciaDias(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-16 bg-white border border-[#EFECE6] rounded-lg px-2 py-0.5 text-xs text-[#5A4535]"
+                      />
+                      <span className="text-[10px] text-[#8C7A6B]">dias</span>
+                    </div>
+                  )}
+                </div>
+                <div>
                   <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Validade (Dias)</label>
                   <input
                     type="number"
