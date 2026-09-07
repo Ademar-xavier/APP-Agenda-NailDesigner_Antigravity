@@ -264,8 +264,8 @@ export const Cadastros: React.FC = () => {
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[#EFECE6] mb-5 overflow-x-auto gap-2">
+      {/* Tabs com layout idêntico a Configurações do Salão (Botões em Pílula) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-5 scrollbar-none">
         {[
           { id: 'produtos', label: 'Produtos & PDV (Balcão)', icon: ShoppingBag },
           { id: 'cat_produtos', label: 'Categorias de Produtos', icon: Boxes },
@@ -279,14 +279,15 @@ export const Cadastros: React.FC = () => {
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id as TabCadastros)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`flex items-center gap-2.5 px-4 py-2.5 sm:py-3 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                 isActive 
-                  ? 'border-[#8C6D58] text-[#8C6D58]' 
-                  : 'border-transparent text-[#8C7A6B] hover:text-[#5A4535]'
+                  ? 'bg-[#8C6D58] text-white shadow-sm' 
+                  : 'bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6]'
               }`}
             >
-              <Icon size={14} />
+              <Icon size={16} className={`shrink-0 ${isActive ? 'text-white' : 'text-[#8C7A6B]'}`} />
               <span>{tab.label}</span>
             </button>
           );
