@@ -959,34 +959,36 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </button>
                     
-                    <div className="grid grid-cols-3 gap-2 w-full sm:w-auto sm:flex sm:items-center">
-                      <button
-                        onClick={() => handleEnviarMensagemWhatsApp(a, 'confirmacao')}
-                        className="h-10 px-3 py-2 flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-all shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
-                        title="Enviar mensagem no WhatsApp solicitando confirmação"
-                      >
-                        <MessageCircle size={14} className="text-[#25D366] shrink-0" />
-                        <span className="truncate">Pedir confirmação</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          marcarAvisoComoLido(a.id);
-                          updateAgendamentoStatus(a.id, 'confirmado');
-                        }}
-                        className="h-10 px-3.5 py-2 flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer w-full sm:w-auto text-center"
-                        title="Confirmar este agendamento e mover para Confirmados"
-                      >
-                        <UserCheck size={14} className="shrink-0" />
-                        <span className="truncate">Confirmar</span>
-                      </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+                      <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                        <button
+                          onClick={() => handleEnviarMensagemWhatsApp(a, 'confirmacao')}
+                          className="h-10 px-3 py-2 flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-all shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
+                          title="Enviar mensagem no WhatsApp solicitando confirmação"
+                        >
+                          <MessageCircle size={15} className="text-[#25D366] shrink-0" />
+                          <span className="whitespace-nowrap">Pedir confirmação</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            marcarAvisoComoLido(a.id);
+                            updateAgendamentoStatus(a.id, 'confirmado');
+                          }}
+                          className="h-10 px-3.5 py-2 flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer w-full sm:w-auto text-center"
+                          title="Confirmar este agendamento e mover para Confirmados"
+                        >
+                          <UserCheck size={15} className="shrink-0" />
+                          <span className="whitespace-nowrap">Confirmar</span>
+                        </button>
+                      </div>
                       <button
                         onClick={() => {
                           marcarAvisoComoLido(a.id);
                           setSelectedAgendamentoId(a.id);
                         }}
-                        className="h-10 px-3.5 py-2 flex items-center justify-center bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
+                        className="h-9 sm:h-10 px-3.5 py-2 flex items-center justify-center bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
                       >
-                        <span className="truncate">Ver detalhes</span>
+                        <span>Ver detalhes</span>
                       </button>
                     </div>
                   </div>

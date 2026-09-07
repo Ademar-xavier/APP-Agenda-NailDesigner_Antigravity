@@ -103,7 +103,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       const fullUrl = (typeof window !== 'undefined') ? (window.location.hash + window.location.search) : '';
       const match = fullUrl.match(/[?&]servico=([^&]+)/);
       if (match && match[1]) {
-        return [decodeURIComponent(match[1])];
+        return decodeURIComponent(match[1])
+          .split(',')
+          .map(s => s.trim())
+          .filter(Boolean);
       }
     } catch (e) {}
     return [];

@@ -95,13 +95,33 @@ function AppContent() {
     return 'dashboard';
   });
 
-  const handleSetCurrentView = (view: string) => {
+  const handleSetCurrentView = (view: string, pushHistory = true) => {
     setCurrentView(view);
     try {
       sessionStorage.setItem('nail_current_view', view);
     } catch (e) {}
+
+    if (pushHistory) {
+      try {
+        if (view !== 'dashboard') {
+          window.history.pushState({ nailView: view }, '');
+        } else {
+          window.history.pushState({ nailView: 'dashboard' }, '');
+        }
+      } catch (e) {}
+    }
   };
+
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
+
+  const handleSelectClienteDetails = (id: string | null, pushHistory = true) => {
+    setSelectedClienteIdForDetails(id);
+    if (id && pushHistory) {
+      try {
+        window.history.pushState({ nailModal: 'cliente_detalhes' }, '');
+      } catch (e) {}
+    }
+  };
 
   // Sincroniza com navegação por hash (#admin, #instalar, #agendar ou #confirmar)
   useEffect(() => {
@@ -320,7 +340,7 @@ function AppContent() {
 
     // 6. Se estiver em uma tela interna do painel admin que não seja o dashboard, volta ao dashboard
     if (isAdmin && currentView !== 'dashboard') {
-      handleSetCurrentView('dashboard');
+      handleSetCurrentView('dashboard', false);
       return true;
     }
 
@@ -332,6 +352,17 @@ function AppContent() {
   useEffect(() => {
     backActionRef.current = handleVoltarAcao;
   });
+
+  // Garante que o painel admin autenticado tenha uma âncora no histórico
+  useEffect(() => {
+    if (isAdmin && currentUser) {
+      try {
+        if (!window.location.hash.includes('admin')) {
+          window.history.replaceState({ nailView: currentView || 'dashboard', logged: true }, '', '#admin');
+        }
+      } catch (e) {}
+    }
+  }, [isAdmin, currentUser]);
 
   // Listener nativo permanente do Capacitor Android (botão físico / barra inferior de gestos)
   useEffect(() => {
@@ -358,18 +389,31 @@ function AppContent() {
     try {
       CapApp.addListener('appStateChange', (state) => {
         if (state.isActive) {
-          // Ao retornar do segundo plano, garante que a tela atual seja preservada
+          // Ao retornar do segundo plano, garante que a tela atual seja preservada (Dashboard raiz por padrão)
           const savedView = sessionStorage.getItem('nail_current_view');
           if (savedView && isAdmin) {
             setCurrentView(savedView);
+          } else if (isAdmin) {
+            setCurrentView('dashboard');
           }
         }
       }).then(h => { appStateHandle = h; }).catch(() => {});
     } catch (e) {}
 
     // Ouvinte para Web / PWA móvel (popstate)
-    const handlePopState = () => {
-      backActionRef.current();
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && e.state.nailView) {
+        if (e.state.nailView !== currentView) {
+          handleSetCurrentView(e.state.nailView, false);
+          return;
+        }
+      }
+      const handled = backActionRef.current();
+      if (!handled && isAdmin) {
+        try {
+          window.history.replaceState({ nailView: 'dashboard', logged: true }, '', '#admin');
+        } catch (err) {}
+      }
     };
     window.addEventListener('popstate', handlePopState);
 
@@ -387,6 +431,9 @@ function AppContent() {
   const openNewAgendamentoModal = () => {
     handleSetCurrentView('agenda');
     setIsNewAgendamentoModalOpen(true);
+    try {
+      window.history.pushState({ nailModal: 'novo_agendamento' }, '');
+    } catch (e) {}
   };
 
   const renderView = () => {
@@ -395,7 +442,7 @@ function AppContent() {
         return (
           <Dashboard 
             setCurrentView={handleSetCurrentView}
-            setSelectedClienteIdForDetails={setSelectedClienteIdForDetails}
+            setSelectedClienteIdForDetails={handleSelectClienteDetails}
             openNewAgendamentoModal={openNewAgendamentoModal}
           />
         );
@@ -412,7 +459,7 @@ function AppContent() {
         return (
           <Clientes 
             selectedClienteIdForDetails={selectedClienteIdForDetails}
-            setSelectedClienteIdForDetails={setSelectedClienteIdForDetails}
+            setSelectedClienteIdForDetails={handleSelectClienteDetails}
           />
         );
       case 'confirmacoes':

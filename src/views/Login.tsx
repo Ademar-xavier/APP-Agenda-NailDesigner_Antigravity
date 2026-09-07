@@ -64,6 +64,10 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     const success = loginWithCredentials(targetUser, pwd);
     if (success) {
       resetarFalhasLogin();
+      setIsAdmin(true);
+      try {
+        window.history.replaceState({ nailView: 'dashboard', logged: true }, '', '#admin');
+      } catch (e) {}
     } else {
       const falha = registrarFalhaLogin();
       if (falha.bloqueouAgora) {

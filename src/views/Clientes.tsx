@@ -1158,54 +1158,56 @@ export const Clientes: React.FC<ClientesProps> = ({
             return (
               <>
                 {/* Navegação entre Visão Geral e CRM de Resgate de Clientes Sumidas */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 border-b border-[#EFECE6] pb-4 mb-6">
+                  {/* Abas: Grid uniforme no celular (50% / 50%) e flex no desktop */}
+                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
                     <button
                       type="button"
                       onClick={() => setAbaAtiva('todas')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                      className={`h-11 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                         abaAtiva === 'todas'
                           ? 'bg-[#5A4535] text-white shadow-sm'
                           : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
                       }`}
                     >
-                      <Users size={15} />
-                      <span>Todas as Clientes ({clientes.length})</span>
+                      <Users size={15} className="shrink-0" />
+                      <span className="truncate">Todas as Clientes ({clientes.length})</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setAbaAtiva('sumidas')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                      className={`h-11 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
                         abaAtiva === 'sumidas'
                           ? 'bg-rose-700 text-white shadow-sm'
                           : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
                       }`}
                     >
-                      <UserX size={15} />
-                      <span>🎯 CRM Clientes Sumidas ({clientesSumidas.length})</span>
+                      <UserX size={15} className="shrink-0" />
+                      <span className="truncate">🎯 CRM Sumidas ({clientesSumidas.length})</span>
                     </button>
                   </div>
 
+                  {/* Ações: Nova Cliente e Deduplicar uniforme no celular (largura total) e no desktop */}
                   {abaAtiva === 'todas' && (
-                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
                       {duplicatasDetectadas > 0 && (
                         <button
                           type="button"
                           onClick={handleDeduplicarClientes}
                           disabled={isDeduplicating}
-                          className="flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer animate-pulse"
+                          className="h-11 sm:h-10 w-full sm:w-auto px-4 flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer animate-pulse"
                           title="Excluir cadastros duplicados mantendo apenas um por cliente e preservando os agendamentos"
                         >
-                          <Sparkles size={15} className="text-amber-600" />
+                          <Sparkles size={15} className="text-amber-600 shrink-0" />
                           <span>Unificar {duplicatasDetectadas} Duplicada(s)</span>
                         </button>
                       )}
                       <button
                         onClick={handleOpenCriar}
-                        className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
+                        className="h-11 sm:h-10 w-full sm:w-auto px-5 flex items-center justify-center gap-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
                       >
-                        <Plus size={16} />
+                        <Plus size={16} className="shrink-0" />
                         <span>Nova Cliente</span>
                       </button>
                     </div>
