@@ -12,7 +12,8 @@ import {
   Sparkles,
   RotateCcw,
   CheckCircle,
-  Crown
+  Crown,
+  Repeat
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
@@ -140,6 +141,23 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
   const [cobrarSinal, setCobrarSinal] = useState<boolean>(false);
   const [valorSinalManual, setValorSinalManual] = useState<number | ''>('');
+
+  // Estados de Recorrência (estilo Google Agenda)
+  const [recorrenciaAtiva, setRecorrenciaAtiva] = useState<boolean>(false);
+  const [recorrenciaTipo, setRecorrenciaTipo] = useState<'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado'>('quinzenal');
+  const [recorrenciaIntervaloDias, setRecorrenciaIntervaloDias] = useState<number>(15);
+  const [recorrenciaRepeticoes, setRecorrenciaRepeticoes] = useState<number>(4);
+  const [recorrenciaCustomDias, setRecorrenciaCustomDias] = useState<number>(15);
+
+  const handleMudarTipoRecorrencia = (tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado') => {
+    setRecorrenciaTipo(tipo);
+    if (tipo === 'semanal') setRecorrenciaIntervaloDias(7);
+    else if (tipo === 'quinzenal') setRecorrenciaIntervaloDias(15);
+    else if (tipo === 'dias_20') setRecorrenciaIntervaloDias(20);
+    else if (tipo === 'dias_21') setRecorrenciaIntervaloDias(21);
+    else if (tipo === 'mensal') setRecorrenciaIntervaloDias(30);
+    else if (tipo === 'personalizado') setRecorrenciaIntervaloDias(recorrenciaCustomDias || 15);
+  };
 
   // Serviços habilitados da profissional selecionada
   const profSelecionada = equipe.find(u => u.id === profissionalId);
@@ -348,6 +366,11 @@ export const Agenda: React.FC<AgendaProps> = ({
     setLocalNewAgendamentoOpen(false);
     setBuscaClienteModal('');
     setDropdownClienteAberto(false);
+    setRecorrenciaAtiva(false);
+    setRecorrenciaTipo('quinzenal');
+    setRecorrenciaIntervaloDias(15);
+    setRecorrenciaRepeticoes(4);
+    setRecorrenciaCustomDias(15);
     closeNewAgendamentoModal();
   };
 
@@ -536,6 +559,99 @@ export const Agenda: React.FC<AgendaProps> = ({
     }
   }, [analiseHorarios.livres]);
 
+  // Lista de feriados nacionais para cálculo de dias úteis
+  const feriadosNacionais = useMemo(() => ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'], []);
+
+  // Prévia em tempo real das datas que serão preenchidas na agenda (Google Calendar style)
+  const previasRecorrencia = useMemo(() => {
+    if (!recorrenciaAtiva || recorrenciaRepeticoes <= 1) return [];
+    const diasSemanaNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const interval = recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias;
+    const [anoStr, mesStr, diaStr] = dataSelecionada.split('-').map(Number);
+    const lista: {
+      sessaoNum: number;
+      dataStr: string;
+      dataFormatada: string;
+      diaSemana: string;
+      horario: string;
+      ajustado: boolean;
+      motivoAjuste?: string;
+      conflito: boolean;
+    }[] = [];
+
+    for (let rep = 0; rep < recorrenciaRepeticoes; rep++) {
+      if (rep === 0) {
+        const d0 = new Date(anoStr, mesStr - 1, diaStr);
+        const diaSem0 = diasSemanaNomes[d0.getDay()];
+        const dStr0 = `${String(diaStr).padStart(2, '0')}/${String(mesStr).padStart(2, '0')}`;
+        lista.push({
+          sessaoNum: 1,
+          dataStr: dataSelecionada,
+          dataFormatada: dStr0,
+          diaSemana: diaSem0,
+          horario: horaInicio,
+          ajustado: false,
+          conflito: false
+        });
+      } else {
+        const d = new Date(anoStr, mesStr - 1, diaStr);
+        d.setDate(d.getDate() + rep * interval);
+        const dataOriginal = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const diaSemOrig = diasSemanaNomes[d.getDay()];
+
+        let tentativas = 0;
+        let foiAjustado = false;
+        let motivo = '';
+
+        while (tentativas < 14) {
+          const diaSem = d.getDay();
+          const expediente = configSalao.horarios_trabalho?.[diaSem];
+          const mStrF = String(d.getMonth() + 1).padStart(2, '0');
+          const dStrF = String(d.getDate()).padStart(2, '0');
+          const mmdd = `${mStrF}-${dStrF}`;
+          const isFeriado = feriadosNacionais.includes(mmdd);
+          const isFechado = !expediente || !expediente.ativo;
+
+          if (!isFeriado && !isFechado) {
+            break;
+          }
+          if (!foiAjustado) {
+            foiAjustado = true;
+            motivo = isFeriado ? `Feriado nacional (${dataOriginal})` : `Salão fechado no ${diaSemOrig}`;
+          }
+          d.setDate(d.getDate() + 1);
+          tentativas++;
+        }
+
+        const aRep = d.getFullYear();
+        const mRep = String(d.getMonth() + 1).padStart(2, '0');
+        const dRep = String(d.getDate()).padStart(2, '0');
+        const dataCalcStr = `${aRep}-${mRep}-${dRep}`;
+        const dataFormatada = `${dRep}/${mRep}`;
+        const diaSemFinal = diasSemanaNomes[d.getDay()];
+
+        // Verifica conflito de horário com outros agendamentos
+        const [hI, mI] = horaInicio.split(':').map(Number);
+        const dFimCalc = new Date(aRep, Number(mRep) - 1, Number(dRep), hI, mI + (duracaoMinutosAtual || 60));
+        const fimCalcStr = `${aRep}-${mRep}-${dRep}T${String(dFimCalc.getHours()).padStart(2, '0')}:${String(dFimCalc.getMinutes()).padStart(2, '0')}:00`;
+        const inicioCalcStr = `${dataCalcStr}T${horaInicio}:00`;
+        const temConflito = checkConflitoHorario(inicioCalcStr, fimCalcStr, profissionalId);
+
+        lista.push({
+          sessaoNum: rep + 1,
+          dataStr: dataCalcStr,
+          dataFormatada,
+          diaSemana: diaSemFinal,
+          horario: horaInicio,
+          ajustado: foiAjustado,
+          motivoAjuste: motivo,
+          conflito: temConflito
+        });
+      }
+    }
+    return lista;
+  }, [recorrenciaAtiva, recorrenciaRepeticoes, recorrenciaTipo, recorrenciaIntervaloDias, recorrenciaCustomDias, dataSelecionada, horaInicio, duracaoMinutosAtual, profissionalId, configSalao.horarios_trabalho, feriadosNacionais, checkConflitoHorario]);
+
   // Salvar agendamento
   const handleCriarAgendamento = (e: React.FormEvent) => {
     e.preventDefault();
@@ -633,6 +749,25 @@ export const Agenda: React.FC<AgendaProps> = ({
     const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}] ` : '';
     const obsFinal = `${prefixoVip}${obsAgendamento}`.trim();
 
+    const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
+      ? {
+          tipo: recorrenciaTipo,
+          intervaloDias: recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias,
+          repeticoes: recorrenciaRepeticoes,
+          tipoLabel: recorrenciaTipo === 'semanal' 
+            ? 'Semanal' 
+            : recorrenciaTipo === 'quinzenal' 
+              ? 'Quinzenal (15 dias)' 
+              : recorrenciaTipo === 'dias_20' 
+                ? 'Manutenção (20 dias)' 
+                : recorrenciaTipo === 'dias_21'
+                  ? '3 Semanas (21 dias)'
+                  : recorrenciaTipo === 'mensal'
+                    ? 'Mensal (30 dias)'
+                    : `A cada ${recorrenciaCustomDias} dias`
+        }
+      : undefined;
+
     const res = addAgendamento({
       cliente_id: cId,
       profissional_id: profissionalId,
@@ -643,7 +778,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       pago_com_clube: isVipFinal,
       observacoes: obsFinal,
       origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados);
+    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia);
 
     if (res.success) {
       // Limpar formulário
@@ -657,6 +792,11 @@ export const Agenda: React.FC<AgendaProps> = ({
       setValorSinalManual('');
       setAgendarComoVip(false);
       setPlanoVipContratarId('');
+      setRecorrenciaAtiva(false);
+      setRecorrenciaTipo('quinzenal');
+      setRecorrenciaIntervaloDias(15);
+      setRecorrenciaRepeticoes(4);
+      setRecorrenciaCustomDias(15);
       handleCloseLocalModal();
     } else {
       setErrorAgendamento(res.error || 'Erro desconhecido');
@@ -921,7 +1061,19 @@ export const Agenda: React.FC<AgendaProps> = ({
                           </h4>
                         ) : (
                           <>
-                            <h4 className="font-bold text-sm">{client?.nome}</h4>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-bold text-sm">{client?.nome}</h4>
+                              {a.pago_com_clube && (
+                                <span className="text-[9px] font-bold bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                                  <Crown size={10} /> VIP
+                                </span>
+                              )}
+                              {(a.recorrencia_posicao || a.recorrencia_grupo_id || a.observacoes?.includes('Recorrência')) && (
+                                <span className="text-[9px] font-bold bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6] px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                                  <Repeat size={10} /> {a.recorrencia_posicao || 'Recorrente'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs opacity-90 mt-0.5">
                               {servText} {currentUser?.perfil === 'admin' && prof && `· Profissional: ${prof.nome}`}
                             </p>
@@ -1569,6 +1721,139 @@ export const Agenda: React.FC<AgendaProps> = ({
                               </span>
                             </span>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Seção de Recorrência (estilo Google Agenda) */}
+                {!isBloqueio && !agendarComoVip && !planoVipContratarId && (
+                  <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-[#F6ECE8] text-[#8C6D58] flex items-center justify-center">
+                          <Repeat size={14} />
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-[#5A4535] block">
+                            Repetir Agendamento (Recorrência)
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B]">
+                            Preenche a agenda automaticamente no período escolhido (Google Agenda)
+                          </span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={recorrenciaAtiva}
+                          onChange={(e) => setRecorrenciaAtiva(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#8C6D58]"></div>
+                      </label>
+                    </div>
+
+                    {recorrenciaAtiva && (
+                      <div className="pt-2 border-t border-[#EFECE6] space-y-3 animate-in fade-in duration-150">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                              Frequência de Retorno
+                            </label>
+                            <select
+                              value={recorrenciaTipo}
+                              onChange={(e) => handleMudarTipoRecorrencia(e.target.value as any)}
+                              className="w-full bg-white border border-[#EFECE6] rounded-xl px-2.5 py-2 text-xs font-bold text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                            >
+                              <option value="semanal">Semanal (a cada 7 dias)</option>
+                              <option value="quinzenal">Quinzenal (a cada 15 dias)</option>
+                              <option value="dias_20">A cada 20 dias (Manutenção Fibra/Gel)</option>
+                              <option value="dias_21">A cada 3 semanas (21 dias)</option>
+                              <option value="mensal">Mensal (a cada 30 dias)</option>
+                              <option value="personalizado">Personalizado (definir dias)</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                              Repetir por quantas vezes?
+                            </label>
+                            <select
+                              value={recorrenciaRepeticoes}
+                              onChange={(e) => setRecorrenciaRepeticoes(Math.max(2, Number(e.target.value)))}
+                              className="w-full bg-white border border-[#EFECE6] rounded-xl px-2.5 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
+                            >
+                              <option value={2}>2 sessões (1 repetição)</option>
+                              <option value={3}>3 sessões</option>
+                              <option value={4}>4 sessões (1 mês semanal / 2 meses quinzenal)</option>
+                              <option value={6}>6 sessões</option>
+                              <option value={8}>8 sessões (2 meses semanal / 4 meses quinzenal)</option>
+                              <option value={12}>12 sessões (3 meses semanal / 6 meses quinzenal)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {recorrenciaTipo === 'personalizado' && (
+                          <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#EFECE6]">
+                            <span className="text-xs text-[#5A4535] font-medium">Repetir a cada</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={90}
+                              value={recorrenciaCustomDias}
+                              onChange={(e) => setRecorrenciaCustomDias(Math.max(1, Number(e.target.value) || 1))}
+                              className="w-16 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs font-bold text-center text-[#8C6D58]"
+                            />
+                            <span className="text-xs text-[#5A4535] font-medium">dias</span>
+                          </div>
+                        )}
+
+                        {/* Prévia Interativa das Datas Geradas */}
+                        <div className="bg-white border border-[#EFECE6] rounded-xl p-2.5">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-[#8C7A6B] uppercase flex items-center gap-1">
+                              <CalendarIcon size={12} />
+                              Datas das {previasRecorrencia.length} sessões agendadas:
+                            </span>
+                            <span className="text-[9px] text-emerald-700 bg-emerald-50 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                              Autopreenchimento ativo
+                            </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-32 overflow-y-auto">
+                            {previasRecorrencia.map((p) => (
+                              <div
+                                key={p.sessaoNum}
+                                className={`p-1.5 rounded-lg border text-[11px] flex flex-col ${
+                                  p.conflito 
+                                    ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                                    : p.ajustado
+                                      ? 'bg-blue-50/60 border-blue-200 text-blue-950'
+                                      : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between font-bold text-[10px]">
+                                  <span>{p.sessaoNum}ª sessão</span>
+                                  <span>{p.diaSemana}</span>
+                                </div>
+                                <div className="font-semibold mt-0.5 text-xs">
+                                  {p.dataFormatada} às {p.horario}
+                                </div>
+                                {p.ajustado && (
+                                  <span className="text-[8px] text-blue-700 font-medium leading-tight mt-0.5" title={p.motivoAjuste}>
+                                    *Ajustado (folga/feriado)
+                                  </span>
+                                )}
+                                {p.conflito && (
+                                  <span className="text-[8px] text-amber-700 font-bold leading-tight mt-0.5">
+                                    ⚠️ Possível conflito
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     )}

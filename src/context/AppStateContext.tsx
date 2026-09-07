@@ -140,7 +140,16 @@ interface AppStateContextType {
   deleteServico: (id: string) => Promise<void> | void;
   
   // Ações de Agendamentos
-  addAgendamento: (agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, servicosSelecionados: string[]) => { success: boolean; error?: string; agendamento?: Agendamento };
+  addAgendamento: (
+    agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
+    servicosSelecionados: string[],
+    recorrenciaManual?: {
+      tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
+      intervaloDias: number;
+      repeticoes: number;
+      tipoLabel: string;
+    }
+  ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
@@ -2262,7 +2271,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // --- Ações de Agendamento ---
   const addAgendamento = (
     novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
-    servicosSelecionados: string[]
+    servicosSelecionados: string[],
+    recorrenciaManual?: {
+      tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
+      intervaloDias: number;
+      repeticoes: number;
+      tipoLabel: string;
+    }
   ) => {
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
     let duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
@@ -2302,11 +2317,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const id = gerarCodigoReserva();
+    const grupoId = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
+      ? 'rec_' + Math.random().toString(36).substring(2, 9)
+      : undefined;
+
+    const obsInicial = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
+      ? `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão 1 de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes || ''}`.trim()
+      : novoAgendamento.observacoes;
     
     const agendamento: Agendamento = {
       ...novoAgendamento,
       id,
       fim: fimStr,
+      recorrencia_grupo_id: grupoId,
+      recorrencia_tipo: recorrenciaManual?.tipo,
+      recorrencia_posicao: recorrenciaManual && recorrenciaManual.repeticoes > 1 ? `1 de ${recorrenciaManual.repeticoes}` : undefined,
+      observacoes: obsInicial,
       criado_em: new Date().toISOString()
     };
 
@@ -2327,18 +2353,96 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPagamentos(prev => [...prev, pagSinal]);
     }
 
-    setAgendamentos(prev => [...prev, agendamento]);
-    salvarAgendamentoSupabase(agendamento, servicosSelecionados);
-    mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
+    // Gera as repetições se a recorrência manual estilo Google Agenda estiver ativa
+    const novosRecorrentes: Agendamento[] = [];
+    const novosItensMap: Record<string, string[]> = {};
 
-    // Regra de Negócio: Se já foi criado confirmado ou com clube VIP, agenda as sessões semanais
-    if (agendamento.status === 'confirmado' || agendamento.pago_com_clube) {
+    if (recorrenciaManual && recorrenciaManual.repeticoes > 1 && grupoId) {
+      const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+      const [dataPartOrig, horaPartOrig] = novoAgendamento.inicio.replace(' ', 'T').split('T');
+      const [anoOrig, mesOrig, diaOrig] = dataPartOrig.split('-').map(Number);
+      const horaStrLimpa = (horaPartOrig || '10:00:00').substring(0, 8);
+
+      for (let rep = 1; rep < recorrenciaManual.repeticoes; rep++) {
+        const dRep = new Date(anoOrig, mesOrig - 1, diaOrig);
+        dRep.setDate(dRep.getDate() + rep * recorrenciaManual.intervaloDias);
+
+        let tentativas = 0;
+        while (tentativas < 14) {
+          const diaSemana = dRep.getDay();
+          const expediente = configSalao.horarios_trabalho?.[diaSemana];
+          const mStrF = String(dRep.getMonth() + 1).padStart(2, '0');
+          const dStrF = String(dRep.getDate()).padStart(2, '0');
+          const mmdd = `${mStrF}-${dStrF}`;
+          const isFeriado = feriadosNacionais.includes(mmdd);
+          const isFechado = !expediente || !expediente.ativo;
+
+          if (!isFeriado && !isFechado) {
+            break;
+          }
+          dRep.setDate(dRep.getDate() + 1);
+          tentativas++;
+        }
+
+        const anoRep = dRep.getFullYear();
+        const mesRep = String(dRep.getMonth() + 1).padStart(2, '0');
+        const diaRep = String(dRep.getDate()).padStart(2, '0');
+        const dataRepStr = `${anoRep}-${mesRep}-${diaRep}`;
+        const inicioRepStr = `${dataRepStr}T${horaStrLimpa}`;
+
+        const [hR, mR] = horaStrLimpa.split(':').map(Number);
+        const dRepFim = new Date(anoRep, dRep.getMonth(), Number(diaRep), hR, mR + duracaoTotal);
+        const anoRepFim = dRepFim.getFullYear();
+        const mesRepFim = String(dRepFim.getMonth() + 1).padStart(2, '0');
+        const diaRepFim = String(dRepFim.getDate()).padStart(2, '0');
+        const hRepFim = String(dRepFim.getHours()).padStart(2, '0');
+        const mRepFim = String(dRepFim.getMinutes()).padStart(2, '0');
+        const sRepFim = String(dRepFim.getSeconds()).padStart(2, '0');
+        const fimRepStr = `${anoRepFim}-${mesRepFim}-${diaRepFim}T${hRepFim}:${mRepFim}:${sRepFim}`;
+
+        const idRep = gerarCodigoReserva();
+        const obsRep = `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão ${rep + 1} de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes ? novoAgendamento.observacoes.replace(/\[🔁.*?\]\s*/g, '') : ''}`.trim();
+
+        const agRep: Agendamento = {
+          ...novoAgendamento,
+          id: idRep,
+          inicio: inicioRepStr,
+          fim: fimRepStr,
+          status: novoAgendamento.status === 'bloqueado' ? 'bloqueado' : 'confirmado',
+          valor_total: novoAgendamento.valor_total,
+          valor_sinal: 0,
+          pago_com_clube: novoAgendamento.pago_com_clube,
+          recorrencia_grupo_id: grupoId,
+          recorrencia_tipo: recorrenciaManual.tipo,
+          recorrencia_posicao: `${rep + 1} de ${recorrenciaManual.repeticoes}`,
+          observacoes: obsRep,
+          criado_em: new Date().toISOString()
+        };
+
+        novosRecorrentes.push(agRep);
+        novosItensMap[idRep] = servicosSelecionados;
+        salvarAgendamentoSupabase(agRep, servicosSelecionados);
+      }
+    }
+
+    setAgendamentos(prev => [...prev, agendamento, ...novosRecorrentes]);
+    salvarAgendamentoSupabase(agendamento, servicosSelecionados);
+
+    if (novosRecorrentes.length > 0) {
+      setItensAgendamento(prev => ({ ...prev, [id]: servicosSelecionados, ...novosItensMap }));
+      mostrarNotificacaoGlobal(`🔁 1º agendamento e mais ${novosRecorrentes.length} repetições (${recorrenciaManual?.tipoLabel}) foram reservados na agenda!`);
+    } else {
+      mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
+    }
+
+    // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP, agenda as sessões da assinatura
+    if (!recorrenciaManual && (agendamento.status === 'confirmado' || agendamento.pago_com_clube)) {
       setTimeout(() => {
         reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados);
       }, 100);
     }
 
-    return { success: true, agendamento };
+    return { success: true, agendamento, criados: 1 + novosRecorrentes.length };
   };
 
   const updateAgendamentoStatus = (
@@ -3059,6 +3163,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       data_inicio: agora.toISOString(),
       data_renovacao: renovacao.toISOString(),
       itens_saldo: itensSaldo,
+      frequencia_dias: plano.frequencia_dias || 7,
       saldo_restante: plano.qtd_procedimentos_mes,
       total_mes: plano.qtd_procedimentos_mes,
       status: 'ativo'
@@ -3260,11 +3365,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const servObj = servicos.find(s => s.id === servId);
       const durSessao = servObj?.duracao_minutos || 60;
 
-      // Calcula a data da semana (+ semana * 7 dias a partir da data do agendamento inicial)
+      // Calcula a data da sessão (+ semana * intervaloDias a partir da data do agendamento inicial)
       let dataSemanaStr = dataPart;
+      const intervaloDias = cliente.assinatura.frequencia_dias || plano?.frequencia_dias || 7;
       if (semana > 0) {
         const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
-        d.setDate(d.getDate() + semana * 7);
+        d.setDate(d.getDate() + semana * intervaloDias);
 
         let tentativas = 0;
         while (tentativas < 14) {
@@ -3364,11 +3470,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (Object.keys(novosItensMap).length > 0) {
         setItensAgendamento(prev => ({ ...prev, ...novosItensMap }));
       }
-      mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessão(ões) semanal(is) do Clube VIP foram reservadas e bloqueadas na agenda!`);
+      const tipoSessaoLabel = intervaloDias === 7 ? 'semanal(is)' : (intervaloDias === 14 || intervaloDias === 15 ? 'quinzenal(is)' : `a cada ${intervaloDias} dias`);
+      mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessão(ões) ${tipoSessaoLabel} do Clube VIP foram reservadas e bloqueadas na agenda!`);
       return { 
         success: true, 
         criados: novosAgendamentos.length, 
-        mensagem: `${novosAgendamentos.length} sessões semanais foram reservadas e bloqueadas na agenda!` 
+        mensagem: `${novosAgendamentos.length} sessões ${tipoSessaoLabel} foram reservadas e bloqueadas na agenda!` 
       };
     } else {
       return { 

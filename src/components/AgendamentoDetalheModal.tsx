@@ -16,7 +16,8 @@ import {
   ShoppingBag,
   Crown,
   Plus,
-  Trash2
+  Trash2,
+  Repeat
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
@@ -636,46 +637,81 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           );
         })()}
 
-        {/* Card Clube VIP & Recorrência Semanal */}
-        {temAssinaturaAtiva && (
-          <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
+        {/* Card Agendamento Recorrente (Google Agenda Style) */}
+        {(agendamento.recorrencia_grupo_id || agendamento.recorrencia_posicao || agendamento.observacoes?.includes('Recorrência')) && (
+          <div className="mb-4 p-3 bg-gradient-to-r from-stone-50 to-amber-50/50 border border-[#EFECE6] rounded-xl space-y-1.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Crown size={15} className="text-amber-600" />
-                <span className="text-xs font-bold text-amber-950">
-                  Clube VIP: {cliente?.assinatura?.nome_plano}
+                <Repeat size={14} className="text-[#8C6D58]" />
+                <span className="text-xs font-bold text-[#5A4535]">
+                  Agendamento Recorrente
                 </span>
               </div>
-              <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
-                {cliente?.assinatura?.saldo_restante} {cliente?.assinatura?.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}
-              </span>
+              {agendamento.recorrencia_posicao && (
+                <span className="text-[10px] font-bold bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6] px-2 py-0.5 rounded-full">
+                  Sessão {agendamento.recorrencia_posicao}
+                </span>
+              )}
             </div>
-
-            <p className="text-[11px] text-amber-900 leading-snug">
-              Os atendimentos deste plano são semanais (mesmo dia e horário).
+            <p className="text-[11px] text-[#8C7A6B] leading-snug">
+              Este atendimento faz parte de uma sequência periódica agendada no salão (estilo Google Agenda).
             </p>
-
-            {agendamento.status !== 'cancelado' && (
-              <button
-                type="button"
-                onClick={() => {
-                  const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento);
-                  if (!res.success) {
-                    mostrarAlerta({
-                      titulo: 'Recorrência Semanal VIP',
-                      mensagem: res.mensagem,
-                      tipo: 'info'
-                    });
-                  }
-                }}
-                className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-              >
-                <Crown size={14} />
-                <span>Reservar Sessões Semanais do Plano</span>
-              </button>
-            )}
           </div>
         )}
+
+        {/* Card Clube VIP & Recorrência Dinâmica */}
+        {temAssinaturaAtiva && (() => {
+          const freqVip = cliente?.assinatura?.frequencia_dias || 7;
+          const textoFreqVip = freqVip === 7 
+            ? 'semanais (mesmo dia e horário)' 
+            : (freqVip === 14 || freqVip === 15 
+              ? 'quinzenais (a cada 15 dias no mesmo horário)' 
+              : freqVip === 20 
+                ? 'a cada 20 dias (ciclo de manutenção)' 
+                : freqVip === 30 
+                  ? 'mensais (a cada 30 dias)' 
+                  : `a cada ${freqVip} dias`);
+
+          return (
+            <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Crown size={15} className="text-amber-600" />
+                  <span className="text-xs font-bold text-amber-950">
+                    Clube VIP: {cliente?.assinatura?.nome_plano}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
+                  {cliente?.assinatura?.saldo_restante} {cliente?.assinatura?.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}
+                </span>
+              </div>
+
+              <p className="text-[11px] text-amber-900 leading-snug">
+                Os atendimentos deste plano são {textoFreqVip}.
+              </p>
+
+              {agendamento.status !== 'cancelado' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento);
+                    if (!res.success) {
+                      mostrarAlerta({
+                        titulo: 'Recorrência VIP',
+                        mensagem: res.mensagem,
+                        tipo: 'info'
+                      });
+                    }
+                  }}
+                  className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+                >
+                  <Crown size={14} />
+                  <span>Reservar Próximas Sessões do Plano</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Lembretes WhatsApp e Cobrança de Sinal */}
         {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
