@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -26,6 +26,7 @@ import {
   salvarAgendamentoSupabase,
   salvarListaEsperaSupabase
 } from '../services/supabase';
+import { dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -50,19 +51,50 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   } = useAppState();
 
   const [step, setStep] = useState<number>(1);
-  
-  // Responde ao botão voltar físico / virtual do Android
+  const stepRef = useRef<number>(1);
   useEffect(() => {
-    const handleAndroidBack = () => {
-      setStep(prev => {
-        if (prev > 1 && prev !== 5) {
-          return prev - 1;
+    stepRef.current = step;
+  }, [step]);
+
+  // Navegação protegida que sincroniza com o histórico do navegador móvel
+  const irParaStep = (novoStep: number) => {
+    setStep(novoStep);
+    try {
+      window.history.pushState({ nailStep: novoStep }, '');
+    } catch (e) {}
+  };
+  
+  // Responde ao botão voltar físico / virtual do Android e gestos nativos
+  useEffect(() => {
+    const recuarStep = (e?: Event) => {
+      const cur = stepRef.current;
+      if (cur > 1 && cur !== 5) {
+        if (e && e.cancelable) {
+          e.preventDefault(); // Informa ao App.tsx que a ação de voltar foi consumida e NÃO deve minimizar
         }
-        return prev;
-      });
+        if (cur === 7) setStep(1);
+        else if (cur === 6) setStep(3);
+        else if (cur === 4) setStep(3);
+        else if (cur === 3) setStep(2);
+        else if (cur === 2) setStep(1);
+        else setStep(1);
+      }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      recuarStep(e);
+    };
+
+    const handlePopState = () => {
+      recuarStep();
+    };
+
     window.addEventListener('nail_android_back', handleAndroidBack);
-    return () => window.removeEventListener('nail_android_back', handleAndroidBack);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
   
   // Agendamento State
@@ -271,19 +303,22 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       await salvarClienteSupabase(novoCli);
     }
 
+    // Distinção clara: contratação de novo Plano VIP vs cliente assinante VIP agendando serviço avulso
+    const isContratandoVip = !!planoVipEscolhido;
+    const isAssinanteVip = !!(cliExistente?.assinatura && cliExistente.assinatura.status === 'ativo');
+
     // Se o cliente escolheu um plano VIP nesta sessão:
-    if (planoVipEscolhido) {
+    if (isContratandoVip && planoVipEscolhido) {
       vincularAssinaturaCliente(cId, planoVipEscolhido.id);
     }
 
     // Regras de Cobrança do Sinal:
-    const isVipAtivo = !!(planoVipEscolhido || (cliExistente?.assinatura && cliExistente.assinatura.status === 'ativo'));
     const cobrarTodos = !!configSalao.regras?.sinal_obrigatorio_todos;
     const cobrarNovos = !!(configSalao.regras?.sinal_obrigatorio_novos ?? configSalao.regras?.sinal_obrigatorio_geral ?? true);
 
     let deveCobrarSinal = false;
-    if (isVipAtivo) {
-      // Clientes do Clube VIP são isentas de sinal (coberto pelo plano)
+    if (isContratandoVip || isAssinanteVip) {
+      // Clientes do Clube VIP ou novas contratações VIP são isentas de sinal Pix online
       deveCobrarSinal = false;
     } else if (cobrarTodos) {
       deveCobrarSinal = true;
@@ -328,7 +363,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
     const profNome = profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
     const nomePlanoVip = planoVipEscolhido?.nome || cliExistente?.assinatura?.nome_plano || 'Clube VIP';
-    const obsVip = isVipAtivo ? `[👑 Clube VIP: ${nomePlanoVip}] ` : '';
+    const obsVip = isContratandoVip 
+      ? `[👑 Adesão Clube VIP: ${nomePlanoVip}] ` 
+      : (isAssinanteVip ? `[👑 Assinante VIP: ${nomePlanoVip} (Serviço Avulso)] ` : '');
     const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
     const res = addAgendamento({
@@ -336,9 +373,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       profissional_id: profFinalId,
       inicio: dataInicioStr,
       status: statusFinal,
-      valor_total: isVipAtivo ? 0 : precoTotal,
+      valor_total: isContratandoVip ? 0 : precoTotal,
       valor_sinal: valorSinalFinal,
-      pago_com_clube: isVipAtivo,
+      pago_com_clube: isContratandoVip,
       observacoes: obsComProf,
       origem: 'cliente'
     }, servicosSelecionados);
@@ -347,8 +384,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       // Garante persistência no Supabase com integridade referencial antes de mudar de etapa
       await salvarAgendamentoSupabase(res.agendamento, servicosSelecionados, clienteParaSalvar);
 
-      // Se for cliente VIP, reserva as sessões semanais restantes no mesmo dia e horário
-      if (isVipAtivo) {
+      // Somente se for contratação/agendamento de Plano VIP reserva as sessões semanais restantes
+      if (isContratandoVip) {
         setTimeout(() => {
           reservarRecorrenciaSemanalVip(res.agendamento!.id);
         }, 400);
@@ -360,12 +397,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       setProfissionalConfirmadaId(profFinalId);
       setStep(5);
 
+      const dataFmt = formatarDataLocal(dataSelecionada);
+      const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
+
       // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
       try {
         const profFinalObj = equipe.find(e => e.id === profFinalId);
         const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
-        const dataFmt = formatarDataLocal(dataSelecionada);
-        const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
         const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
         if (telDest) {
           enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
@@ -376,12 +414,20 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'agendamento',
         titulo: 'Novo Agendamento Recebido! 💅',
-        mensagem: `${nome} agendou para ${formatarDataLocal(dataSelecionada)} às ${horarioSelecionado}.`,
+        mensagem: `${nome} agendou para ${dataFmt} às ${horarioSelecionado}.`,
         detalhes: `Código #${res.agendamento.id} • ${valorSinalFinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
         agendamentoId: res.agendamento.id,
         clienteId: cId,
         clienteNome: nome
       });
+
+      // Dispara notificação na barra de status / notification tray do aparelho
+      dispararNotificacaoBarraStatus(
+        'Novo Agendamento Registrado! 💅',
+        `${nome} agendou para ${dataFmt} às ${horarioSelecionado}.`,
+        isContratandoVip ? `Plano VIP: ${planoVipEscolhido.nome}` : `${servsText} • ${formatarMoeda(precoTotal)}`,
+        res.agendamento.id
+      ).catch(() => {});
     }
   };
 
@@ -1087,12 +1133,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </div>
               )}
 
-              {/* Reconhecimento automático de Cliente VIP */}
+              {/* Reconhecimento automático de Cliente VIP para Serviços Avulsos */}
               {(() => {
+                if (planoVipEscolhido) return null;
                 const telLimpo = telefone.replace(/\D/g, '');
                 if (telLimpo.length < 8) return null;
                 const cliVip = clientes.find(c => c.telefone.replace(/\D/g, '').endsWith(telLimpo.slice(-8)) && c.assinatura?.status === 'ativo');
                 if (!cliVip) return null;
+
+                const servsNomes = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
 
                 return (
                   <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">
@@ -1102,7 +1151,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         👑 Bem-vinda, {cliVip.nome}! Assinante VIP Reconhecida
                       </span>
                       <p className="text-[11px] text-amber-900 mt-0.5 leading-snug">
-                        Seu plano <strong>{cliVip.assinatura?.nome_plano}</strong> está ativo. Este agendamento é isento de sinal e suas sessões semanais serão reservadas no mesmo dia e horário!
+                        Identificamos seu plano <strong>{cliVip.assinatura?.nome_plano}</strong> ativo. Mantivemos seu procedimento avulso <strong>({servsNomes || 'serviço escolhido'})</strong> com isenção de sinal Pix online! O valor será acertado no salão.
                       </p>
                     </div>
                   </div>

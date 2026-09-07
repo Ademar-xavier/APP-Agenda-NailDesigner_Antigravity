@@ -49,6 +49,7 @@ import {
   getRealtimeBroadcastChannel
 } from '../services/supabase';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus, inicializarCanalNotificacoes } from '../services/notificacoesMobile';
+import { App as CapApp } from '@capacitor/app';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
@@ -395,6 +396,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (e) {}
   };
 
+  const getAvisosDisparadosSet = (): Set<string> => {
+    try {
+      const raw = localStorage.getItem('nail_avisos_disparados_ids');
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch (e) {
+      return new Set();
+    }
+  };
+
+  const registrarAvisoDisparado = (id: string) => {
+    if (!id) return;
+    try {
+      const s = getAvisosDisparadosSet();
+      s.add(id);
+      const arr = Array.from(s).slice(-150);
+      localStorage.setItem('nail_avisos_disparados_ids', JSON.stringify(arr));
+    } catch (e) {}
+  };
+
   const adicionarAvisoNaoLido = (avisoData: Omit<AvisoCliente, 'id' | 'criadoEm' | 'lido'>) => {
     const novoAviso: AvisoCliente = {
       id: 'aviso_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
@@ -502,6 +522,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Dispara notificação nativa no topo do celular (Barra de Notificações e Central de Notificações)
+    if (notif.agendamentoId) registrarAvisoDisparado(notif.agendamentoId);
+    if (notif.listaEsperaId) registrarAvisoDisparado(notif.listaEsperaId);
     dispararNotificacaoBarraStatus(notif.titulo, notif.mensagem, notif.detalhes, notif.agendamentoId);
   };
 
@@ -694,7 +716,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
     try {
-      const saved = localStorage.getItem('nail_current_user');
+      // Limpa chave legada no localStorage para garantir que ao fechar volte para a tela de login
+      localStorage.removeItem('nail_current_user');
+      const saved = sessionStorage.getItem('nail_current_user');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.id) return parsed;
@@ -703,13 +727,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return null;
   });
 
-  // Salva a sessão do usuário no localStorage para não perder o login ao minimizar o app no celular
+  // Salva a sessão do usuário no sessionStorage: mantém ao minimizar/maximizar, mas expira ao fechar o aplicativo
   useEffect(() => {
     try {
       if (currentUser) {
-        localStorage.setItem('nail_current_user', JSON.stringify(currentUser));
+        sessionStorage.setItem('nail_current_user', JSON.stringify(currentUser));
       } else {
-        localStorage.removeItem('nail_current_user');
+        sessionStorage.removeItem('nail_current_user');
       }
     } catch (e) {}
   }, [currentUser]);
@@ -1155,9 +1179,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setAvisosNaoLidos(prev => {
               const idsLocais = new Set(prev.map(a => a.id));
               const novissimos = avisosNuvem.filter(a => !idsLocais.has(a.id));
+              const disparados = getAvisosDisparadosSet();
+
               novissimos.forEach(av => {
-                const criadoEmMs = new Date(av.criadoEm || Date.now()).getTime();
-                if (Math.abs(Date.now() - criadoEmMs) < 300000) {
+                if (!av.lido && !disparados.has(av.id) && (!av.agendamentoId || !disparados.has(av.agendamentoId))) {
+                  registrarAvisoDisparado(av.id);
+                  if (av.agendamentoId) registrarAvisoDisparado(av.agendamentoId);
                   dispararNotificacaoBarraStatus(av.titulo, av.mensagem, av.detalhes, av.agendamentoId);
                   tocarAlertaSonoro();
                   setNotificacaoClienteAcao({
@@ -1171,6 +1198,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     listaEsperaId: av.listaEsperaId,
                     clienteNome: av.clienteNome
                   });
+                  setTimeout(() => {
+                    setNotificacaoClienteAcao(p => (p?.id === av.id ? null : p));
+                  }, 9000);
                 }
               });
               salvarAvisosLocalStorage(avisosNuvem);
@@ -1441,12 +1471,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               // Identifica avisos novos que acabaram de chegar da nuvem
               const idsLocais = new Set(prev.map(a => a.id));
               const novissimos = avisosNuvem.filter(a => !idsLocais.has(a.id));
+              const disparados = getAvisosDisparadosSet();
 
-              // Se há avisos novos criados nos últimos 2 minutos por clientes, dispara alarme no topo do aparelho
+              // Dispara alarme e banner no topo do aparelho para avisos não lidos novos
               novissimos.forEach(av => {
-                const agora = Date.now();
-                const criadoEmMs = new Date(av.criadoEm || agora).getTime();
-                if (Math.abs(agora - criadoEmMs) < 300000) {
+                if (!av.lido && !disparados.has(av.id) && (!av.agendamentoId || !disparados.has(av.agendamentoId))) {
+                  registrarAvisoDisparado(av.id);
+                  if (av.agendamentoId) registrarAvisoDisparado(av.agendamentoId);
                   dispararNotificacaoBarraStatus(av.titulo, av.mensagem, av.detalhes, av.agendamentoId);
                   tocarAlertaSonoro();
                   setNotificacaoClienteAcao({
@@ -1594,7 +1625,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.addEventListener('focus', handleReSync);
     document.addEventListener('visibilitychange', handleReSync);
 
-    // 6. Polling contínuo leve a cada 15 segundos para garantir paridade total
+    // 6. Ouvinte nativo do ciclo de vida móvel (ao maximizar o app após minimizar)
+    let capAppListener: any = null;
+    try {
+      CapApp.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          sincronizarComNuvem(false);
+        }
+      }).then(handle => {
+        capAppListener = handle;
+      }).catch(() => {});
+    } catch (e) {}
+
+    // 7. Polling contínuo leve a cada 15 segundos para garantir paridade total
     const pollInterval = setInterval(() => {
       sincronizarComNuvem(false);
     }, 15000);
@@ -1605,6 +1648,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       bc?.close();
       window.removeEventListener('focus', handleReSync);
       document.removeEventListener('visibilitychange', handleReSync);
+      if (capAppListener && typeof capAppListener.remove === 'function') {
+        capAppListener.remove();
+      }
       clearInterval(pollInterval);
     };
   }, []);

@@ -78,7 +78,9 @@ function AppContent() {
 
   const [currentView, setCurrentView] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem('nail_current_view');
+      // Limpa chave legada no localStorage para garantir que ao fechar volte para a raiz/login
+      localStorage.removeItem('nail_current_view');
+      const saved = sessionStorage.getItem('nail_current_view');
       if (saved && ['dashboard', 'agenda', 'clientes', 'confirmacoes', 'servicos', 'cadastros', 'materiais', 'financeiro', 'configuracoes'].includes(saved)) {
         return saved;
       }
@@ -89,7 +91,7 @@ function AppContent() {
   const handleSetCurrentView = (view: string) => {
     setCurrentView(view);
     try {
-      localStorage.setItem('nail_current_view', view);
+      sessionStorage.setItem('nail_current_view', view);
     } catch (e) {}
   };
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
@@ -266,42 +268,47 @@ function AppContent() {
   useEffect(() => {
     let listenerHandle: any = null;
 
-    const handleVoltarAcao = () => {
+    const handleVoltarAcao = (): boolean => {
       // 1. Se houver modal de alerta aberto, fecha o alerta
       if (modalAlerta) {
         fecharAlerta();
-        return;
+        return true;
       }
 
       // 2. Se houver modal de novo agendamento aberto, fecha o modal
       if (isNewAgendamentoModalOpen) {
         setIsNewAgendamentoModalOpen(false);
-        return;
+        return true;
       }
 
       // 3. Se houver detalhes de cliente aberto, volta para a lista
       if (selectedClienteIdForDetails) {
         setSelectedClienteIdForDetails(null);
-        return;
+        return true;
       }
 
       // 4. Se estiver em uma tela interna do painel admin que não seja o dashboard, volta ao dashboard
       if (isAdmin && currentView !== 'dashboard') {
         handleSetCurrentView('dashboard');
-        return;
+        return true;
       }
 
-      // 5. Dispara evento customizado para o fluxo público de agendamento recuar de etapa
-      window.dispatchEvent(new CustomEvent('nail_android_back'));
+      // 5. Dispara evento cancelável para o fluxo público de agendamento ou outros componentes
+      const ev = new CustomEvent('nail_android_back', { cancelable: true });
+      window.dispatchEvent(ev);
+      if (ev.defaultPrevented) {
+        return true; // Foi tratado internamente (ex: recuou etapa no agendamento público)
+      }
+
+      return false; // Não há nada para voltar, pode minimizar o aplicativo
     };
 
     // Ouvinte nativo do Capacitor Android (botão físico / barra inferior de gestos)
     try {
       CapApp.addListener('backButton', () => {
-        if (modalAlerta || isNewAgendamentoModalOpen || selectedClienteIdForDetails || (isAdmin && currentView !== 'dashboard')) {
-          handleVoltarAcao();
-        } else {
-          // Se estiver na tela raiz, minimiza o app sem deslogar
+        const handled = handleVoltarAcao();
+        if (!handled) {
+          // Se estiver na tela raiz e nada foi consumido, minimiza o app sem deslogar
           try { CapApp.minimizeApp(); } catch (e) {}
         }
       }).then(handle => {
