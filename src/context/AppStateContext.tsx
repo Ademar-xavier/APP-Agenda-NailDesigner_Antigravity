@@ -1880,6 +1880,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setServicos(next);
     try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
 
+    // Habilita automaticamente o novo serviço na lista da profissional administradora e ativas
+    setEquipe(prevEquipe => {
+      const equipeAtualizada = prevEquipe.map(u => {
+        if (u.ativo) {
+          const habilitados = Array.isArray(u.servicos_habilitados) ? u.servicos_habilitados : [];
+          if (!habilitados.includes(servico.id)) {
+            return { ...u, servicos_habilitados: [...habilitados, servico.id] };
+          }
+        }
+        return u;
+      });
+      try { localStorage.setItem('nail_equipe', JSON.stringify(equipeAtualizada)); } catch (e) {}
+      salvarConfiguracoesSupabase({ configSalao, equipe: equipeAtualizada }).catch(() => {});
+      return equipeAtualizada;
+    });
+
     const res = await salvarServicoSupabase(servico);
     if (res.sucesso) {
       mostrarNotificacaoGlobal(`✅ Serviço "${servico.nome}" salvo e confirmado na nuvem!`);
@@ -2966,7 +2982,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addPlanoAssinatura = (plano: Omit<PlanoAssinatura, 'id'>) => {
     const novoPlano: PlanoAssinatura = {
       ...plano,
-      id: 'plano_' + gerarId()
+      id: 'plano_' + gerarId(),
+      ativo: plano.ativo !== undefined ? plano.ativo : true
     };
     const next = [novoPlano, ...planosAssinatura];
     setPlanosAssinatura(next);

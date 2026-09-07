@@ -154,12 +154,40 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
   }, [planoVipEscolhido, servicos, servicosSelecionados.length]);
 
+  // Reage a alterações dinâmicas de hash enquanto o agendamento já estiver ativo
+  useEffect(() => {
+    const handleSyncHash = () => {
+      try {
+        const fullUrl = (typeof window !== 'undefined') ? (window.location.hash + window.location.search) : '';
+        const matchServico = fullUrl.match(/[?&]servico=([^&]+)/);
+        if (matchServico && matchServico[1]) {
+          const sIds = decodeURIComponent(matchServico[1]).split(',').map(s => s.trim()).filter(Boolean);
+          if (sIds.length > 0) {
+            setServicosSelecionados(sIds);
+            setSubTabStep2('servicos');
+          }
+        }
+        const matchPlano = fullUrl.match(/[?&](?:plano_vip|plano)=([^&]+)/);
+        if (matchPlano && matchPlano[1]) {
+          const pId = decodeURIComponent(matchPlano[1]).trim();
+          if (pId) {
+            setPlanoVipEscolhidoId(pId);
+            setSubTabStep2('planos_vip');
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('hashchange', handleSyncHash);
+    return () => window.removeEventListener('hashchange', handleSyncHash);
+  }, []);
+
   // Profissional Selecionada
   const [profissionalId, setProfissionalId] = useState<string>(''); // Vazio = Qualquer profissional disponível
   const profissionaisAtivas = (equipe || []).filter(e => e.ativo !== false);
   const profissionaisAptas = useMemo(() => {
     if (servicosSelecionados.length === 0) return profissionaisAtivas;
     const aptas = profissionaisAtivas.filter(p => {
+      if (p.perfil === 'admin') return true;
       if (!p.servicos_habilitados || p.servicos_habilitados.length === 0) return true;
       return servicosSelecionados.every(sId => p.servicos_habilitados!.includes(sId));
     });
@@ -196,7 +224,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const servsDisponiveis = useMemo(() => {
     return servicos.filter(s => {
       if (!s.ativo) return false;
-      if (!profSelecionada?.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
+      if (!profSelecionada) return true;
+      if (profSelecionada.perfil === 'admin') return true;
+      if (!profSelecionada.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
         return true;
       }
       return profSelecionada.servicos_habilitados.includes(s.id);

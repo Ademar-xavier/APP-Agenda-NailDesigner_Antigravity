@@ -19,7 +19,8 @@ import {
   ChevronRight, 
   Instagram, 
   Flame, 
-  Award 
+  Award,
+  ArrowLeft
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura } from '../types';
@@ -72,7 +73,8 @@ export const PublicCatalogo: React.FC = () => {
   const { 
     servicos, 
     planosAssinatura, 
-    configSalao 
+    configSalao,
+    currentUser
   } = useAppState();
 
   const [busca, setBusca] = useState('');
@@ -354,7 +356,21 @@ export const PublicCatalogo: React.FC = () => {
           </nav>
 
           {/* Botões de Ação no Header */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {currentUser && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.hash = 'admin';
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-[#FAF6F0] hover:bg-[#EFECE6] text-[#5A4535] text-xs font-bold rounded-xl border border-[#EEDDE1] transition-all cursor-pointer shadow-2xs shrink-0"
+                title="Voltar ao Painel Administrativo"
+              >
+                <ArrowLeft size={14} className="text-[#8C6D58]" />
+                <span className="hidden sm:inline">Voltar ao App</span>
+              </button>
+            )}
+
             <button
               onClick={handleCopiarLinkCatalogo}
               title="Compartilhar Link do Catálogo"
