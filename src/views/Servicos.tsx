@@ -299,14 +299,22 @@ export const Servicos: React.FC = () => {
   const handleOpenEditar = (serv: Servico) => {
     setServicoEdicao(serv);
     setNome(serv.nome);
-    if (categoriasServico.includes(serv.categoria)) {
-      setCategoria(serv.categoria);
+    const catAlvo = (serv.categoria || '').trim();
+    const catEncontrada = categoriasServico.find(c => c.toLowerCase() === catAlvo.toLowerCase());
+
+    if (catEncontrada) {
+      setCategoria(catEncontrada);
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
+    } else if (catAlvo) {
+      addCategoriaServico(catAlvo);
+      setCategoria(catAlvo);
       setCustomCategoria('');
       setShowCustomCategoria(false);
     } else {
-      setCategoria('nova');
-      setCustomCategoria(serv.categoria);
-      setShowCustomCategoria(true);
+      setCategoria(categoriasServico[0] || 'Alongamento');
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
     }
     setDuracaoMinutos(serv.duracao_minutos);
     setPreco(serv.preco);
@@ -324,22 +332,39 @@ export const Servicos: React.FC = () => {
     setModalOpen(true);
   };
 
+  const handleCriarCategoriaInline = () => {
+    const nomeLimpo = customCategoria.trim();
+    if (!nomeLimpo) {
+      mostrarAlerta({
+        titulo: 'Nome Inválido',
+        mensagem: 'Por favor, digite o nome da nova categoria.',
+        tipo: 'aviso'
+      });
+      return;
+    }
+    addCategoriaServico(nomeLimpo);
+    setCategoria(nomeLimpo);
+    setShowCustomCategoria(false);
+    setCustomCategoria('');
+  };
+
   const handleSalvar = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome) return;
 
     let catFinal = categoria;
-    if (categoria === 'nova') {
-      if (!customCategoria.trim()) {
-        mostrarAlerta({
-          titulo: 'Campo Obrigatório',
-          mensagem: 'Por favor, digite o nome da categoria customizada.',
-          tipo: 'aviso'
-        });
-        return;
-      }
-      addCategoriaServico(customCategoria.trim());
-      catFinal = customCategoria.trim();
+    if (customCategoria.trim()) {
+      const nomeNova = customCategoria.trim();
+      addCategoriaServico(nomeNova);
+      catFinal = nomeNova;
+      setCategoria(nomeNova);
+    } else if (categoria === 'nova') {
+      mostrarAlerta({
+        titulo: 'Campo Obrigatório',
+        mensagem: 'Por favor, digite o nome da categoria customizada.',
+        tipo: 'aviso'
+      });
+      return;
     }
 
     const itensInclusosList = itensInclusosTexto.split('\n').map(l => l.trim()).filter(Boolean);
@@ -1684,7 +1709,22 @@ export const Servicos: React.FC = () => {
 
                 {/* Categoria */}
                 <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Categoria</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Categoria</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCustomCategoria(!showCustomCategoria);
+                        if (!showCustomCategoria) {
+                          setCustomCategoria('');
+                        }
+                      }}
+                      className="text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] flex items-center gap-1 hover:underline"
+                    >
+                      <Plus size={12} />
+                      <span>{showCustomCategoria ? 'Fechar Nova' : 'Nova Categoria'}</span>
+                    </button>
+                  </div>
                   <select
                     value={categoria}
                     onChange={(e) => {
@@ -1705,16 +1745,47 @@ export const Servicos: React.FC = () => {
                 </div>
 
                 {showCustomCategoria && (
-                  <div className="animate-in slide-in-from-top-2 duration-200">
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome da Categoria Customizada</label>
-                    <input 
-                      type="text" 
-                      required
-                      value={customCategoria}
-                      onChange={(e) => setCustomCategoria(e.target.value)}
-                      placeholder="Ex: Cílios, Sobrancelha, Depilação..."
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
-                    />
+                  <div className="p-3 bg-[#F6ECE8]/50 border border-[#8C6D58]/20 rounded-xl space-y-2 animate-in slide-in-from-top-2 duration-200">
+                    <label className="block text-[11px] font-bold text-[#5A4535] uppercase">
+                      Criar Nova Categoria
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={customCategoria}
+                        onChange={(e) => setCustomCategoria(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleCriarCategoriaInline();
+                          }
+                        }}
+                        placeholder="Ex: Cílios, Sobrancelha, Depilação..."
+                        className="flex-1 border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-white"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCriarCategoriaInline}
+                        className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl shadow-xs shrink-0 flex items-center gap-1 transition-colors"
+                      >
+                        <Check size={14} />
+                        <span>Adicionar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCustomCategoria(false);
+                          if (categoria === 'nova') {
+                            setCategoria(categoriasServico[0] || 'Alongamento');
+                          }
+                        }}
+                        className="px-2.5 py-2 border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] text-xs font-bold rounded-xl bg-white shrink-0 hover:bg-[#FAF9F6] transition-colors"
+                        title="Cancelar nova categoria"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
 

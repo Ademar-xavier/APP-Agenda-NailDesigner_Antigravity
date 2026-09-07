@@ -267,7 +267,7 @@ interface AppStateContextType {
   vincularAssinaturaCliente: (clienteId: string, planoId: string) => void;
   cancelarAssinaturaCliente: (clienteId: string) => void;
   abaterSaldoAssinatura: (clienteId: string, servicoId?: string) => boolean;
-  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string) => { success: boolean; criados: number; mensagem: string };
+  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[]) => { success: boolean; criados: number; mensagem: string };
 
   // Comissões (Lei do Salão-Parceiro)
   fechamentosComissao: FechamentoComissao[];
@@ -1507,10 +1507,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .on('postgres_changes', { event: '*', schema: 'public', table: 'servicos' }, (payload: any) => {
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           setServicos(prev => {
+            const raw = payload.new;
+            const { descricao: cleanDesc, extra } = decodeServicoDescricao(raw.descricao);
+            const dias = Number(raw.intervalo_manutencao_dias !== undefined ? raw.intervalo_manutencao_dias : (raw.retorno_dias ?? 0));
+            const existing = prev.find(s => s.id === raw.id);
+            const formatado: Servico = {
+              ...raw,
+              categoria: raw.categoria || existing?.categoria || 'Geral',
+              descricao: cleanDesc,
+              duracao_minutos: Number(raw.duracao_minutos) || 60,
+              preco: Number(raw.preco) || 0,
+              intervalo_manutencao_dias: dias,
+              retorno_dias: dias,
+              sinal_tipo: extra.sinal_tipo || raw.sinal_tipo || existing?.sinal_tipo || 'nenhum',
+              sinal_valor: Number(extra.sinal_valor !== undefined ? extra.sinal_valor : (raw.sinal_valor !== undefined ? raw.sinal_valor : (existing?.sinal_valor ?? 0))),
+              materiais_utilizados: extra.materiais_utilizados || raw.materiais_utilizados || existing?.materiais_utilizados || [],
+              servicos_pacote_detalhes: extra.servicos_pacote_detalhes || raw.servicos_pacote_detalhes || existing?.servicos_pacote_detalhes || [],
+              foto: extra.foto || raw.foto || existing?.foto || '',
+              fotos: extra.fotos || raw.fotos || existing?.fotos || [],
+              destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (raw.destaque_catalogo !== undefined ? raw.destaque_catalogo : (existing?.destaque_catalogo ?? false)),
+              itens_inclusos: extra.itens_inclusos || existing?.itens_inclusos || undefined,
+              orientacoes_agendamento: extra.orientacoes_agendamento || existing?.orientacoes_agendamento || undefined
+            };
             const map = new Map(prev.map(s => [s.id, s]));
-            map.set(payload.new.id, payload.new as Servico);
+            map.set(formatado.id, formatado);
             return Array.from(map.values());
           });
+        } else if (payload.eventType === 'DELETE') {
+          setServicos(prev => prev.filter(s => s.id !== payload.old?.id));
         }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, (payload: any) => {
@@ -2310,8 +2334,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Regra de Negócio: Se já foi criado confirmado ou com clube VIP, agenda as sessões semanais
     if (agendamento.status === 'confirmado' || agendamento.pago_com_clube) {
       setTimeout(() => {
-        reservarRecorrenciaSemanalVip(id);
-      }, 350);
+        reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados);
+      }, 100);
     }
 
     return { success: true, agendamento };
@@ -3136,8 +3160,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return abateu;
   };
 
-  const reservarRecorrenciaSemanalVip = (agendamentoInicialId: string): { success: boolean; criados: number; mensagem: string } => {
-    const agInicial = agendamentos.find(a => a.id === agendamentoInicialId);
+  const reservarRecorrenciaSemanalVip = (
+    agendamentoInicialId: string,
+    agendamentoInicialObj?: Agendamento,
+    servicosIniciaisIds?: string[]
+  ): { success: boolean; criados: number; mensagem: string } => {
+    const agInicial = agendamentoInicialObj || agendamentos.find(a => a.id === agendamentoInicialId);
     if (!agInicial) {
       return { success: false, criados: 0, mensagem: 'Agendamento inicial não encontrado.' };
     }
@@ -3170,19 +3198,51 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             profissional_id: (it as any).profissional_id || agInicial.profissional_id
           }))
         : [{
-            servico_id: (itensAgendamento[agendamentoInicialId] || [])[0] || 's1',
+            servico_id: (servicosIniciaisIds && servicosIniciaisIds[0]) || (itensAgendamento[agInicial.id] || [])[0] || 's1',
             nome_servico: 'Sessão VIP',
             quantidade: totalSessoes,
             profissional_id: agInicial.profissional_id
           }];
 
-    // O total máximo de semanas a agendar é o máximo de sessões dentre os serviços inclusos ou totalSessoes
-    const maxSemanas = Math.max(...itensPlano.map(it => it.quantidade || 1), totalSessoes);
+    // Monta a lista completa de procedimentos previstos para o ciclo (ex: 1x Pedicure e 3x Manicure => 4 procedimentos)
+    const filaProcedimentosCiclo: { servico_id: string; nome_servico: string; profissional_id: string }[] = [];
+    itensPlano.forEach(it => {
+      const qtd = Math.max(1, it.quantidade || 1);
+      for (let i = 0; i < qtd; i++) {
+        filaProcedimentosCiclo.push({
+          servico_id: it.servico_id,
+          nome_servico: it.nome_servico || servicos.find(s => s.id === it.servico_id)?.nome || 'Sessão VIP',
+          profissional_id: it.profissional_id || agInicial.profissional_id
+        });
+      }
+    });
 
-    // Extrai data e horário originais como strings puras para evitar distorção de fuso horário (UTC/Local)
+    // Se o agendamento inicial possui um serviço específico selecionado, sincroniza ele com a primeira sessão
+    const servInicialId = (servicosIniciaisIds && servicosIniciaisIds[0]) || (itensAgendamento[agInicial.id] || [])[0];
+    if (servInicialId) {
+      const idx = filaProcedimentosCiclo.findIndex(p => p.servico_id === servInicialId);
+      if (idx > 0) {
+        const [escolhido] = filaProcedimentosCiclo.splice(idx, 1);
+        filaProcedimentosCiclo.unshift(escolhido);
+      }
+    }
+
+    // Se a lista de procedimentos for menor que o total mensal previsto, preenche os slots com o serviço base
+    while (filaProcedimentosCiclo.length < totalSessoes) {
+      filaProcedimentosCiclo.push({
+        servico_id: filaProcedimentosCiclo[0]?.servico_id || servInicialId || 's1',
+        nome_servico: filaProcedimentosCiclo[0]?.nome_servico || 'Sessão VIP',
+        profissional_id: agInicial.profissional_id
+      });
+    }
+
+    // O número de semanas a agendar cobre exatamente todas as sessões do ciclo (ex: 4 semanas)
+    const maxSemanas = Math.max(totalSessoes, filaProcedimentosCiclo.length);
+
+    // Extrai data e horário originais como strings puras para evitar distorção de fuso horário
     const partesInicio = agInicial.inicio.replace(' ', 'T').split('T');
-    const dataPart = partesInicio[0]; // "2026-09-08"
-    const horaPartCompleta = (partesInicio[1] || '10:00:00').substring(0, 8); // "10:30:00"
+    const dataPart = partesInicio[0]; // "2026-08-20"
+    const horaPartCompleta = (partesInicio[1] || '10:00:00').substring(0, 8);
     const [hStr, mStr, sStr] = horaPartCompleta.split(':');
     const [anoStr, mesStr, diaStr] = dataPart.split('-');
 
@@ -3192,25 +3252,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
     for (let semana = 0; semana < maxSemanas; semana++) {
-      // Itens de serviços que ainda têm sessões a executar nesta semana
-      const itensSemana = itensPlano.filter(it => (it.quantidade || 1) > semana);
-      if (itensSemana.length === 0) continue;
+      // Procedimento designado para esta semana
+      const procSemana = filaProcedimentosCiclo[semana] || filaProcedimentosCiclo[0];
+      const profId = procSemana.profissional_id || agInicial.profissional_id;
+      const servId = procSemana.servico_id;
+      const nomeServ = procSemana.nome_servico;
+      const servObj = servicos.find(s => s.id === servId);
+      const durSessao = servObj?.duracao_minutos || 60;
 
-      // Profissionais ativas nesta semana
-      const profsSemana = Array.from(new Set(itensSemana.map(it => it.profissional_id || agInicial.profissional_id)));
-
-      // Soma de duração dos serviços desta semana
-      const durTotalSemana = itensSemana.reduce((acc, it) => {
-        const s = servicos.find(serv => serv.id === it.servico_id);
-        return acc + (s?.duracao_minutos || 60);
-      }, 0);
-
-      // Regra VIP: Se mais de 1 profissional atua simultaneamente, a duração é dividida
-      const durSessao = profsSemana.length > 1
-        ? Math.max(30, Math.round(durTotalSemana / profsSemana.length))
-        : (durTotalSemana > 0 ? durTotalSemana : 60);
-
-      // Calcula a data da semana
+      // Calcula a data da semana (+ semana * 7 dias a partir da data do agendamento inicial)
       let dataSemanaStr = dataPart;
       if (semana > 0) {
         const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
@@ -3255,93 +3305,56 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
       const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
 
-      // Cria ou atualiza agendamentos para cada profissional ativa nesta semana
-      for (const profId of profsSemana) {
-        const servsProf = itensSemana.filter(it => (it.profissional_id || agInicial.profissional_id) === profId);
-        const servIdsProf = servsProf.map(it => it.servico_id);
-        const nomesServsProf = servsProf.map(it => it.nome_servico).join(' + ');
+      if (semana === 0) {
+        // Atualiza agendamento inicial com a identificação de Sessão 1 e serviço
+        const novoObs = agInicial.observacoes?.includes('Sessão 1')
+          ? agInicial.observacoes
+          : `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomeServ})`;
+        
+        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr) {
+          const atualizado: Agendamento = {
+            ...agInicial,
+            fim: fimStr,
+            observacoes: novoObs
+          };
+          salvarAgendamentoSupabase(atualizado, [servId]);
+          setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
+          setItensAgendamento(prev => ({ ...prev, [agInicial.id]: [servId] }));
+        }
+      } else {
+        // Semana > 0: Cria a sessão semanal correspondente
+        const listaAtualAgendamentos = agendamentoInicialObj 
+          ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
+          : agendamentos;
 
-        if (semana === 0) {
-          if (profId === agInicial.profissional_id) {
-            // Ajusta o agendamento inicial para a duração dividida e atualiza no estado e Supabase
-            if (agInicial.fim !== fimStr) {
-              const atualizado: Agendamento = {
-                ...agInicial,
-                fim: fimStr,
-                observacoes: agInicial.observacoes?.includes('👑 Clube VIP') 
-                  ? agInicial.observacoes 
-                  : `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomesServsProf})`
-              };
-              salvarAgendamentoSupabase(atualizado, servIdsProf.length > 0 ? servIdsProf : (itensAgendamento[agInicial.id] || []));
-              setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
-              if (servIdsProf.length > 0) {
-                setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servIdsProf }));
-              }
-            }
-          } else {
-            // Outra profissional na semana 0 (atendimento simultâneo no mesmo horário)
-            const jaExiste = agendamentos.some(a =>
-              a.profissional_id === profId &&
-              a.inicio.substring(0, 16) === inicioStr.substring(0, 16) &&
-              a.status !== 'cancelado'
-            ) || novosAgendamentos.some(a =>
-              a.profissional_id === profId &&
-              a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
-            );
+        const jaExiste = listaAtualAgendamentos.some(a =>
+          a.cliente_id === cliente.id &&
+          a.inicio.substring(0, 10) === dataSemanaStr &&
+          a.status !== 'cancelado'
+        ) || novosAgendamentos.some(a =>
+          a.cliente_id === cliente.id &&
+          a.inicio.substring(0, 10) === dataSemanaStr
+        );
 
-            if (!jaExiste) {
-              const novoId = gerarCodigoReserva();
-              const novoAgendamento: Agendamento = {
-                id: novoId,
-                cliente_id: cliente.id,
-                profissional_id: profId,
-                inicio: inicioStr,
-                fim: fimStr,
-                status: 'confirmado',
-                valor_total: 0,
-                valor_sinal: 0,
-                pago_com_clube: true,
-                origem: 'admin',
-                observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomesServsProf}) [Simultâneo]`,
-                criado_em: new Date().toISOString()
-              };
-              novosAgendamentos.push(novoAgendamento);
-              novosItensMap[novoId] = servIdsProf;
-              salvarAgendamentoSupabase(novoAgendamento, servIdsProf);
-            }
-          }
-        } else {
-          // Semana > 0: Cria agendamento para a profissional se ela tem sessão nesta semana
-          const jaExiste = agendamentos.some(a =>
-            a.profissional_id === profId &&
-            a.cliente_id === cliente.id &&
-            a.inicio.substring(0, 16) === inicioStr.substring(0, 16) &&
-            a.status !== 'cancelado'
-          ) || novosAgendamentos.some(a =>
-            a.profissional_id === profId &&
-            a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
-          );
-
-          if (!jaExiste) {
-            const novoId = gerarCodigoReserva();
-            const novoAgendamento: Agendamento = {
-              id: novoId,
-              cliente_id: cliente.id,
-              profissional_id: profId,
-              inicio: inicioStr,
-              fim: fimStr,
-              status: 'confirmado',
-              valor_total: 0,
-              valor_sinal: 0,
-              pago_com_clube: true,
-              origem: 'admin',
-              observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1} (${nomesServsProf})`,
-              criado_em: new Date().toISOString()
-            };
-            novosAgendamentos.push(novoAgendamento);
-            novosItensMap[novoId] = servIdsProf;
-            salvarAgendamentoSupabase(novoAgendamento, servIdsProf);
-          }
+        if (!jaExiste) {
+          const novoId = gerarCodigoReserva();
+          const novoAgendamento: Agendamento = {
+            id: novoId,
+            cliente_id: cliente.id,
+            profissional_id: profId,
+            inicio: inicioStr,
+            fim: fimStr,
+            status: 'confirmado',
+            valor_total: 0,
+            valor_sinal: 0,
+            pago_com_clube: true,
+            origem: 'admin',
+            observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1} (${nomeServ})`,
+            criado_em: new Date().toISOString()
+          };
+          novosAgendamentos.push(novoAgendamento);
+          novosItensMap[novoId] = [servId];
+          salvarAgendamentoSupabase(novoAgendamento, [servId]);
         }
       }
     }
