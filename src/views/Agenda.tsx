@@ -146,7 +146,9 @@ export const Agenda: React.FC<AgendaProps> = ({
   const servicosHabilitadosProf = useMemo(() => {
     return servicos.filter(s => {
       if (!s.ativo) return false;
-      if (!profSelecionada?.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
+      if (!profSelecionada) return true;
+      if (profSelecionada.perfil === 'admin') return true;
+      if (!profSelecionada.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
         return true;
       }
       return profSelecionada.servicos_habilitados.includes(s.id);
@@ -1231,7 +1233,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                     )}
 
                     {/* Opção para contratar Plano VIP na hora caso o cliente ainda não tenha */}
-                    {(!clienteSelecionadoObj || !hasVipAtivo) && planosAssinatura.length > 0 && (
+                    {(!clienteSelecionadoObj || !hasVipAtivo) && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (
                       <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="flex items-center gap-1.5 text-xs font-bold text-[#5A4535]">
@@ -1276,7 +1278,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                           className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
                         >
                           <option value="">Não vincular a Plano VIP (Agendamento Avulso)</option>
-                          {planosAssinatura.map(p => (
+                          {planosAssinatura.filter(p => p.ativo !== false).map(p => (
                             <option key={p.id} value={p.id}>
                               👑 {p.nome} - R$ {p.preco_mensal.toFixed(2)}/mês ({p.qtd_procedimentos_mes} sessões)
                             </option>

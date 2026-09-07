@@ -248,20 +248,11 @@ export const Cadastros: React.FC = () => {
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
       {/* Header */}
-      <div className="border-b border-[#EFECE6] pb-4 mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="border-b border-[#EFECE6] pb-4 mb-4">
         <div>
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Central de Cadastros & Produtos</h2>
           <p className="text-xs text-[#8C7A6B]">Gerencie itens de balcão (PDV) e listas dinâmicas do salão</p>
         </div>
-        {activeTab === 'produtos' && (
-          <button
-            onClick={abrirModalNovoProduto}
-            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-all self-start sm:self-auto"
-          >
-            <Plus size={14} />
-            <span>Novo Produto</span>
-          </button>
-        )}
       </div>
 
       {/* Tabs com layout idêntico a Configurações do Salão (Botões em Pílula) */}
@@ -302,6 +293,23 @@ export const Cadastros: React.FC = () => {
         {/* ======================================================== */}
         {activeTab === 'produtos' && (
           <div className="space-y-4 animate-in fade-in duration-200">
+            {/* Barra de Ação da Aba de Produtos */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1">
+              <div>
+                <p className="text-xs text-[#8C7A6B]">
+                  Itens físicos para revenda e consumo no balcão do salão ({produtos.length} cadastrados)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={abrirModalNovoProduto}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-all self-start sm:self-auto cursor-pointer active:scale-95 shrink-0"
+              >
+                <Plus size={15} />
+                <span>Novo Produto</span>
+              </button>
+            </div>
+
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="bg-white border border-[#EFECE6] rounded-2xl p-4 shadow-sm">

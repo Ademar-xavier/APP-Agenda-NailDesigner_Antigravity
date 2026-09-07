@@ -849,8 +849,8 @@ export const Confirmacoes: React.FC = () => {
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-[#EFECE6] mb-5 overflow-x-auto gap-2">
+      {/* Tabs com Layout em Pílula / Botão Sólido */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-5 scrollbar-none">
         {[
           { id: 'a_confirmar', label: 'A confirmar', count: aConfirmar.length, icon: BellRing, temAviso: temAvisoAConfirmar },
           { id: 'confirmados', label: 'Confirmados', count: confirmados.length, icon: UserCheck, temAviso: temAvisoConfirmados },
@@ -863,15 +863,16 @@ export const Confirmacoes: React.FC = () => {
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id as AbaConfirmacao)}
-              className={`flex items-center gap-2 px-4 py-3 border-b-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center gap-2.5 px-4 py-2.5 sm:py-3 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer shrink-0 ${
                 active 
-                  ? 'border-[#8C6D58] text-[#8C6D58]' 
-                  : 'border-transparent text-[#8C7A6B] hover:text-[#5A4535]'
+                  ? 'bg-[#8C6D58] text-white shadow-sm font-bold' 
+                  : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6]'
               }`}
             >
               <div className="relative flex items-center">
-                <Icon size={14} />
+                <Icon size={15} className={active ? 'text-white' : 'text-[#8C7A6B]'} />
                 {tab.temAviso && (
                   <span className="absolute -top-1 -right-1 flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
@@ -881,8 +882,8 @@ export const Confirmacoes: React.FC = () => {
               </div>
               <span>{tab.label}</span>
               {tab.count > 0 && (
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  active ? 'bg-[#8C6D58] text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition-colors ${
+                  active ? 'bg-white/20 text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
                 }`}>
                   {tab.count}
                 </span>

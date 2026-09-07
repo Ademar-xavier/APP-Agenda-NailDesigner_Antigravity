@@ -83,6 +83,12 @@ function AppContent() {
            window.location.pathname.toLowerCase().includes('instalar');
   });
 
+  const [isAgendarRoute, setIsAgendarRoute] = useState<boolean>(() => {
+    return window.location.hash.toLowerCase().includes('agendar') || 
+           window.location.search.toLowerCase().includes('agendar') ||
+           window.location.pathname.toLowerCase().includes('agendar');
+  });
+
   const [currentView, setCurrentView] = useState<string>(() => {
     try {
       // Limpa chave legada no localStorage para garantir que ao fechar volte para a raiz/login
@@ -141,28 +147,34 @@ function AppContent() {
         setIsConfirmarRoute(true);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
+        setIsAgendarRoute(false);
       } else if (hash.includes('catalogo')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(true);
+        setIsAgendarRoute(false);
       } else if (hash.includes('instalar')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(true);
         setIsCatalogoRoute(false);
+        setIsAgendarRoute(false);
       } else if (hash.includes('admin')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
+        setIsAgendarRoute(false);
         setIsAdmin(true);
       } else if (hash.includes('agendar')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
+        setIsAgendarRoute(true);
         setIsAdmin(false);
       } else if (hash === '' || hash === '#') {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
+        setIsAgendarRoute(false);
         if (!isNative) {
           setIsAdmin(false);
         }
@@ -355,14 +367,15 @@ function AppContent() {
 
   // Garante que o painel admin autenticado tenha uma âncora no histórico
   useEffect(() => {
-    if (isAdmin && currentUser) {
+    if (isAdmin && currentUser && !isCatalogoRoute && !isConfirmarRoute && !isInstalarRoute && !isAgendarRoute) {
       try {
-        if (!window.location.hash.includes('admin')) {
+        const hash = window.location.hash.toLowerCase();
+        if (!hash.includes('admin') && !hash.includes('catalogo') && !hash.includes('agendar') && !hash.includes('confirmar') && !hash.includes('instalar')) {
           window.history.replaceState({ nailView: currentView || 'dashboard', logged: true }, '', '#admin');
         }
       } catch (e) {}
     }
-  }, [isAdmin, currentUser]);
+  }, [isAdmin, currentUser, isCatalogoRoute, isConfirmarRoute, isInstalarRoute, isAgendarRoute]);
 
   // Listener nativo permanente do Capacitor Android (botão físico / barra inferior de gestos)
   useEffect(() => {
@@ -508,7 +521,7 @@ function AppContent() {
   }
 
   // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública
-  if (isExplicitAgendamento) {
+  if (isAgendarRoute || isExplicitAgendamento) {
     return (
       <PublicBooking 
         setIsAdmin={(admin) => {
