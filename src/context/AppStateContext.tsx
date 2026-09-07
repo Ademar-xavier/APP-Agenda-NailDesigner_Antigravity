@@ -716,24 +716,46 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
     try {
-      // Limpa chave legada no localStorage para garantir que ao fechar volte para a tela de login
-      localStorage.removeItem('nail_current_user');
-      const saved = sessionStorage.getItem('nail_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.id) return parsed;
+      const isSessionAlive = sessionStorage.getItem('nail_session_active') === '1';
+      if (isSessionAlive) {
+        // A sessão continua viva (o app foi minimizado ou reaberto no mesmo ciclo de vida)
+        const savedSession = sessionStorage.getItem('nail_current_user');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (parsed && parsed.id) return parsed;
+        }
+        const savedLocal = localStorage.getItem('nail_session_user');
+        if (savedLocal) {
+          const parsed = JSON.parse(savedLocal);
+          if (parsed && parsed.id) {
+            sessionStorage.setItem('nail_current_user', savedLocal);
+            return parsed;
+          }
+        }
+      } else {
+        // App foi completamente fechado/encerrado (cold start)!
+        // Limpa para exigir login novamente conforme regra de segurança
+        localStorage.removeItem('nail_session_user');
+        localStorage.removeItem('nail_current_user');
+        sessionStorage.removeItem('nail_current_user');
+        sessionStorage.removeItem('nail_session_active');
       }
     } catch (e) {}
     return null;
   });
 
-  // Salva a sessão do usuário no sessionStorage: mantém ao minimizar/maximizar, mas expira ao fechar o aplicativo
+  // Salva a sessão do usuário com indicador de sessão ativa (mantém ao minimizar/maximizar)
   useEffect(() => {
     try {
       if (currentUser) {
+        sessionStorage.setItem('nail_session_active', '1');
         sessionStorage.setItem('nail_current_user', JSON.stringify(currentUser));
+        localStorage.setItem('nail_session_user', JSON.stringify(currentUser));
       } else {
+        sessionStorage.removeItem('nail_session_active');
         sessionStorage.removeItem('nail_current_user');
+        localStorage.removeItem('nail_session_user');
+        localStorage.removeItem('nail_current_user');
       }
     } catch (e) {}
   }, [currentUser]);
@@ -988,15 +1010,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     localStorage.setItem('nail_equipe', JSON.stringify(equipe));
   }, [equipe]);
-
-  useEffect(() => {
-    if (currentUser) {
-      sessionStorage.setItem('nail_current_user', JSON.stringify(currentUser));
-    } else {
-      sessionStorage.removeItem('nail_current_user');
-      localStorage.removeItem('nail_current_user');
-    }
-  }, [currentUser]);
 
   // Estado de Sincronização em Nuvem (Supabase)
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
@@ -1722,7 +1735,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const logout = () => {
-    try { localStorage.removeItem('nail_current_user'); } catch (e) {}
+    try {
+      sessionStorage.removeItem('nail_session_active');
+      sessionStorage.removeItem('nail_current_user');
+      localStorage.removeItem('nail_session_user');
+      localStorage.removeItem('nail_current_user');
+      sessionStorage.removeItem('nail_current_view');
+      localStorage.removeItem('nail_current_view');
+    } catch (e) {}
     setCurrentUser(null);
   };
 
