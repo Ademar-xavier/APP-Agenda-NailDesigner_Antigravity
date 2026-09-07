@@ -17,7 +17,15 @@ import {
   Trash2,
   List,
   FolderPlus,
-  User
+  User,
+  Percent,
+  Wallet,
+  Check,
+  ShieldCheck,
+  RotateCcw,
+  FileText,
+  Download,
+  Printer
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
@@ -27,7 +35,7 @@ export const Financeiro: React.FC = () => {
     agendamentos, 
     clientes, 
     pagamentos, 
-    servicos,
+    servicos, 
     obterServicosDeAgendamento,
     confirmarSinal,
     marcarAvisoComoLido,
@@ -38,14 +46,18 @@ export const Financeiro: React.FC = () => {
     addCategoriaDespesa,
     deleteCategoriaDespesa,
     equipe,
-    confirmarAcao
+    confirmarAcao,
+    fechamentosComissao,
+    salvarFechamentoComissao,
+    deleteFechamentoComissao,
+    configSalao
   } = useAppState();
 
   const [profissionalFiltro, setProfissionalFiltro] = useState<string>('todas');
 
   const [busca, setBusca] = useState('');
   const [despesaModal, setDespesaModal] = useState(false);
-  const [financeTab, setFinanceTab] = useState<'pendentes' | 'despesas'>('pendentes');
+  const [financeTab, setFinanceTab] = useState<'pendentes' | 'despesas' | 'comissoes'>('pendentes');
 
   // Keyboard Escape listener to close modal in Financeiro.tsx
   useEffect(() => {
@@ -269,8 +281,302 @@ export const Financeiro: React.FC = () => {
 
   const despesasMes = despesas.filter(d => d.data.startsWith(mesSelecionadoStr));
 
+  // --- CÁLCULO DE COMISSÕES E REPASSES (LEI DO SALÃO-PARCEIRO) ---
+  const comissoesPorProfissional = useMemo(() => {
+    return equipe.filter(u => u.ativo).map(prof => {
+      const ags = agendamentos.filter(a => 
+        a.profissional_id === prof.id && 
+        (a.status === 'concluido' || a.status === 'confirmado') && 
+        a.inicio.startsWith(mesSelecionadoStr)
+      );
+      const faturamentoBruto = ags.reduce((acc, a) => acc + (a.valor_total || 0), 0);
+      const taxaPct = prof.comissao_padrao_porcentagem !== undefined ? prof.comissao_padrao_porcentagem : 50;
+      const valorComissaoBruta = (faturamentoBruto * taxaPct) / 100;
+      const cotaSalao = faturamentoBruto - valorComissaoBruta;
+      const fechamentoExistente = fechamentosComissao.find(f => 
+        f.profissional_id === prof.id && 
+        f.periodo_inicio.startsWith(mesSelecionadoStr)
+      );
+
+      return {
+        profissional: prof,
+        totalAtendimentos: ags.length,
+        faturamentoBruto,
+        taxaPct,
+        valorComissaoBruta,
+        cotaSalao,
+        fechamentoExistente
+      };
+    });
+  }, [equipe, agendamentos, mesSelecionadoStr, fechamentosComissao]);
+
+  const handleFecharComissao = (item: typeof comissoesPorProfissional[0]) => {
+    confirmarAcao({
+      titulo: 'Fechar Repasse de Comissão',
+      mensagem: `Deseja registrar o repasse de ${formatarMoeda(item.valorComissaoBruta)} para ${item.profissional.nome}? Esse valor será debitado como despesa do salão no fluxo de caixa.`,
+      textoConfirmar: 'Confirmar e Pagar',
+      tipo: 'sucesso',
+      onConfirm: () => {
+        salvarFechamentoComissao({
+          profissional_id: item.profissional.id,
+          nome_profissional: item.profissional.nome,
+          periodo_inicio: `${mesSelecionadoStr}-01`,
+          periodo_fim: `${mesSelecionadoStr}-31`,
+          total_faturado_bruto: item.faturamentoBruto,
+          taxa_comissao_porcentagem: item.taxaPct,
+          valor_comissao_bruta: item.valorComissaoBruta,
+          desconto_taxas_cartao: 0,
+          desconto_materiais: 0,
+          outros_descontos: 0,
+          valor_liquido_pago: item.valorComissaoBruta,
+          data_pagamento: new Date().toISOString().split('T')[0],
+          pago: true
+        });
+      }
+    });
+  };
+
   const dataRef = new Date(anoNum, mesNum - 1, 1);
   const nomeMesAtual = dataRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+  const handleExportarExcelAnual = () => {
+    const ano = anoNum;
+    const nomeSalao = configSalao?.nome || 'Sheila Santos Nails';
+    const mesesNomes = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+
+    let csv = '';
+    csv += `RELATÓRIO FINANCEIRO ANUAL CONSOLIDADO - EXERCÍCIO ${ano}\n`;
+    csv += `Estabelecimento:;${nomeSalao}\n`;
+    csv += `Proprietária / Responsável:;${configSalao?.proprietaria || 'Sheila Santos'}\n`;
+    csv += `Data de Emissão:;${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}\n\n`;
+
+    // 1. Tabela Resumo Mensal
+    csv += `RESUMO MENSAL CONSOLIDADO (${ano})\n`;
+    csv += `Mês;Atendimentos Concluídos;Receitas Realizadas (R$);Faturamento Previsto (R$);Despesas (R$);Lucro Líquido (R$)\n`;
+
+    let somaAtend = 0;
+    let somaRecReal = 0;
+    let somaRecPrev = 0;
+    let somaDesp = 0;
+    let somaLucro = 0;
+
+    for (let m = 1; m <= 12; m++) {
+      const mesStr = `${ano}-${String(m).padStart(2, '0')}`;
+      const ags = agendamentos.filter(a => a.inicio.startsWith(mesStr));
+      const concl = ags.filter(a => a.status === 'concluido');
+      const recReal = concl.reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+      const recPrev = ags.filter(a => a.status === 'confirmado' || a.status === 'pendente').reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+      const desp = despesas.filter(d => d.data.startsWith(mesStr)).reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+      const lucro = recReal - desp;
+
+      somaAtend += concl.length;
+      somaRecReal += recReal;
+      somaRecPrev += recPrev;
+      somaDesp += desp;
+      somaLucro += lucro;
+
+      csv += `${mesesNomes[m - 1]};${concl.length};${recReal.toFixed(2).replace('.', ',')};${recPrev.toFixed(2).replace('.', ',')};${desp.toFixed(2).replace('.', ',')};${lucro.toFixed(2).replace('.', ',')}\n`;
+    }
+
+    csv += `TOTAL ANUAL;${somaAtend};${somaRecReal.toFixed(2).replace('.', ',')};${somaRecPrev.toFixed(2).replace('.', ',')};${somaDesp.toFixed(2).replace('.', ',')};${somaLucro.toFixed(2).replace('.', ',')}\n\n`;
+
+    // 2. Extrato Detalhado de Atendimentos do Ano
+    csv += `EXTRATO DETALHADO DE ATENDIMENTOS DO ANO (${ano})\n`;
+    csv += `Data;Horário;Cliente;Profissional;Serviços;Status;Valor Total (R$);Valor Sinal (R$)\n`;
+
+    const agsAno = agendamentos
+      .filter(a => a.inicio.startsWith(String(ano)))
+      .sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+    agsAno.forEach(a => {
+      const cli = clientes.find(c => c.id === a.cliente_id);
+      const prof = equipe.find(e => e.id === a.profissional_id);
+      const servs = obterServicosDeAgendamento(a.id);
+      const servNomes = servs.map(s => s.nome).join(' + ') || 'Procedimento';
+      const [dPart, tPart] = a.inicio.split('T');
+      const dataFmt = dPart ? dPart.split('-').reverse().join('/') : '';
+      const horaFmt = tPart ? tPart.substring(0, 5) : '';
+
+      csv += `${dataFmt};${horaFmt};"${cli?.nome || 'Cliente'}";"${prof?.nome || 'Sheila'}";"${servNomes}";${a.status};${(Number(a.valor_total) || 0).toFixed(2).replace('.', ',')};${(Number(a.valor_sinal) || 0).toFixed(2).replace('.', ',')}\n`;
+    });
+
+    csv += `\nEXTRATO DETALHADO DE DESPESAS DO ANO (${ano})\n`;
+    csv += `Data;Categoria;Descrição;Valor (R$)\n`;
+    const despAno = despesas
+      .filter(d => d.data.startsWith(String(ano)))
+      .sort((a, b) => a.data.localeCompare(b.data));
+
+    despAno.forEach(d => {
+      const dataFmt = d.data ? d.data.split('-').reverse().join('/') : '';
+      csv += `${dataFmt};"${d.categoria}";"${d.descricao}";${(Number(d.valor) || 0).toFixed(2).replace('.', ',')}\n`;
+    });
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Relatorio_Financeiro_Anual_${ano}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportarPdfAnual = () => {
+    const ano = anoNum;
+    const nomeSalao = configSalao?.nome || 'Sheila Santos Nails';
+    const proprietaria = configSalao?.proprietaria || 'Sheila Santos';
+    const mesesNomes = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+
+    let linhasTabelaHtml = '';
+    let somaAtend = 0;
+    let somaRecReal = 0;
+    let somaRecPrev = 0;
+    let somaDesp = 0;
+    let somaLucro = 0;
+
+    for (let m = 1; m <= 12; m++) {
+      const mesStr = `${ano}-${String(m).padStart(2, '0')}`;
+      const ags = agendamentos.filter(a => a.inicio.startsWith(mesStr));
+      const concl = ags.filter(a => a.status === 'concluido');
+      const recReal = concl.reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+      const recPrev = ags.filter(a => a.status === 'confirmado' || a.status === 'pendente').reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+      const desp = despesas.filter(d => d.data.startsWith(mesStr)).reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+      const lucro = recReal - desp;
+
+      somaAtend += concl.length;
+      somaRecReal += recReal;
+      somaRecPrev += recPrev;
+      somaDesp += desp;
+      somaLucro += lucro;
+
+      const lucroCor = lucro >= 0 ? '#166534' : '#991b1b';
+
+      linhasTabelaHtml += `
+        <tr style="border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 8px 12px; font-weight: bold; text-align: left;">${mesesNomes[m - 1]}</td>
+          <td style="padding: 8px 12px; text-align: center;">${concl.length}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #166534; font-weight: 600;">R$ ${recReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #4b5563;">R$ ${recPrev.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 8px 12px; text-align: right; color: #991b1b;">R$ ${desp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          <td style="padding: 8px 12px; text-align: right; color: ${lucroCor}; font-weight: bold;">R$ ${lucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      `;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <title>Relatório Financeiro Anual - ${ano} - ${nomeSalao}</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1f2937; margin: 0; padding: 20px; font-size: 11pt; }
+          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #8C6D58; padding-bottom: 16px; margin-bottom: 20px; }
+          .title { font-size: 20pt; font-weight: bold; color: #5A4535; margin: 0; }
+          .subtitle { font-size: 11pt; color: #6b7280; margin-top: 4px; }
+          .meta { text-align: right; font-size: 9pt; color: #6b7280; }
+          .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+          .kpi-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
+          .kpi-label { font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #6b7280; }
+          .kpi-val { font-size: 15pt; font-weight: bold; margin-top: 4px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 10pt; }
+          th { background-color: #8C6D58; color: white; padding: 10px 12px; text-align: left; font-size: 9pt; text-transform: uppercase; }
+          th.right, td.right { text-align: right; }
+          th.center, td.center { text-align: center; }
+          .total-row { background: #f3f4f6; font-weight: bold; border-top: 2px solid #8C6D58; }
+          .footer { margin-top: 30px; font-size: 9pt; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">${nomeSalao}</h1>
+            <p class="subtitle">Demonstrativo Financeiro Anual Consolidado · Exercício ${ano}</p>
+            <p style="font-size: 9pt; color: #4b5563; margin-top: 2px;">Responsável: ${proprietaria} · Telefone: ${configSalao?.telefone || 'Não informado'}</p>
+          </div>
+          <div class="meta">
+            <p><strong>Emissão:</strong> ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
+            <p>Ano-Base: <strong>${ano}</strong></p>
+          </div>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi-card">
+            <div class="kpi-label">Atendimentos Concluídos</div>
+            <div class="kpi-val" style="color: #5A4535;">${somaAtend}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Receita Realizada Total</div>
+            <div class="kpi-val" style="color: #166534;">R$ ${somaRecReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Despesas Operacionais</div>
+            <div class="kpi-val" style="color: #991b1b;">R$ ${somaDesp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Lucro Líquido Anual</div>
+            <div class="kpi-val" style="color: ${somaLucro >= 0 ? '#166534' : '#991b1b'};">R$ ${somaLucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 12pt; color: #5A4535; margin-bottom: 8px;">Consolidação Mensal (${ano})</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Mês</th>
+              <th class="center">Atendimentos</th>
+              <th class="right">Receitas Realizadas</th>
+              <th class="right">Faturamento Previsto</th>
+              <th class="right">Despesas</th>
+              <th class="right">Lucro Líquido</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhasTabelaHtml}
+            <tr class="total-row">
+              <td style="padding: 10px 12px;">TOTAL ANUAL</td>
+              <td class="center" style="padding: 10px 12px;">${somaAtend}</td>
+              <td class="right" style="padding: 10px 12px; color: #166534;">R$ ${somaRecReal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              <td class="right" style="padding: 10px 12px; color: #4b5563;">R$ ${somaRecPrev.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              <td class="right" style="padding: 10px 12px; color: #991b1b;">R$ ${somaDesp.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+              <td class="right" style="padding: 10px 12px; color: ${somaLucro >= 0 ? '#166534' : '#991b1b'}; font-size: 11pt;">R$ ${somaLucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Documento gerado automaticamente pelo Sistema Agenda & Gestão Inteligente ${nomeSalao} em ${new Date().toLocaleDateString('pt-BR')}.
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write(html);
+      printWin.document.close();
+    }
+  };
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
@@ -280,13 +586,35 @@ export const Financeiro: React.FC = () => {
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Financeiro</h2>
           <p className="text-xs text-[#8C7A6B]">Visão detalhada de receitas, custos de operação e lucratividade líquida</p>
         </div>
-        <button
-          onClick={() => setDespesaModal(true)}
-          className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
-        >
-          <Plus size={16} />
-          <span>Registrar Despesa</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportarPdfAnual}
+            className="flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            title={`Gerar Relatório Executivo em PDF do ano ${anoNum}`}
+          >
+            <Printer size={14} className="text-[#8C6D58]" />
+            <span>Relatório Anual (PDF)</span>
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleExportarExcelAnual}
+            className="flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#166534] hover:bg-emerald-50 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            title={`Baixar Planilha Excel com consolidado anual de ${anoNum}`}
+          >
+            <Download size={14} className="text-[#166534]" />
+            <span>Planilha Anual (Excel)</span>
+          </button>
+
+          <button
+            onClick={() => setDespesaModal(true)}
+            className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
+          >
+            <Plus size={16} />
+            <span>Registrar Despesa</span>
+          </button>
+        </div>
       </div>
 
       {/* Navegação de Período & Filtro de Profissional */}
@@ -486,8 +814,8 @@ export const Financeiro: React.FC = () => {
         </div>
       </div>
 
-      {/* Pagamentos Pendentes & Extrato de Despesas (Bottom Tabs) */}
-      <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm flex flex-col max-h-[180px] shrink-0 mb-6 overflow-hidden">
+      {/* Pagamentos Pendentes, Extrato de Despesas & Comissões (Bottom Tabs) */}
+      <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm flex flex-col min-h-[220px] max-h-[380px] shrink-0 mb-6 overflow-hidden">
         <div className="flex border-b border-[#EFECE6] mb-3 gap-3">
           <button
             onClick={() => setFinanceTab('pendentes')}
@@ -504,6 +832,15 @@ export const Financeiro: React.FC = () => {
             }`}
           >
             Extrato de Despesas ({despesasMes.length})
+          </button>
+          <button
+            onClick={() => setFinanceTab('comissoes')}
+            className={`pb-2 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+              financeTab === 'comissoes' ? 'border-[#8C6D58] text-[#8C6D58]' : 'border-transparent text-[#8C7A6B]'
+            }`}
+          >
+            <Percent size={13} />
+            <span>Comissões & Repasses (Salão-Parceiro)</span>
           </button>
         </div>
         
@@ -584,6 +921,103 @@ export const Financeiro: React.FC = () => {
                 <p className="text-xs text-[#8C7A6B] text-center py-4 italic">Nenhuma despesa registrada neste mês.</p>
               )}
             </>
+          )}
+
+          {/* TAB 3: COMISSÕES E REPASSES (LEI DO SALÃO-PARCEIRO) */}
+          {financeTab === 'comissoes' && (
+            <div className="space-y-3 pt-1">
+              <div className="p-3 bg-[#FAF8F5] rounded-xl border border-[#E8DFC8] flex items-center justify-between text-xs text-[#5A4535]">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-[#8C6D58]" />
+                  <span>
+                    <strong>Cálculo Automático (Lei nº 13.352/2016):</strong> Discrimina a cota-parte do salão da comissão líquida a pagar para cada profissional parceira.
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {comissoesPorProfissional.map((item) => (
+                  <div key={item.profissional.id} className="p-3.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+                      <div>
+                        <h4 className="font-bold text-sm text-[#5A4535] flex items-center gap-1.5">
+                          <User size={14} className="text-[#8C6D58]" />
+                          {item.profissional.nome}
+                        </h4>
+                        <span className="text-[10px] text-[#8C7A6B]">
+                          {item.totalAtendimentos} atendimento(s) realizados em {nomeMesAtual}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#F6ECE8] text-[#8C6D58] border border-[#EFECE6]">
+                        {item.taxaPct}% Comissão
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+                      <div className="p-2 bg-white rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C7A6B] block">Faturado Bruto</span>
+                        <strong className="text-[#5A4535] text-xs">{formatarMoeda(item.faturamentoBruto)}</strong>
+                      </div>
+                      <div className="p-2 bg-white rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C6D58] block">Cota do Salão</span>
+                        <strong className="text-[#8C6D58] text-xs">{formatarMoeda(item.cotaSalao)}</strong>
+                      </div>
+                      <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                        <span className="text-emerald-800 block font-semibold">Comissão Devida</span>
+                        <strong className="text-emerald-700 text-xs">{formatarMoeda(item.valorComissaoBruta)}</strong>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 w-full">
+                      {item.fechamentoExistente ? (
+                        <div className="flex items-center justify-between w-full bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">
+                          <div className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs">
+                            <Check size={14} className="text-emerald-600" />
+                            <span>Repasse Registrado e Pago</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              confirmarAcao({
+                                titulo: 'Estornar Repasse de Comissão',
+                                mensagem: `Deseja desfazer o fechamento de comissão de ${item.profissional.nome}? A despesa lançada no fluxo de caixa será removida e o repasse voltará a ficar pendente.`,
+                                tipo: 'aviso',
+                                textoConfirmar: 'Estornar Repasse',
+                                textoCancelar: 'Cancelar',
+                                onConfirm: () => {
+                                  if (item.fechamentoExistente) {
+                                    deleteFechamentoComissao(item.fechamentoExistente.id);
+                                  }
+                                }
+                              });
+                            }}
+                            className="flex items-center gap-1 text-[11px] text-red-600 hover:text-red-800 font-bold hover:underline transition-all"
+                            title="Estornar repasse e reabrir pendência"
+                          >
+                            <RotateCcw size={12} />
+                            <span>Estornar / Reabrir</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={item.valorComissaoBruta <= 0}
+                          onClick={() => handleFecharComissao(item)}
+                          className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                            item.valorComissaoBruta > 0
+                              ? 'bg-[#8C6D58] hover:bg-[#725743] text-white active:scale-98'
+                              : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <Wallet size={13} />
+                          <span>Fechar e Pagar Repasse ({formatarMoeda(item.valorComissaoBruta)})</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </div>

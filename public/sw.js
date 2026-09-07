@@ -74,3 +74,40 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// Suporte a mensagens do app para disparar notificações na Notification Tray / Shade
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, options } = event.data;
+    self.registration.showNotification(title || 'Sheila Santos Nails', {
+      body: options?.body || '',
+      icon: options?.icon || '/logo.png',
+      badge: options?.badge || '/logo.png',
+      vibrate: options?.vibrate || [250, 100, 250],
+      tag: options?.tag || 'nail_notif_' + Date.now(),
+      renotify: true,
+      data: options?.data || {}
+    });
+  }
+});
+
+// Suporte a Web Push (Notificações quando o app estiver fechado)
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'Sheila Santos Nails', body: event.data.text() };
+    }
+  }
+  const title = data.title || 'Sheila Santos Nails';
+  const options = {
+    body: data.body || 'Você tem uma nova notificação de agendamento.',
+    icon: '/logo.png',
+    badge: '/logo.png',
+    vibrate: [250, 100, 250],
+    data: data
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});

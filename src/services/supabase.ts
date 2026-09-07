@@ -6,9 +6,18 @@ export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_p
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Tenant padrão para isolamento multi-tenant (SaaS)
+export const CURRENT_SALAO_ID = 'salao_principal';
+
 // --- SALVAR / ATUALIZAR CLIENTES ---
 export const salvarClienteSupabase = async (cliente: Cliente) => {
   try {
+    const prefs = {
+      ...(cliente.preferencias || {}),
+      anamnese: cliente.anamnese || (cliente.preferencias as any)?.anamnese || null,
+      assinatura: cliente.assinatura || (cliente.preferencias as any)?.assinatura || null
+    };
+
     const { error } = await supabase.from('clientes').upsert({
       id: cliente.id,
       nome: cliente.nome,
@@ -17,7 +26,7 @@ export const salvarClienteSupabase = async (cliente: Cliente) => {
       aniversario: cliente.aniversario || null,
       observacoes: cliente.observacoes || null,
       alergias: cliente.alergias || null,
-      preferencias: cliente.preferencias || {},
+      preferencias: prefs,
       consentimento_imagem: !!cliente.consentimento_imagem,
       criado_em: cliente.criado_em || new Date().toISOString()
     });
@@ -37,17 +46,48 @@ export const deletarClienteSupabase = async (id: string) => {
   }
 };
 
+// --- METADADOS EMBUTIDOS EM SERVIÇO (Sinal, Insumos, Subserviços) ---
+export const encodeServicoDescricao = (
+  descricaoOriginal: string | null | undefined, 
+  extra: { sinal_tipo?: string; sinal_valor?: number; materiais_utilizados?: any[]; servicos_pacote_detalhes?: any[] }
+) => {
+  const cleanDesc = (descricaoOriginal || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+  const hasExtra = (extra.sinal_tipo && extra.sinal_tipo !== 'nenhum') || 
+                   (extra.sinal_valor !== undefined && extra.sinal_valor > 0) || 
+                   (extra.materiais_utilizados && extra.materiais_utilizados.length > 0) ||
+                   (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0);
+  if (!hasExtra) return cleanDesc;
+  const metaTag = `<!--NAIL_META:${JSON.stringify(extra)}-->`;
+  return cleanDesc ? `${cleanDesc}\n\n${metaTag}` : metaTag;
+};
+
+export const decodeServicoDescricao = (rawDescricao: string | null | undefined) => {
+  if (!rawDescricao) return { descricao: '', extra: {} as any };
+  const match = rawDescricao.match(/<!--NAIL_META:([\s\S]*?)-->/);
+  let extra: any = {};
+  if (match && match[1]) {
+    try {
+      extra = JSON.parse(match[1]);
+    } catch (e) {}
+  }
+  const descricao = rawDescricao.replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+  return { descricao, extra };
+};
+
 // --- SALVAR / ATUALIZAR SERVIÇO ---
 export const salvarServicoSupabase = async (servico: any) => {
   try {
     const diasManutencao = Number(servico.intervalo_manutencao_dias !== undefined ? servico.intervalo_manutencao_dias : (servico.retorno_dias ?? 20));
     
+    // Descrição sempre limpa e pura de qualquer metadado
+    const cleanDesc = (servico.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+
     // Envia exatamente as colunas existentes na tabela servicos do Supabase
     const payload = {
       id: servico.id,
       nome: servico.nome,
       categoria: servico.categoria || 'Geral',
-      descricao: servico.descricao || null,
+      descricao: cleanDesc || null,
       duracao_minutos: Number(servico.duracao_minutos) || 60,
       preco: Number(servico.preco) || 0,
       ativo: servico.ativo !== false,
@@ -64,6 +104,21 @@ export const salvarServicoSupabase = async (servico: any) => {
     return { sucesso: true };
   } catch (e: any) {
     console.error('Falha na requisição salvarServicoSupabase:', e);
+    return { sucesso: false, erro: e.message };
+  }
+};
+
+// --- DELETAR SERVIÇO ---
+export const deletarServicoSupabase = async (id: string) => {
+  try {
+    const { error } = await supabase.from('servicos').delete().eq('id', id);
+    if (error) {
+      console.error('Erro ao deletar serviço no Supabase:', error);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true };
+  } catch (e: any) {
+    console.error('Falha na requisição deletarServicoSupabase:', e);
     return { sucesso: false, erro: e.message };
   }
 };
@@ -398,6 +453,9 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
     if (usuario.usar_pix_proprio !== undefined) {
       payload.usar_pix_proprio = usuario.usar_pix_proprio;
     }
+    if (usuario.especialidade !== undefined) {
+      payload.especialidade = usuario.especialidade;
+    }
 
     let { error } = await supabase.from('usuarios').upsert(payload);
 
@@ -406,6 +464,7 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
       delete payload.servicos_habilitados;
       delete payload.chave_pix;
       delete payload.usar_pix_proprio;
+      delete payload.especialidade;
       const res = await supabase.from('usuarios').upsert(payload);
       error = res.error;
     }

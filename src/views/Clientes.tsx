@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Users, 
   Search, 
@@ -19,7 +19,14 @@ import {
   Settings,
   X,
   Edit2,
-  Trash2
+  Trash2,
+  ShieldCheck,
+  HeartHandshake,
+  UserX,
+  AlertCircle,
+  Clock,
+  DollarSign,
+  Crown
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente } from '../types';
@@ -29,6 +36,7 @@ import {
   deletarFotoClienteSupabase 
 } from '../services/supabase';
 import { getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { ModalAnamnese } from '../components/ModalAnamnese';
 
 // Compressão e redimensionamento automático de imagens (garante salvamento imediato e evita estouro de cota)
 const comprimirImagem = (file: File, maxDim = 1200, qualidade = 0.75): Promise<string> => {
@@ -88,12 +96,120 @@ export const Clientes: React.FC<ClientesProps> = ({
     formatos,
     obterServicosDeAgendamento,
     configSalao,
-    confirmarAcao
+    confirmarAcao,
+    salvarAnamneseCliente,
+    planosAssinatura,
+    vincularAssinaturaCliente,
+    cancelarAssinaturaCliente,
+    deduplicarClientes
   } = useAppState();
 
   const [busca, setBusca] = useState('');
   const [novoClienteModal, setNovoClienteModal] = useState(false);
   const [clienteEdicao, setClienteEdicao] = useState<Cliente | null>(null);
+  const [clienteAnamneseModal, setClienteAnamneseModal] = useState<Cliente | null>(null);
+  const [planoParaVincularId, setPlanoParaVincularId] = useState<string>('');
+  const [abaAtiva, setAbaAtiva] = useState<'todas' | 'sumidas'>('todas');
+  const [filtroSumidasDias, setFiltroSumidasDias] = useState<30 | 45 | 60>(30);
+  const [isDeduplicating, setIsDeduplicating] = useState(false);
+
+  // Detecção inteligente de cadastros duplicados (ex: importados repetidamente da Google Agenda)
+  const duplicatasDetectadas = useMemo(() => {
+    const mapa = new Map<string, number>();
+    clientes.forEach(c => {
+      const k = c.nome.trim().toLowerCase();
+      mapa.set(k, (mapa.get(k) || 0) + 1);
+    });
+    let dups = 0;
+    mapa.forEach(count => {
+      if (count > 1) dups += (count - 1);
+    });
+    return dups;
+  }, [clientes]);
+
+  const handleDeduplicarClientes = () => {
+    confirmarAcao({
+      titulo: 'Unificar Cadastros Duplicados',
+      mensagem: `Foram detectadas ${duplicatasDetectadas} duplicata(s) de clientes no banco. Deseja unificá-las? O sistema manterá o cadastro principal de cada cliente (com telefone, histórico e plano VIP) e excluirá as duplicatas tanto localmente quanto do Supabase na nuvem.`,
+      tipo: 'sucesso',
+      textoConfirmar: 'Unificar Agora',
+      onConfirm: async () => {
+        setIsDeduplicating(true);
+        try {
+          await deduplicarClientes();
+        } finally {
+          setIsDeduplicating(false);
+        }
+      }
+    });
+  };
+
+  // CRM de Clientes Sumidas: Identifica clientes inativas há mais de X dias sem agendamento futuro
+  const obterClientesSumidas = () => {
+    const agora = new Date();
+    const resultado: {
+      cliente: Cliente;
+      ultimoAtendimento: any;
+      diasSemVisita: number;
+      totalGastoHistorico: number;
+      totalVisitas: number;
+      risco: 'amarelo' | 'laranja' | 'vermelho';
+    }[] = [];
+
+    clientes.forEach(cli => {
+      const agsDoCliente = agendamentos.filter(a => a.cliente_id === cli.id);
+
+      // Se tem agendamento futuro marcado, NÃO está sumida
+      const temFuturo = agsDoCliente.some(a => 
+        (a.status === 'pendente' || a.status === 'confirmado') && 
+        new Date(a.inicio).getTime() >= agora.getTime()
+      );
+      if (temFuturo) return;
+
+      // Pega os agendamentos já realizados
+      const realizados = agsDoCliente
+        .filter(a => a.status === 'concluido' || (a.status === 'confirmado' && new Date(a.inicio).getTime() < agora.getTime()))
+        .sort((a, b) => new Date(b.inicio).getTime() - new Date(a.inicio).getTime());
+
+      if (realizados.length === 0) return;
+
+      const ultimo = realizados[0];
+      const dataUltimo = new Date(ultimo.inicio);
+      const diffDias = Math.floor((agora.getTime() - dataUltimo.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDias >= filtroSumidasDias) {
+        const totalGasto = realizados.reduce((acc, a) => acc + (a.valor_total || 0), 0);
+        let risco: 'amarelo' | 'laranja' | 'vermelho' = 'amarelo';
+        if (diffDias >= 60) risco = 'vermelho';
+        else if (diffDias >= 45) risco = 'laranja';
+
+        resultado.push({
+          cliente: cli,
+          ultimoAtendimento: ultimo,
+          diasSemVisita: diffDias,
+          totalGastoHistorico: totalGasto,
+          totalVisitas: realizados.length,
+          risco
+        });
+      }
+    });
+
+    return resultado.sort((a, b) => b.diasSemVisita - a.diasSemVisita);
+  };
+
+  const handleResgatarClienteWhatsApp = (item: ReturnType<typeof obterClientesSumidas>[0]) => {
+    const template = configSalao.templates_whatsapp?.clientes_sumidas || 
+      'Oi {cliente}, que saudade de você! ✨ Percebemos que faz {dias} dias desde o seu último atendimento. Preparamos um carinho especial para seu retorno: agende nesta semana e ganhe um mimo exclusivo! Vamos marcar seu horário? 👉 {link_agendamento}';
+
+    const bookingUrl = getBookingUrl();
+    const msg = template
+      .replace(/{cliente}/g, item.cliente.nome.split(' ')[0])
+      .replace(/{dias}/g, item.diasSemVisita.toString())
+      .replace(/{link_agendamento}/g, bookingUrl);
+
+    const url = gerarLinkWhatsApp(item.cliente.telefone, msg);
+    window.open(url, '_blank');
+  };
   
   // Estado para edição/criação
   const [nome, setNome] = useState('');
@@ -589,6 +705,207 @@ export const Clientes: React.FC<ClientesProps> = ({
                 </div>
               </div>
 
+              {/* Card de Anamnese Digital com Assinatura Touch */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+                  <h3 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-[#8C6D58]" />
+                    Anamnese Digital
+                  </h3>
+                  {clienteSelecionado.anamnese ? (
+                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      Assinada
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+                      Pendente
+                    </span>
+                  )}
+                </div>
+
+                {clienteSelecionado.anamnese ? (
+                  <div className="space-y-2.5 text-xs text-[#5A4535]">
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="p-2 bg-[#FAF9F6] rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C7A6B] block">Diabética:</span>
+                        <strong className={clienteSelecionado.anamnese.diabetica ? 'text-red-600' : 'text-emerald-700'}>
+                          {clienteSelecionado.anamnese.diabetica ? 'Sim ⚠️' : 'Não'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-[#FAF9F6] rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C7A6B] block">Micose/Fungo:</span>
+                        <strong className={clienteSelecionado.anamnese.micose_ou_fungo ? 'text-red-600' : 'text-emerald-700'}>
+                          {clienteSelecionado.anamnese.micose_ou_fungo ? 'Sim ⚠️' : 'Não'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-[#FAF9F6] rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C7A6B] block">Onicofagia (Roer):</span>
+                        <strong className="text-[#5A4535]">
+                          {clienteSelecionado.anamnese.habito_roer ? 'Sim' : 'Não'}
+                        </strong>
+                      </div>
+                      <div className="p-2 bg-[#FAF9F6] rounded-lg border border-[#EFECE6]">
+                        <span className="text-[#8C7A6B] block">Gestante:</span>
+                        <strong className="text-[#5A4535]">
+                          {clienteSelecionado.anamnese.gestante ? 'Sim' : 'Não'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {clienteSelecionado.anamnese.assinatura_base64 && (
+                      <div className="p-2 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-center">
+                        <span className="text-[9px] text-[#8C7A6B] block mb-1">Assinatura / Consentimento:</span>
+                        {clienteSelecionado.anamnese.assinatura_base64.startsWith('data:image') ? (
+                          <img 
+                            src={clienteSelecionado.anamnese.assinatura_base64} 
+                            alt="Assinatura" 
+                            className="h-14 mx-auto object-contain bg-white rounded border border-[#EFECE6] p-1"
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200">
+                            <ShieldCheck size={14} className="text-emerald-600" />
+                            <span>Consentimento Verbal / Remoto Registrado</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setClienteAnamneseModal(clienteSelecionado)}
+                      className="w-full mt-2 py-2 bg-[#FAF9F6] hover:bg-[#EFECE6] border border-[#EFECE6] text-[#8C6D58] font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <FileText size={14} />
+                      <span>Visualizar / Atualizar Ficha Completa</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-3 space-y-2">
+                    <p className="text-xs text-[#8C7A6B]">
+                      Esta cliente ainda não possui ficha de saúde e consentimento assinados.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setClienteAnamneseModal(clienteSelecionado)}
+                      className="w-full py-2.5 bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:from-[#725743] hover:to-[#5A4535] text-white font-bold text-xs rounded-xl shadow-sm flex items-center justify-center gap-2 transition-all hover:scale-[1.01]"
+                    >
+                      <Edit2 size={14} />
+                      <span>Coletar Anamnese com Assinatura Touch</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Card do Clube de Assinaturas VIP */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+                  <h3 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <Crown size={16} className="text-amber-500" />
+                    Clube VIP de Assinatura
+                  </h3>
+                  {clienteSelecionado.assinatura && clienteSelecionado.assinatura.status === 'ativo' ? (
+                    <span className="text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full">
+                      👑 Assinante VIP
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold bg-gray-100 text-gray-500 border border-gray-200 px-2 py-0.5 rounded-full">
+                      Avulsa
+                    </span>
+                  )}
+                </div>
+
+                {clienteSelecionado.assinatura && clienteSelecionado.assinatura.status === 'ativo' ? (
+                  <div className="space-y-3 text-xs text-[#5A4535]">
+                    <div className="p-3 bg-gradient-to-br from-amber-50/80 to-orange-50/50 rounded-xl border border-amber-200/80 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <span className="text-xs font-bold text-amber-950 block">{clienteSelecionado.assinatura.nome_plano}</span>
+                          <span className="text-[10px] text-amber-800">
+                            Iniciado em {new Date(clienteSelecionado.assinatura.data_inicio).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <span className="text-xs font-extrabold text-amber-950 bg-amber-200/80 px-2 py-0.5 rounded-full">
+                          {clienteSelecionado.assinatura.saldo_restante} {clienteSelecionado.assinatura.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}
+                        </span>
+                      </div>
+
+                      {/* Discriminação por serviço com saldos restantes */}
+                      {clienteSelecionado.assinatura.itens_saldo && clienteSelecionado.assinatura.itens_saldo.length > 0 && (
+                        <div className="pt-2 border-t border-amber-200/60 space-y-1">
+                          <span className="text-[10px] font-bold text-amber-900 uppercase block">Saldo por Serviço no Mês:</span>
+                          <div className="space-y-1">
+                            {clienteSelecionado.assinatura.itens_saldo.map(item => (
+                              <div key={item.servico_id} className="flex justify-between items-center text-xs bg-white/80 px-2 py-1 rounded-lg border border-amber-200/60">
+                                <span className="font-semibold text-[#5A4535]">{item.nome_servico}</span>
+                                <span className="font-bold text-amber-950">
+                                  {item.saldo_restante} <span className="text-[#8C7A6B] font-normal">de {item.total_mes} un</span>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        confirmarAcao({
+                          titulo: 'Cancelar Assinatura VIP',
+                          mensagem: `Deseja cancelar o plano de assinatura de ${clienteSelecionado.nome}?`,
+                          tipo: 'erro',
+                          textoConfirmar: 'Confirmar Cancelamento',
+                          onConfirm: () => cancelarAssinaturaCliente(clienteSelecionado.id)
+                        });
+                      }}
+                      className="w-full py-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-semibold"
+                    >
+                      Cancelar Assinatura da Cliente
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 text-xs">
+                    <p className="text-xs text-[#8C7A6B]">
+                      Vincule esta cliente a um clube de assinatura mensal para fidelização e sessões automáticas.
+                    </p>
+                    {planosAssinatura.length === 0 ? (
+                      <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900">
+                        Nenhum plano cadastrado ainda. Crie planos na aba <strong>Serviços → Clube de Assinaturas VIP</strong>.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <select
+                          value={planoParaVincularId}
+                          onChange={(e) => setPlanoParaVincularId(e.target.value)}
+                          className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-2.5 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                        >
+                          <option value="">Selecionar Plano VIP...</option>
+                          {planosAssinatura.filter(p => p.ativo !== false).map(plano => (
+                            <option key={plano.id} value={plano.id}>
+                              {plano.nome} (R$ {plano.preco_mensal.toFixed(2)}/mês - {plano.qtd_procedimentos_mes} sessões)
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!planoParaVincularId}
+                          onClick={() => {
+                            if (planoParaVincularId) {
+                              vincularAssinaturaCliente(clienteSelecionado.id, planoParaVincularId);
+                              setPlanoParaVincularId('');
+                            }
+                          }}
+                          className="w-full py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-40 text-white font-bold rounded-xl text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
+                        >
+                          <Crown size={14} />
+                          <span>Vincular ao Clube VIP</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Ficha Técnica de Unha */}
               <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
                 <h3 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#EFECE6] pb-2 flex items-center gap-1.5">
@@ -821,86 +1138,298 @@ export const Clientes: React.FC<ClientesProps> = ({
       ) : (
         // --- LISTAGEM DE CLIENTES ---
         <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
-            <div>
-              <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Clientes ({clientes.length})</h2>
-              <p className="text-xs text-[#8C7A6B]">Gerencie fichas técnicas, alergias e a galeria de unhas de cada cliente</p>
-            </div>
+          {(() => {
+            const clientesSumidas = obterClientesSumidas();
+            return (
+              <>
+                {/* Navegação entre Visão Geral e CRM de Resgate de Clientes Sumidas */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-6">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAbaAtiva('todas')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                        abaAtiva === 'todas'
+                          ? 'bg-[#5A4535] text-white shadow-sm'
+                          : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                      }`}
+                    >
+                      <Users size={15} />
+                      <span>Todas as Clientes ({clientes.length})</span>
+                    </button>
 
-            <button
-              onClick={handleOpenCriar}
-              className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
-            >
-              <Plus size={16} />
-              <span>Nova Cliente</span>
-            </button>
-          </div>
+                    <button
+                      type="button"
+                      onClick={() => setAbaAtiva('sumidas')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                        abaAtiva === 'sumidas'
+                          ? 'bg-rose-700 text-white shadow-sm'
+                          : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
+                      }`}
+                    >
+                      <UserX size={15} />
+                      <span>🎯 CRM Clientes Sumidas ({clientesSumidas.length})</span>
+                    </button>
+                  </div>
 
-          {/* Barra de Filtro */}
-          <div className="bg-white border border-[#EFECE6] rounded-2xl px-3 py-2 flex items-center gap-2 mb-6 shadow-sm max-w-md">
-            <Search size={16} className="text-[#C2B7AE]" />
-            <input
-              type="text"
-              placeholder="Buscar por nome, telefone ou técnica..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="bg-transparent border-none outline-none text-xs text-[#5A4535] placeholder-[#C2B7AE] w-full focus:ring-0"
-            />
-          </div>
+                  {abaAtiva === 'todas' && (
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      {duplicatasDetectadas > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleDeduplicarClientes}
+                          disabled={isDeduplicating}
+                          className="flex items-center justify-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer animate-pulse"
+                          title="Excluir cadastros duplicados mantendo apenas um por cliente e preservando os agendamentos"
+                        >
+                          <Sparkles size={15} className="text-amber-600" />
+                          <span>Unificar {duplicatasDetectadas} Duplicada(s)</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={handleOpenCriar}
+                        className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
+                      >
+                        <Plus size={16} />
+                        <span>Nova Cliente</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-          {/* Grid de Cards dos Clientes */}
-          <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pr-1 pb-6">
-            {clientesFiltrados.length === 0 ? (
-              <div className="col-span-full text-center py-12 text-[#8C7A6B]">
-                <Users size={48} className="mx-auto text-[#E8DEC9] mb-3" />
-                <h4 className="font-semibold text-sm">Nenhuma cliente encontrada</h4>
-              </div>
-            ) : (
-              clientesFiltrados.map((c) => {
-                const cliAgendamentos = agendamentos.filter(a => a.cliente_id === c.id && a.status === 'concluido');
-                return (
-                  <div
-                    key={c.id}
-                    onClick={() => setSelectedClienteIdForDetails(c.id)}
-                    className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] cursor-pointer transition-all flex flex-col justify-between gap-4 shadow-sm"
-                  >
-                    <div>
-                      <div className="flex justify-between items-start gap-2">
-                        <div>
-                          <h3 className="font-bold text-sm text-[#5A4535]">{c.nome}</h3>
-                          <p className="text-[10px] text-[#8C7A6B] mt-0.5">{c.telefone}</p>
+                {abaAtiva === 'sumidas' ? (
+                  // --- FUNIL CRM DE RESGATE DE CLIENTES SUMIDAS ---
+                  <div className="space-y-6 flex-1 overflow-y-auto pr-1 pb-6">
+                    {/* Painel de Impacto Financeiro do Churn */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 border border-rose-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between text-rose-800 mb-1">
+                          <span className="text-xs font-bold uppercase tracking-wider">Clientes em Risco</span>
+                          <UserX size={18} />
                         </div>
-                        {c.preferencias?.tecnica && (
-                          <span className="text-[9px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-lg border border-[#F3ECE0]">
-                            {c.preferencias.tecnica}
-                          </span>
-                        )}
+                        <span className="text-2xl font-bold text-rose-950">{clientesSumidas.length}</span>
+                        <p className="text-[11px] text-rose-700 mt-1">Inativas há mais de {filtroSumidasDias} dias sem agendamento futuro</p>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-[#8C7A6B] border-t border-[#FAF9F6] pt-2.5">
-                        <div>
-                          <span>Formato:</span>
-                          <span className="block font-semibold text-[#5A4535]">{c.preferencias?.formato || '-'}</span>
+                      <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 border border-amber-200 rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between text-amber-800 mb-1">
+                          <span className="text-xs font-bold uppercase tracking-wider">Receita Parada</span>
+                          <DollarSign size={18} />
                         </div>
-                        <div>
-                          <span>Tamanho:</span>
-                          <span className="block font-semibold text-[#5A4535]">{c.preferencias?.tamanho || '-'}</span>
+                        <span className="text-2xl font-bold text-amber-950">
+                          {formatarMoeda(clientesSumidas.reduce((acc, c) => acc + c.totalGastoHistorico, 0))}
+                        </span>
+                        <p className="text-[11px] text-amber-700 mt-1">Total histórico já gasto por essas clientes</p>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-[#FAF6F0] to-[#F3ECE0] border border-[#E8DFC8] rounded-2xl p-4 shadow-sm">
+                        <div className="flex items-center justify-between text-[#5A4535] mb-1">
+                          <span className="text-xs font-bold uppercase tracking-wider">Ação Recomendada</span>
+                          <MessageCircle size={18} className="text-[#4FA97A]" />
                         </div>
+                        <span className="text-sm font-bold text-[#5A4535]">Campanha no WhatsApp</span>
+                        <p className="text-[11px] text-[#8C7A6B] mt-1">Dispare mensagem de carinho + mimo VIP em 1 toque</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] border-t border-[#EFECE6] pt-3">
-                      <span className="text-[#8C7A6B]">Visitas: <strong className="text-[#5A4535]">{cliAgendamentos.length}</strong></span>
-                      <span className="text-[#8C6D58] font-bold flex items-center gap-0.5">
-                        <span>Ficha Completa</span>
-                        <ChevronRight size={12} />
-                      </span>
+                    {/* Filtros Rápidos de Inatividade */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#5A4535] mr-1">Filtrar inatividade:</span>
+                      <button
+                        type="button"
+                        onClick={() => setFiltroSumidasDias(30)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          filtroSumidasDias === 30
+                            ? 'bg-amber-600 text-white shadow-sm'
+                            : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                        }`}
+                      >
+                        🟡 30+ dias
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFiltroSumidasDias(45)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          filtroSumidasDias === 45
+                            ? 'bg-orange-600 text-white shadow-sm'
+                            : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                        }`}
+                      >
+                        🟠 45+ dias
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFiltroSumidasDias(60)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                          filtroSumidasDias === 60
+                            ? 'bg-rose-700 text-white shadow-sm'
+                            : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
+                        }`}
+                      >
+                        🔴 60+ dias (Crítico)
+                      </button>
+                    </div>
+
+                    {/* Lista de Clientes Sumidas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {clientesSumidas.length === 0 ? (
+                        <div className="col-span-full text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-8">
+                          <CheckCircle size={44} className="mx-auto text-emerald-500 mb-2" />
+                          <h4 className="font-bold text-sm text-[#5A4535]">Parabéns! Nenhuma cliente sumida nesta faixa.</h4>
+                          <p className="text-xs text-[#8C7A6B] mt-1">Sua retenção de clientes está excelente neste período.</p>
+                        </div>
+                      ) : (
+                        clientesSumidas.map((item) => (
+                          <div
+                            key={item.cliente.id}
+                            className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] shadow-sm flex flex-col justify-between gap-4 transition-all"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <h3 className="font-bold text-sm text-[#5A4535]">{item.cliente.nome}</h3>
+                                  <p className="text-[10px] text-[#8C7A6B]">{item.cliente.telefone}</p>
+                                </div>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                  item.risco === 'vermelho'
+                                    ? 'bg-red-100 text-red-800 border border-red-200'
+                                    : item.risco === 'laranja'
+                                    ? 'bg-orange-100 text-orange-800 border border-orange-200'
+                                    : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                }`}>
+                                  {item.diasSemVisita} dias sem vir
+                                </span>
+                              </div>
+
+                              <div className="mt-3 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-[11px] text-[#5A4535]">
+                                <div className="flex justify-between">
+                                  <span className="text-[#8C7A6B]">Última visita:</span>
+                                  <strong>{new Date(item.ultimoAtendimento.inicio).toLocaleDateString('pt-BR')}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-[#8C7A6B]">Total investido:</span>
+                                  <strong className="text-emerald-700">{formatarMoeda(item.totalGastoHistorico)}</strong>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-[#8C7A6B]">Visitas passadas:</span>
+                                  <strong>{item.totalVisitas} atendimento(s)</strong>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-2 border-t border-[#EFECE6]">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedClienteIdForDetails(item.cliente.id)}
+                                className="flex-1 py-2 bg-[#FAF9F6] hover:bg-[#EFECE6] text-[#8C6D58] text-xs font-bold rounded-xl border border-[#EFECE6] transition-colors text-center"
+                              >
+                                Ver Ficha
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleResgatarClienteWhatsApp(item)}
+                                className="flex-1 py-2 bg-[#25D366] hover:bg-[#20bd5a] text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                              >
+                                <MessageCircle size={14} />
+                                <span>Resgatar</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
+                ) : (
+                  // --- LISTAGEM NORMAL DE CLIENTES ---
+                  <>
+                    {/* Barra de Filtro */}
+                    <div className="bg-white border border-[#EFECE6] rounded-2xl px-3 py-2 flex items-center gap-2 mb-6 shadow-sm max-w-md">
+                      <Search size={16} className="text-[#C2B7AE]" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por nome, telefone ou técnica..."
+                        value={busca}
+                        onChange={(e) => setBusca(e.target.value)}
+                        className="bg-transparent border-none outline-none text-xs text-[#5A4535] placeholder-[#C2B7AE] w-full focus:ring-0"
+                      />
+                    </div>
+
+                    {/* Grid de Cards dos Clientes */}
+                    <div className="flex-1 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pr-1 pb-6">
+                      {clientesFiltrados.length === 0 ? (
+                        <div className="col-span-full text-center py-12 text-[#8C7A6B]">
+                          <Users size={48} className="mx-auto text-[#E8DEC9] mb-3" />
+                          <h4 className="font-semibold text-sm">Nenhuma cliente encontrada</h4>
+                        </div>
+                      ) : (
+                        clientesFiltrados.map((c) => {
+                          const cliAgendamentos = agendamentos.filter(a => a.cliente_id === c.id && a.status === 'concluido');
+                          return (
+                            <div
+                              key={c.id}
+                              onClick={() => setSelectedClienteIdForDetails(c.id)}
+                              className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] cursor-pointer transition-all flex flex-col justify-between gap-4 shadow-sm"
+                            >
+                              <div>
+                                <div className="flex justify-between items-start gap-2">
+                                  <div>
+                                    <h3 className="font-bold text-sm text-[#5A4535]">{c.nome}</h3>
+                                    <p className="text-[10px] text-[#8C7A6B] mt-0.5">{c.telefone}</p>
+                                  </div>
+                                  {c.preferencias?.tecnica && (
+                                    <span className="text-[9px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-lg border border-[#F3ECE0]">
+                                      {c.preferencias.tecnica}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                                  {c.anamnese ? (
+                                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
+                                      <ShieldCheck size={10} />
+                                      <span>Anamnese OK</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                      Sem Anamnese
+                                    </span>
+                                  )}
+                                  {c.assinatura && c.assinatura.status === 'ativo' && (
+                                    <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200">
+                                      ⭐ Clube VIP ({c.assinatura.saldo_restante} unhas)
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] text-[#8C7A6B] border-t border-[#FAF9F6] pt-2.5">
+                                  <div>
+                                    <span>Formato:</span>
+                                    <span className="block font-semibold text-[#5A4535]">{c.preferencias?.formato || '-'}</span>
+                                  </div>
+                                  <div>
+                                    <span>Tamanho:</span>
+                                    <span className="block font-semibold text-[#5A4535]">{c.preferencias?.tamanho || '-'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] border-t border-[#EFECE6] pt-3">
+                                <span className="text-[#8C7A6B]">Visitas: <strong className="text-[#5A4535]">{cliAgendamentos.length}</strong></span>
+                                <span className="text-[#8C6D58] font-bold flex items-center gap-0.5">
+                                  <span>Ficha Completa</span>
+                                  <ChevronRight size={12} />
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </>
       )}
 
@@ -1137,6 +1666,19 @@ export const Clientes: React.FC<ClientesProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* MODAL DE ANAMNESE DIGITAL COM ASSINATURA TOUCH */}
+      {clienteAnamneseModal && (
+        <ModalAnamnese
+          cliente={clienteAnamneseModal}
+          isOpen={!!clienteAnamneseModal}
+          onClose={() => setClienteAnamneseModal(null)}
+          onSalvar={(anamnese) => {
+            salvarAnamneseCliente(clienteAnamneseModal.id, anamnese);
+            setClienteAnamneseModal(null);
+          }}
+        />
       )}
     </div>
   );

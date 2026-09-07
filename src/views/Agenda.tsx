@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   Sparkles,
   RotateCcw,
-  CheckCircle
+  CheckCircle,
+  Crown
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
@@ -38,7 +39,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     currentUser,
     configSalao,
     checkConflitoHorario,
-    obterServicosDeAgendamento
+    obterServicosDeAgendamento,
+    planosAssinatura,
+    vincularAssinaturaCliente
   } = useAppState();
 
   // Data Base Real (Data Local Hoje)
@@ -169,18 +172,49 @@ export const Agenda: React.FC<AgendaProps> = ({
     return clientes.find(c => c.id === clienteId) || null;
   }, [clientes, clienteId]);
 
+  // --- Estados do Clube VIP no Formulário de Agendamento ---
+  const [agendarComoVip, setAgendarComoVip] = useState<boolean>(false);
+  const [planoVipContratarId, setPlanoVipContratarId] = useState<string>('');
+
+  const hasVipAtivo = !!(clienteSelecionadoObj?.assinatura && clienteSelecionadoObj.assinatura.status === 'ativo');
+  const planoClienteObj = useMemo(() => {
+    if (!hasVipAtivo) return null;
+    return planosAssinatura.find(p => p.id === clienteSelecionadoObj?.assinatura?.plano_id) || null;
+  }, [hasVipAtivo, planosAssinatura, clienteSelecionadoObj]);
+
+  // Quando seleciona um cliente VIP, pré-ativa o modo VIP e isenta de sinal
+  useEffect(() => {
+    if (clienteSelecionadoObj?.assinatura && clienteSelecionadoObj.assinatura.status === 'ativo') {
+      setAgendarComoVip(true);
+      setCobrarSinal(false);
+      setValorSinalManual(0);
+      const pl = planosAssinatura.find(p => p.id === clienteSelecionadoObj.assinatura?.plano_id);
+      if (pl) {
+        const sIds = (pl.itens_servicos && pl.itens_servicos.length > 0)
+          ? pl.itens_servicos.map(it => it.servico_id)
+          : (pl.servicos_permitidos_ids || []);
+        if (sIds.length > 0) {
+          setServicosSelecionados(sIds);
+        }
+      }
+    } else {
+      setAgendarComoVip(false);
+    }
+  }, [clienteId, clienteSelecionadoObj, planosAssinatura]);
+
   // Resumo Inteligente de Tempo Total e Retorno de Manutenção
   const resumoServicosSelecionados = useMemo(() => {
+    const isVip = agendarComoVip || !!planoVipContratarId;
     const selecionados = servicos.filter(s => servicosSelecionados.includes(s.id));
     const duracaoTotal = selecionados.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0);
     const precoTotal = selecionados.reduce((acc, s) => acc + (s.preco || 0), 0);
     
-    // Intervalo de manutenção recomendado (pega o menor intervalo positivo entre os serviços selecionados)
+    // Intervalo de manutenção recomendado (apenas para serviços avulsos / não-VIP)
     const intervalos = selecionados
       .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
       .filter(d => d > 0);
     
-    const diasRetorno = intervalos.length > 0 ? Math.min(...intervalos) : 0;
+    const diasRetorno = !isVip && intervalos.length > 0 ? Math.min(...intervalos) : 0;
 
     // Cálculo do horário previsto de término
     let horaTermino = horaInicio;
@@ -196,10 +230,37 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     // Cálculo da data prevista de retorno
     let dataSugeridaRetorno = '';
-    if (dataSelecionada && diasRetorno > 0) {
-      const d = new Date(dataSelecionada + 'T12:00:00');
-      d.setDate(d.getDate() + diasRetorno);
-      dataSugeridaRetorno = d.toLocaleDateString('pt-BR');
+    let dataSugeridaRetornoVip = '';
+
+    if (dataSelecionada) {
+      if (isVip) {
+        // Regra VIP: retorno semanal (+7 dias), respeitando feriados e expediente do salão
+        const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+        const [anoStr, mesStr, diaStr] = dataSelecionada.split('-');
+        const dVip = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
+        dVip.setDate(dVip.getDate() + 7);
+        let tentativas = 0;
+        while (tentativas < 14) {
+          const diaSemana = dVip.getDay();
+          const expediente = configSalao.horarios_trabalho?.[diaSemana];
+          const mStrF = String(dVip.getMonth() + 1).padStart(2, '0');
+          const dStrF = String(dVip.getDate()).padStart(2, '0');
+          const mmdd = `${mStrF}-${dStrF}`;
+          const isFeriado = feriadosNacionais.includes(mmdd);
+          const isFechado = !expediente || !expediente.ativo;
+
+          if (!isFeriado && !isFechado) {
+            break;
+          }
+          dVip.setDate(dVip.getDate() + 1);
+          tentativas++;
+        }
+        dataSugeridaRetornoVip = dVip.toLocaleDateString('pt-BR');
+      } else if (diasRetorno > 0) {
+        const d = new Date(dataSelecionada + 'T12:00:00');
+        d.setDate(d.getDate() + diasRetorno);
+        dataSugeridaRetorno = d.toLocaleDateString('pt-BR');
+      }
     }
 
     // Formatação amigável de horas e minutos (ex: 130 min = 2h 10min)
@@ -214,11 +275,13 @@ export const Agenda: React.FC<AgendaProps> = ({
       duracaoTotal,
       duracaoExtenso,
       precoTotal,
+      isVip,
       diasRetorno,
       horaTermino,
-      dataSugeridaRetorno
+      dataSugeridaRetorno,
+      dataSugeridaRetornoVip
     };
-  }, [servicos, servicosSelecionados, horaInicio, dataSelecionada]);
+  }, [servicos, servicosSelecionados, horaInicio, dataSelecionada, agendarComoVip, planoVipContratarId, configSalao]);
 
   // Sinal sugerido dos serviços selecionados
   const sinalSugeridoServicos = useMemo(() => {
@@ -325,9 +388,27 @@ export const Agenda: React.FC<AgendaProps> = ({
   const diaFechado = !expedienteDoDia || !expedienteDoDia.ativo;
 
   // Duração necessária para o atendimento em minutos
-  const duracaoMinutosAtual = isBloqueio 
-    ? 30 
-    : (resumoServicosSelecionados.duracaoTotal > 0 ? resumoServicosSelecionados.duracaoTotal : 30);
+  const duracaoMinutosAtual = useMemo(() => {
+    if (isBloqueio) return 30;
+    const pl = (agendarComoVip && planoClienteObj) || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+    if (pl) {
+      if (pl.itens_servicos && pl.itens_servicos.length > 0) {
+        const dur = pl.itens_servicos.reduce((acc, it) => {
+          const s = servicos.find(item => item.id === it.servico_id);
+          return acc + (s?.duracao_minutos || 0);
+        }, 0);
+        if (dur > 0) return dur;
+      }
+      if (pl.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
+        const dur = pl.servicos_permitidos_ids.reduce((acc, sid) => {
+          const s = servicos.find(item => item.id === sid);
+          return acc + (s?.duracao_minutos || 0);
+        }, 0);
+        if (dur > 0) return dur;
+      }
+    }
+    return resumoServicosSelecionados.duracaoTotal > 0 ? resumoServicosSelecionados.duracaoTotal : 30;
+  }, [isBloqueio, agendarComoVip, planoClienteObj, planoVipContratarId, planosAssinatura, servicos, resumoServicosSelecionados.duracaoTotal]);
 
   // Análise completa de disponibilidade de horários (Livres vs Ocupados)
   const analiseHorarios = useMemo(() => {
@@ -510,23 +591,36 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
     }
 
-    // Sinal e Status: se cobrarSinal estiver marcado, o agendamento VAI como 'pendente' (A confirmar)
-    const valorSinalFinal = (isBloqueio || !cobrarSinal)
+    // Se o operador escolheu vincular o cliente a um plano VIP agora:
+    if (planoVipContratarId && cId !== 'bloqueado') {
+      vincularAssinaturaCliente(cId, planoVipContratarId);
+    }
+
+    const isVipFinal = (agendarComoVip || !!planoVipContratarId) && !isBloqueio;
+    const totalFinal = isVipFinal ? 0 : total;
+
+    // Sinal e Status: se for VIP, isenta sinal e confirma direto
+    const valorSinalFinal = (isBloqueio || !cobrarSinal || isVipFinal)
       ? 0
       : (valorSinalManual !== '' ? Number(valorSinalManual) : sinalSugeridoServicos);
 
     const statusFinal: 'bloqueado' | 'pendente' | 'confirmado' = isBloqueio
       ? 'bloqueado'
-      : (cobrarSinal ? 'pendente' : 'confirmado');
+      : (isVipFinal ? 'confirmado' : (cobrarSinal ? 'pendente' : 'confirmado'));
+
+    const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
+    const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}] ` : '';
+    const obsFinal = `${prefixoVip}${obsAgendamento}`.trim();
 
     const res = addAgendamento({
       cliente_id: cId,
       profissional_id: profissionalId,
       inicio: dataInicioStr,
       status: statusFinal,
-      valor_total: total,
+      valor_total: totalFinal,
       valor_sinal: valorSinalFinal,
-      observacoes: obsAgendamento,
+      pago_com_clube: isVipFinal,
+      observacoes: obsFinal,
       origem: 'admin'
     }, isBloqueio ? [] : servicosSelecionados);
 
@@ -540,6 +634,8 @@ export const Agenda: React.FC<AgendaProps> = ({
       setIsBloqueio(false);
       setCobrarSinal(false);
       setValorSinalManual('');
+      setAgendarComoVip(false);
+      setPlanoVipContratarId('');
       handleCloseLocalModal();
     } else {
       setErrorAgendamento(res.error || 'Erro desconhecido');
@@ -897,7 +993,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         {equipe
                           .filter(u => u.ativo)
                           .map(u => (
-                            <option key={u.id} value={u.id}>{u.nome} ({u.perfil === 'admin' ? 'Administradora' : 'Profissional'})</option>
+                            <option key={u.id} value={u.id}>{u.nome} ({u.especialidade || (u.perfil === 'admin' ? 'Administradora' : 'Profissional')})</option>
                           ))}
                       </select>
                     </div>
@@ -1055,6 +1151,126 @@ export const Agenda: React.FC<AgendaProps> = ({
                       )}
                     </div>
 
+                    {/* Painel do Clube VIP no Formulário */}
+                    {clienteSelecionadoObj && hasVipAtivo && (
+                      <div className="p-3 bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-transparent border border-amber-300 rounded-xl space-y-2 animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Crown size={16} className="text-amber-500 shrink-0" />
+                            <div>
+                              <span className="text-xs font-bold text-[#5A4535] block">
+                                Cliente VIP: {clienteSelecionadoObj.assinatura?.nome_plano}
+                              </span>
+                              <span className="text-[10px] text-[#8C7A6B] block">
+                                {clienteSelecionadoObj.assinatura?.saldo_restante} de {clienteSelecionadoObj.assinatura?.total_mes} sessões restantes no ciclo
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            Assinante Ativo
+                          </span>
+                        </div>
+
+                        <label className="flex items-center gap-2 pt-1.5 border-t border-amber-200/60 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={agendarComoVip}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setAgendarComoVip(checked);
+                              if (checked) {
+                                setCobrarSinal(false);
+                                setValorSinalManual(0);
+                                if (planoClienteObj) {
+                                  const sIds = (planoClienteObj.itens_servicos && planoClienteObj.itens_servicos.length > 0)
+                                    ? planoClienteObj.itens_servicos.map(it => it.servico_id)
+                                    : (planoClienteObj.servicos_permitidos_ids || []);
+                                  if (sIds.length > 0) {
+                                    setServicosSelecionados(sIds);
+                                  }
+                                }
+                              }
+                            }}
+                            className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 h-4 w-4"
+                          />
+                          <span className="text-xs font-bold text-amber-950">
+                            👑 Agendar como Sessão do Clube VIP (Sem Custo - R$ 0,00)
+                          </span>
+                        </label>
+                        {agendarComoVip && (
+                          <div className="space-y-1 bg-white/80 p-2.5 rounded-lg border border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
+                            <div className="flex items-center justify-between font-bold text-amber-950">
+                              <span>⏱️ Duração prevista da sessão VIP:</span>
+                              <span className="bg-amber-200/90 px-2 py-0.5 rounded-md text-amber-950">{duracaoMinutosAtual} minutos</span>
+                            </div>
+                            <p className="pt-1">
+                              ✨ <strong>Regra Semanal Automática:</strong> Ao salvar este agendamento, as próximas sessões semanais deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Opção para contratar Plano VIP na hora caso o cliente ainda não tenha */}
+                    {(!clienteSelecionadoObj || !hasVipAtivo) && planosAssinatura.length > 0 && (
+                      <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-[#5A4535]">
+                            <Crown size={14} className="text-amber-500" />
+                            <span>Contratar ou Vincular ao Clube VIP</span>
+                          </label>
+                          {planoVipContratarId && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlanoVipContratarId('');
+                                setAgendarComoVip(false);
+                              }}
+                              className="text-[10px] text-red-600 hover:underline font-bold"
+                            >
+                              Cancelar Vínculo VIP
+                            </button>
+                          )}
+                        </div>
+                        <select
+                          value={planoVipContratarId}
+                          onChange={(e) => {
+                            const pId = e.target.value;
+                            setPlanoVipContratarId(pId);
+                            if (pId) {
+                              setAgendarComoVip(true);
+                              setCobrarSinal(false);
+                              setValorSinalManual(0);
+                              const pl = planosAssinatura.find(p => p.id === pId);
+                              if (pl) {
+                                const sIds = (pl.itens_servicos && pl.itens_servicos.length > 0)
+                                  ? pl.itens_servicos.map(it => it.servico_id)
+                                  : (pl.servicos_permitidos_ids || []);
+                                if (sIds.length > 0) {
+                                  setServicosSelecionados(sIds);
+                                }
+                              }
+                            } else {
+                              setAgendarComoVip(false);
+                            }
+                          }}
+                          className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                        >
+                          <option value="">Não vincular a Plano VIP (Agendamento Avulso)</option>
+                          {planosAssinatura.map(p => (
+                            <option key={p.id} value={p.id}>
+                              👑 {p.nome} - R$ {p.preco_mensal.toFixed(2)}/mês ({p.qtd_procedimentos_mes} sessões)
+                            </option>
+                          ))}
+                        </select>
+                        {planoVipContratarId && (
+                          <p className="text-[10px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-relaxed">
+                            👑 O cliente será cadastrado no Clube VIP e as próximas sessões semanais deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Serviços */}
                     <div>
                       <div className="flex justify-between items-center mb-1.5">
@@ -1128,17 +1344,29 @@ export const Agenda: React.FC<AgendaProps> = ({
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#F2DFD5]/50">
-                              <RotateCcw size={12} className="text-[#8C6D58] shrink-0" />
-                              <div>
-                                <span className="text-[#8C7A6B] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
-                                <strong>
-                                  {resumoServicosSelecionados.diasRetorno > 0
-                                    ? `${resumoServicosSelecionados.diasRetorno} dias (${resumoServicosSelecionados.dataSugeridaRetorno})`
-                                    : 'Não exige retorno programado'}
-                                </strong>
+                            {resumoServicosSelecionados.isVip ? (
+                              <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-50 to-orange-50 p-2 rounded-lg border border-amber-300">
+                                <Crown size={13} className="text-amber-600 shrink-0" />
+                                <div>
+                                  <span className="text-amber-800 block text-[9px] uppercase font-bold">Retorno Semanal VIP</span>
+                                  <strong className="text-amber-950">
+                                    Próxima semana {resumoServicosSelecionados.dataSugeridaRetornoVip ? `(${resumoServicosSelecionados.dataSugeridaRetornoVip})` : ''}
+                                  </strong>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-[#F2DFD5]/50">
+                                <RotateCcw size={12} className="text-[#8C6D58] shrink-0" />
+                                <div>
+                                  <span className="text-[#8C7A6B] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
+                                  <strong>
+                                    {resumoServicosSelecionados.diasRetorno > 0
+                                      ? `${resumoServicosSelecionados.diasRetorno} dias (${resumoServicosSelecionados.dataSugeridaRetorno})`
+                                      : 'Não exige retorno programado'}
+                                  </strong>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
