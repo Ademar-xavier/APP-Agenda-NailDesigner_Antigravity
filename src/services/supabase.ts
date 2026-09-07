@@ -57,6 +57,8 @@ export const encodeServicoDescricao = (
     foto?: string;
     fotos?: string[];
     destaque_catalogo?: boolean;
+    itens_inclusos?: string[];
+    orientacoes_agendamento?: string;
   }
 ) => {
   const cleanDesc = (descricaoOriginal || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
@@ -66,7 +68,9 @@ export const encodeServicoDescricao = (
                    (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0) ||
                    !!extra.foto ||
                    (extra.fotos && extra.fotos.length > 0) ||
-                   extra.destaque_catalogo !== undefined;
+                   extra.destaque_catalogo !== undefined ||
+                   (extra.itens_inclusos && extra.itens_inclusos.length > 0) ||
+                   !!extra.orientacoes_agendamento;
   if (!hasExtra) return cleanDesc;
   const metaTag = `<!--NAIL_META:${JSON.stringify(extra)}-->`;
   return cleanDesc ? `${cleanDesc}\n\n${metaTag}` : metaTag;
@@ -90,7 +94,7 @@ export const salvarServicoSupabase = async (servico: any) => {
   try {
     const diasManutencao = Number(servico.intervalo_manutencao_dias !== undefined ? servico.intervalo_manutencao_dias : (servico.retorno_dias ?? 20));
     
-    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo) na descrição sem quebrar colunas
+    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo, itens inclusos) na descrição sem quebrar colunas
     const descricaoComMetadados = encodeServicoDescricao(servico.descricao, {
       sinal_tipo: servico.sinal_tipo,
       sinal_valor: servico.sinal_valor,
@@ -98,7 +102,9 @@ export const salvarServicoSupabase = async (servico: any) => {
       servicos_pacote_detalhes: servico.servicos_pacote_detalhes,
       foto: servico.foto,
       fotos: servico.fotos,
-      destaque_catalogo: servico.destaque_catalogo
+      destaque_catalogo: servico.destaque_catalogo,
+      itens_inclusos: servico.itens_inclusos,
+      orientacoes_agendamento: servico.orientacoes_agendamento
     });
 
     // Envia exatamente as colunas existentes na tabela servicos do Supabase
