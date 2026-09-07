@@ -921,6 +921,7 @@ export const Cadastros: React.FC = () => {
                     required
                     placeholder="0"
                     value={prodPrecoCusto === 0 ? '' : prodPrecoCusto}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setProdPrecoCusto(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -934,6 +935,7 @@ export const Cadastros: React.FC = () => {
                     required
                     placeholder="0"
                     value={prodPrecoVenda === 0 ? '' : prodPrecoVenda}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setProdPrecoVenda(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -959,6 +961,7 @@ export const Cadastros: React.FC = () => {
                     required
                     placeholder="0"
                     value={prodEstoqueAtual === 0 ? '' : prodEstoqueAtual}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setProdEstoqueAtual(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -971,6 +974,7 @@ export const Cadastros: React.FC = () => {
                     required
                     placeholder="0"
                     value={prodEstoqueMinimo === 0 ? '' : prodEstoqueMinimo}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setProdEstoqueMinimo(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
