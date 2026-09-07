@@ -37,7 +37,8 @@ export const Servicos: React.FC = () => {
     addPlanoAssinatura,
     updatePlanoAssinatura,
     deletePlanoAssinatura,
-    clientes
+    clientes,
+    equipe
   } = useAppState();
 
   const [abaAtiva, setAbaAtiva] = useState<'servicos' | 'clube_vip'>('servicos');
@@ -61,6 +62,7 @@ export const Servicos: React.FC = () => {
   const [planoValidadeDias, setPlanoValidadeDias] = useState<number>(30);
   const [planoServicosIds, setPlanoServicosIds] = useState<string[]>([]);
   const [planoQuantidadesServicos, setPlanoQuantidadesServicos] = useState<{ [servicoId: string]: number }>({});
+  const [planoProfissionaisServicos, setPlanoProfissionaisServicos] = useState<{ [servicoId: string]: string }>({});
 
   // Filtros de busca
   const [buscaNome, setBuscaNome] = useState('');
@@ -233,6 +235,7 @@ export const Servicos: React.FC = () => {
     setPlanoValidadeDias(30);
     setPlanoServicosIds([]);
     setPlanoQuantidadesServicos({});
+    setPlanoProfissionaisServicos({});
     setModalPlanoAberto(true);
   };
 
@@ -246,11 +249,15 @@ export const Servicos: React.FC = () => {
     setPlanoServicosIds(plano.servicos_permitidos_ids || []);
 
     const qtds: { [servicoId: string]: number } = {};
+    const profsMap: { [servicoId: string]: string } = {};
     if (plano.itens_servicos && plano.itens_servicos.length > 0) {
       plano.itens_servicos.forEach(item => {
         // CORREÇÃO: Limpa serviços deletados que ainda estavam no plano
         if (servicos.some(s => s.id === item.servico_id && s.ativo)) {
           qtds[item.servico_id] = item.quantidade;
+          if (item.profissional_id) {
+            profsMap[item.servico_id] = item.profissional_id;
+          }
         }
       });
     } else if (plano.servicos_permitidos_ids && plano.servicos_permitidos_ids.length > 0) {
@@ -261,6 +268,7 @@ export const Servicos: React.FC = () => {
       });
     }
     setPlanoQuantidadesServicos(qtds);
+    setPlanoProfissionaisServicos(profsMap);
     setModalPlanoAberto(true);
   };
 
@@ -310,7 +318,8 @@ export const Servicos: React.FC = () => {
         return {
           servico_id: servicoId,
           nome_servico: serv?.nome || 'Serviço',
-          quantidade
+          quantidade,
+          profissional_id: planoProfissionaisServicos[servicoId] || undefined
         };
       });
 
@@ -769,6 +778,12 @@ export const Servicos: React.FC = () => {
                                       return acc + (s?.duracao_minutos || 0);
                                     }, 0)
                                   : 60;
+                              
+                              const profs = Array.from(new Set((plano.itens_servicos || []).map(it => it.profissional_id).filter(Boolean)));
+                              if (profs.length > 1 && dur > 0) {
+                                const durDividida = Math.round(dur / profs.length);
+                                return `${durDividida} min (${dur}m total ÷ ${profs.length} profissionais simultâneas)`;
+                              }
                               return `${dur} min`;
                             })()}
                           </span>
@@ -781,18 +796,31 @@ export const Servicos: React.FC = () => {
                           Composição das Sessões no Mês:
                         </span>
                         {itensValidos.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {itensValidos.map(item => (
-                              <span 
-                                key={item.servico_id} 
-                                className="text-[10px] bg-amber-50 border border-amber-200 text-[#5A4535] px-2 py-0.5 rounded-lg font-medium flex items-center gap-1 shadow-2xs"
-                              >
-                                <span className="bg-amber-200/90 text-amber-950 px-1.5 py-0.2 rounded text-[9px] font-bold">
-                                  {item.quantidade}x
-                                </span>
-                                <span>{item.nome_servico}</span>
-                              </span>
-                            ))}
+                          <div className="flex flex-col gap-1.5">
+                            {itensValidos.map(item => {
+                              const prof = item.profissional_id ? equipe.find(m => m.id === item.profissional_id) : null;
+                              return (
+                                <div 
+                                  key={item.servico_id} 
+                                  className="text-[11px] bg-amber-50/70 border border-amber-200/80 text-[#5A4535] px-2.5 py-1.5 rounded-xl font-medium flex items-center justify-between gap-2 shadow-2xs"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                      {item.quantidade}x
+                                    </span>
+                                    <span className="font-semibold">{item.nome_servico}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-[#8C6D58]">
+                                    <span className="bg-white border border-[#EFECE6] px-1.5 py-0.5 rounded-md text-[9px] font-medium">
+                                      {prof ? `👤 ${prof.nome}` : 'Qualquer profissional'}
+                                    </span>
+                                    <span className="text-[9px] text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded font-bold">
+                                      {item.quantidade} sem.
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : plano.servicos_permitidos_ids && plano.servicos_permitidos_ids.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
@@ -1304,68 +1332,100 @@ export const Servicos: React.FC = () => {
                     Total: {Object.values(planoQuantidadesServicos).reduce((a, b) => a + b, 0)} sessões/mês
                   </span>
                 </div>
-                <p className="text-[11px] text-[#8C7A6B] mb-2.5">
-                  Defina a quantidade de cada serviço que o plano dá direito no mês (ex: 4 Manicures e 3 Pedicures).
+                <p className="text-[11px] text-[#8C7A6B] mb-2 leading-relaxed">
+                  Defina a quantidade de sessões no mês e qual profissional executará cada procedimento. Se profissionais diferentes atenderem na mesma sessão, o tempo será dividido entre elas e as agendas serão bloqueadas semanalmente pelo número de semanas configurado.
                 </p>
 
-                <div className="max-h-56 overflow-y-auto border border-[#EFECE6] rounded-xl p-2 space-y-1.5 bg-[#FAF9F6]">
+                <div className="max-h-64 overflow-y-auto border border-[#EFECE6] rounded-xl p-2 space-y-2 bg-[#FAF9F6]">
                   {servicos.filter(s => s.ativo).map((s) => {
                     const qtd = planoQuantidadesServicos[s.id] || 0;
                     const isAtivoNoPlano = qtd > 0;
                     return (
                       <div
                         key={s.id}
-                        className={`w-full p-2.5 rounded-xl text-xs flex items-center justify-between transition-all border ${
+                        className={`w-full p-2.5 rounded-xl text-xs flex flex-col transition-all border ${
                           isAtivoNoPlano 
-                            ? 'bg-amber-50/70 border-amber-300 shadow-xs' 
+                            ? 'bg-amber-50/80 border-amber-300 shadow-xs' 
                             : 'bg-white border-[#EFECE6] hover:border-gray-300'
                         }`}
                       >
-                        <div className="flex-1 pr-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-semibold ${isAtivoNoPlano ? 'text-[#5A4535]' : 'text-gray-700'}`}>
-                              {s.nome}
-                            </span>
-                            {isAtivoNoPlano && (
-                              <span className="text-[9px] bg-amber-200/90 text-amber-950 font-bold px-1.5 py-0.5 rounded-md">
-                                {qtd}x no mês
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 pr-2">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-semibold ${isAtivoNoPlano ? 'text-[#5A4535]' : 'text-gray-700'}`}>
+                                {s.nome}
                               </span>
-                            )}
+                              {isAtivoNoPlano && (
+                                <span className="text-[9px] bg-amber-200/90 text-amber-950 font-bold px-1.5 py-0.5 rounded-md">
+                                  {qtd}x no mês
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-[#8C7A6B] block mt-0.5">
+                              Duração: {s.duracao_minutos} min • Avulso: R$ {s.preco.toFixed(2)}
+                            </span>
                           </div>
-                          <span className="text-[10px] text-[#8C7A6B] block mt-0.5">
-                            Avulso: R$ {s.preco.toFixed(2)}
-                          </span>
+
+                          {/* Stepper de Quantidade [-] [qtd] [+] */}
+                          <div className="flex items-center gap-1 bg-white border border-[#EFECE6] rounded-lg p-0.5 shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => alterarQtdServicoPlano(s.id, -1)}
+                              disabled={qtd <= 0}
+                              className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-gray-100 disabled:opacity-30 text-[#8C7A6B] transition-colors"
+                              title="Diminuir quantidade"
+                            >
+                              <Minus size={12} />
+                            </button>
+                            
+                            <input
+                              type="number"
+                              min="0"
+                              value={qtd}
+                              onChange={(e) => definirQtdDiretaServicoPlano(s.id, parseInt(e.target.value) || 0)}
+                              className="w-10 text-center font-bold text-xs text-[#5A4535] bg-transparent focus:outline-none"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => alterarQtdServicoPlano(s.id, 1)}
+                              className="w-6 h-6 flex items-center justify-center rounded-md bg-[#8C6D58] hover:bg-[#725743] text-white transition-colors"
+                              title="Aumentar quantidade"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Stepper de Quantidade [-] [qtd] [+] */}
-                        <div className="flex items-center gap-1 bg-white border border-[#EFECE6] rounded-lg p-0.5 shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => alterarQtdServicoPlano(s.id, -1)}
-                            disabled={qtd <= 0}
-                            className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-gray-100 disabled:opacity-30 text-[#8C7A6B] transition-colors"
-                            title="Diminuir quantidade"
-                          >
-                            <Minus size={12} />
-                          </button>
-                          
-                          <input
-                            type="number"
-                            min="0"
-                            value={qtd}
-                            onChange={(e) => definirQtdDiretaServicoPlano(s.id, parseInt(e.target.value) || 0)}
-                            className="w-10 text-center font-bold text-xs text-[#5A4535] bg-transparent focus:outline-none"
-                          />
-
-                          <button
-                            type="button"
-                            onClick={() => alterarQtdServicoPlano(s.id, 1)}
-                            className="w-6 h-6 flex items-center justify-center rounded-md bg-[#8C6D58] hover:bg-[#725743] text-white transition-colors"
-                            title="Aumentar quantidade"
-                          >
-                            <Plus size={12} />
-                          </button>
-                        </div>
+                        {/* Configuração da Profissional Responsável e Bloqueio */}
+                        {isAtivoNoPlano && (
+                          <div className="mt-2.5 pt-2 border-t border-amber-200/60 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#5A4535]">
+                              <span className="font-semibold text-[#8C7A6B]">Profissional:</span>
+                              <select
+                                value={planoProfissionaisServicos[s.id] || ''}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setPlanoProfissionaisServicos(prev => ({
+                                    ...prev,
+                                    [s.id]: val
+                                  }));
+                                }}
+                                className="bg-white border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] font-medium focus:ring-1 focus:ring-[#8C6D58] outline-none"
+                              >
+                                <option value="">Qualquer profissional</option>
+                                {equipe.filter(m => m.ativo).map(m => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.nome} ({m.especialidade || (m.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <span className="text-[10px] font-medium text-amber-800 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md">
+                              Bloqueia {qtd} semanas na agenda
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

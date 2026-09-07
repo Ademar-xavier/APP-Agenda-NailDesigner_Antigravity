@@ -299,6 +299,7 @@ export interface ItemServicoPlano {
   servico_id: string;
   nome_servico: string;
   quantidade: number;
+  profissional_id?: string; // Profissional designada para este serviço no plano
 }
 
 export interface ItemSaldoAssinatura {
@@ -306,6 +307,7 @@ export interface ItemSaldoAssinatura {
   nome_servico: string;
   saldo_restante: number;
   total_mes: number;
+  profissional_id?: string; // Profissional designada
 }
 
 export interface PlanoAssinatura {

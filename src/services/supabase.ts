@@ -509,6 +509,7 @@ export const salvarConfiguracoesSupabase = async (dados: {
   formatos?: string[];
   categoriasServico?: string[];
   categoriasDespesa?: string[];
+  categoriasProduto?: string[];
   equipe?: any[];
 }) => {
   try {
@@ -516,12 +517,18 @@ export const salvarConfiguracoesSupabase = async (dados: {
     if (dados.equipe) {
       configSalaoObj.equipe = dados.equipe;
     }
+    if (dados.categoriasProduto) {
+      configSalaoObj.categorias_produto = dados.categoriasProduto;
+    }
 
     // Preserva avisos_nao_lidos já salvos no banco para nunca apagar nem reverter exclusões de avisos
     try {
       const { data: atual } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
       if (atual?.config_salao?.avisos_nao_lidos !== undefined && configSalaoObj.avisos_nao_lidos === undefined) {
         configSalaoObj.avisos_nao_lidos = atual.config_salao.avisos_nao_lidos;
+      }
+      if (atual?.config_salao?.categorias_produto && !dados.categoriasProduto) {
+        configSalaoObj.categorias_produto = atual.config_salao.categorias_produto;
       }
     } catch (e) {}
 

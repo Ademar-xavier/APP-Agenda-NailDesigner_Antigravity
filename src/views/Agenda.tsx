@@ -397,6 +397,10 @@ export const Agenda: React.FC<AgendaProps> = ({
           const s = servicos.find(item => item.id === it.servico_id);
           return acc + (s?.duracao_minutos || 0);
         }, 0);
+        const profs = Array.from(new Set(pl.itens_servicos.map(it => it.profissional_id).filter(Boolean)));
+        if (profs.length > 1 && dur > 0) {
+          return Math.max(30, Math.round(dur / profs.length));
+        }
         if (dur > 0) return dur;
       }
       if (pl.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
@@ -552,7 +556,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     // 2. Calcular valores e horários para verificar disponibilidade ANTES de cadastrar cliente
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
     const total = isBloqueio ? 0 : servs.reduce((acc, s) => acc + s.preco, 0);
-    const duracaoTotal = isBloqueio ? 30 : servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
+    const duracaoTotal = isBloqueio ? 30 : duracaoMinutosAtual;
 
     const dataInicioStr = `${dataSelecionada}T${horaInicio}:00`;
     const dataInicio = new Date(dataInicioStr);
