@@ -36,7 +36,8 @@ import {
   Eye,
   EyeOff,
   Info,
-  ShieldCheck
+  ShieldCheck,
+  Bell
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -53,7 +54,7 @@ import {
   LicencaInfo 
 } from '../services/licencaService';
 import { salvarConfiguracoesSupabase } from '../services/supabase';
-import { getBookingUrl } from '../utils/urlHelper';
+import { getBookingUrl, getCatalogoUrl } from '../utils/urlHelper';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
 export const Configuracoes: React.FC = () => {
@@ -149,6 +150,35 @@ export const Configuracoes: React.FC = () => {
         textoBotao: 'Fechar'
       });
     });
+  };
+
+  const [copiadoLinkCatalogo, setCopiadoLinkCatalogo] = useState(false);
+
+  const handleCopiarLinkCatalogo = () => {
+    const url = getCatalogoUrl();
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiadoLinkCatalogo(true);
+      setTimeout(() => setCopiadoLinkCatalogo(false), 2500);
+      mostrarAlerta({
+        titulo: 'Link do Catálogo Copiado!',
+        mensagem: 'O link do catálogo online de serviços e fotos do seu salão foi copiado!\n\nPronto para enviar pelo WhatsApp ou adicionar na Bio / destaques do Instagram.',
+        link: url,
+        tipo: 'sucesso',
+        textoBotao: 'Excelente!'
+      });
+    }).catch(() => {
+      mostrarAlerta({
+        titulo: 'Link do Catálogo Online',
+        mensagem: 'Copie o link do catálogo de procedimentos abaixo:',
+        link: url,
+        tipo: 'info',
+        textoBotao: 'Fechar'
+      });
+    });
+  };
+
+  const handleVerLinkCatalogo = () => {
+    window.location.hash = 'catalogo';
   };
 
   const handleVerLinkAgendamento = () => {
@@ -605,7 +635,7 @@ export const Configuracoes: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Os 3 botões movidos do menu lateral */}
+                {/* Os botões de links e sincronização */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                   {/* 1. Sincronizar com a Nuvem */}
                   <button
@@ -627,7 +657,7 @@ export const Configuracoes: React.FC = () => {
                     title="Copiar o link oficial para colar no WhatsApp das clientes ou Instagram"
                   >
                     {copiadoLink ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
-                    <span>{copiadoLink ? 'Link Copiado!' : 'Copiar Link p/ Clientes'}</span>
+                    <span>{copiadoLink ? 'Link Copiado!' : 'Copiar Link Agendamento'}</span>
                   </button>
 
                   {/* 3. Ver Página de Agendamento */}
@@ -638,29 +668,43 @@ export const Configuracoes: React.FC = () => {
                     title="Abrir a página pública que as suas clientes acessam"
                   >
                     <ExternalLink size={14} />
-                    <span>Ver Página de Agendamento</span>
+                    <span>Ver Auto-Agendamento</span>
                   </button>
                 </div>
 
-                {/* Opção Adicional: Enviar Dados deste Computador para a Nuvem e Limpar Cache */}
+                {/* Links do Catálogo de Serviços */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-[#E8DEC9]/40">
+                  <button
+                    type="button"
+                    onClick={handleCopiarLinkCatalogo}
+                    className="flex items-center justify-center gap-2 p-3 bg-white border border-[#E5D5C5] hover:border-[#8C6D58] rounded-xl text-xs font-bold text-[#5A4535] hover:text-[#8C6D58] transition-all shadow-xs active:scale-98"
+                    title="Copiar link da vitrine / catálogo online com fotos"
+                  >
+                    <Sparkles size={14} className="text-amber-500" />
+                    <span>{copiadoLinkCatalogo ? 'Link Copiado!' : 'Copiar Link do Catálogo'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleVerLinkCatalogo}
+                    className="flex items-center justify-center gap-2 p-3 bg-[#FAF9F6] border border-[#E5D5C5] hover:border-[#8C6D58] rounded-xl text-xs font-semibold text-[#8C6D58] hover:bg-white transition-colors shadow-xs"
+                    title="Abrir o catálogo online de serviços"
+                  >
+                    <ExternalLink size={14} />
+                    <span>Abrir Catálogo de Serviços</span>
+                  </button>
+                </div>
+
+                {/* Opção de Limpar Cache e Manutenção */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#E8DEC9]/40">
                   <span className="text-[11px] text-[#8C7A6B]">
-                    Sincronização & Manutenção deste aparelho:
+                    Manutenção deste aparelho:
                   </span>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleEnviarDadosNuvem}
-                      disabled={isSyncingCloud}
-                      className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] underline underline-offset-4 flex items-center gap-1.5 transition-colors"
-                    >
-                      <UploadCloud size={14} />
-                      <span>Enviar Dados para a Nuvem</span>
-                    </button>
+                  <div>
                     <button
                       type="button"
                       onClick={handleLimparCache}
-                      className="text-xs font-bold text-red-600 hover:text-red-700 underline underline-offset-4 flex items-center gap-1.5 transition-colors"
+                      className="text-xs font-bold text-red-600 hover:text-red-700 underline underline-offset-4 flex items-center gap-1.5 transition-colors cursor-pointer"
                       title="Apaga arquivos temporários e recarrega a versão mais nova do app"
                     >
                       <RefreshCw size={12} />
@@ -822,10 +866,11 @@ export const Configuracoes: React.FC = () => {
                           <span className="text-xs font-bold text-[#8C6D58]">R$</span>
                           <input
                             type="number"
-                            min="1"
+                            min="0"
                             step="1"
-                            value={sinalPadrao}
-                            onChange={(e) => setSinalPadrao(Math.max(1, Number(e.target.value) || 0))}
+                            placeholder="10"
+                            value={sinalPadrao === 0 ? '' : sinalPadrao}
+                            onChange={(e) => setSinalPadrao(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                             className="w-20 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white font-bold text-center focus:outline-none focus:border-[#8C6D58]"
                           />
                         </div>
@@ -848,8 +893,9 @@ export const Configuracoes: React.FC = () => {
                             type="number"
                             min="0"
                             step="15"
-                            value={antecedenciaMinima}
-                            onChange={(e) => setAntecedenciaMinima(Math.max(0, Number(e.target.value) || 0))}
+                            placeholder="0"
+                            value={antecedenciaMinima === 0 ? '' : antecedenciaMinima}
+                            onChange={(e) => setAntecedenciaMinima(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                             className="w-18 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-[#FAF9F6] font-bold text-center focus:outline-none focus:border-[#8C6D58]"
                           />
                           <span className="text-xs text-[#8C7A6B] font-medium">minutos</span>
@@ -871,8 +917,9 @@ export const Configuracoes: React.FC = () => {
                             min="1"
                             max="72"
                             step="1"
-                            value={limiteHorasSinal}
-                            onChange={(e) => setLimiteHorasSinal(Math.max(1, Number(e.target.value) || 1))}
+                            placeholder="2"
+                            value={limiteHorasSinal === 0 ? '' : limiteHorasSinal}
+                            onChange={(e) => setLimiteHorasSinal(e.target.value === '' ? 0 : Math.max(1, Number(e.target.value)))}
                             className="w-18 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-[#FAF9F6] font-bold text-center focus:outline-none focus:border-[#8C6D58]"
                           />
                           <span className="text-xs text-[#8C7A6B] font-medium">horas</span>
@@ -936,14 +983,14 @@ export const Configuracoes: React.FC = () => {
                             'teste'
                           );
                           mostrarNotificacaoGlobal(perm !== false 
-                            ? '🔔 Notificação enviada para a barra de status do celular!' 
+                            ? '🔔 Permissão de notificações ativada com sucesso no celular!' 
                             : '⚠️ Permissão de notificação negada no aparelho. Ative em Configurações do Android.'
                           );
                         }}
-                        className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#8C6D58] border border-[#8C6D58] text-[#8C6D58] hover:text-white rounded-xl text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-[#8C6D58] border border-[#8C6D58] text-[#8C6D58] hover:text-white rounded-xl text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer"
                       >
-                        <Send size={12} />
-                        <span>Testar no Topo do Celular</span>
+                        <Bell size={13} />
+                        <span>Ativar Permissão de Notificações</span>
                       </button>
                     </div>
                   </div>
@@ -1025,38 +1072,6 @@ export const Configuracoes: React.FC = () => {
                   </div>
                 </div>
               )}
-
-              {/* Modo de Produção Oficial & Ferramenta de Limpeza */}
-              <div className="p-3.5 bg-[#F4F9F5] border border-[#D5EBD9] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#2A5C38]">
-                <div className="space-y-0.5">
-                  <span className="font-bold flex items-center gap-1 text-[#205C38]">
-                    <ShieldCheck size={14} className="text-[#2B7A4B]" />
-                    Modo de Produção Oficial Ativado
-                  </span>
-                  <p className="text-[11px] text-[#4A7855] leading-relaxed">
-                    Sincronização direta com a Google Calendar API oficial ou por arquivo .ics sem dados simulados ou duplicados.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    confirmarAcao({
-                      titulo: 'Limpar Testes',
-                      mensagem: 'Deseja remover da agenda todos os compromissos antigos gerados pelo teste de simulação?',
-                      tipo: 'aviso',
-                      textoConfirmar: 'Remover Testes',
-                      onConfirm: () => {
-                        limparAgendamentosSimuladosGoogle();
-                        exibirToast('🧹 Agendamentos antigos de simulação removidos!');
-                      }
-                    });
-                  }}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold shrink-0 transition-colors shadow-2xs"
-                >
-                  <Trash2 size={13} />
-                  <span>Limpar Testes Antigos</span>
-                </button>
-              </div>
             </div>
           </div>
         )}
@@ -1923,7 +1938,7 @@ export const Configuracoes: React.FC = () => {
                     type="button"
                     onClick={() => {
                       const msg = encodeURIComponent('Olá! Gostaria de falar sobre renovação e compra de licenças do App Agenda Nail Designer.');
-                      window.open(`https://api.whatsapp.com/send?phone=5535997141856&text=${msg}`, '_blank');
+                      window.open(`https://api.whatsapp.com/send?phone=5511974500948&text=${msg}`, '_blank');
                     }}
                     className="w-full sm:w-auto px-5 py-2.5 bg-[#25D366] hover:bg-[#20BA5C] text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
                   >

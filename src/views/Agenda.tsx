@@ -307,7 +307,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     setLocalNewAgendamentoOpen(isNewAgendamentoModalOpen);
   }, [isNewAgendamentoModalOpen]);
 
-  // Keyboard Escape listener to close modal in Agenda.tsx
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar modais em Agenda.tsx
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -318,8 +318,23 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (localNewAgendamentoOpen) {
+        if (e.cancelable) e.preventDefault();
+        handleCloseLocalModal();
+      } else if (selectedAgendamentoId) {
+        if (e.cancelable) e.preventDefault();
+        setSelectedAgendamentoId(null);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [localNewAgendamentoOpen, selectedAgendamentoId]);
 
   const handleOpenLocalModal = () => {

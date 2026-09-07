@@ -49,13 +49,24 @@ export const deletarClienteSupabase = async (id: string) => {
 // --- METADADOS EMBUTIDOS EM SERVIÇO (Sinal, Insumos, Subserviços) ---
 export const encodeServicoDescricao = (
   descricaoOriginal: string | null | undefined, 
-  extra: { sinal_tipo?: string; sinal_valor?: number; materiais_utilizados?: any[]; servicos_pacote_detalhes?: any[] }
+  extra: { 
+    sinal_tipo?: string; 
+    sinal_valor?: number; 
+    materiais_utilizados?: any[]; 
+    servicos_pacote_detalhes?: any[];
+    foto?: string;
+    fotos?: string[];
+    destaque_catalogo?: boolean;
+  }
 ) => {
   const cleanDesc = (descricaoOriginal || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
   const hasExtra = (extra.sinal_tipo && extra.sinal_tipo !== 'nenhum') || 
                    (extra.sinal_valor !== undefined && extra.sinal_valor > 0) || 
                    (extra.materiais_utilizados && extra.materiais_utilizados.length > 0) ||
-                   (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0);
+                   (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0) ||
+                   !!extra.foto ||
+                   (extra.fotos && extra.fotos.length > 0) ||
+                   extra.destaque_catalogo !== undefined;
   if (!hasExtra) return cleanDesc;
   const metaTag = `<!--NAIL_META:${JSON.stringify(extra)}-->`;
   return cleanDesc ? `${cleanDesc}\n\n${metaTag}` : metaTag;
@@ -79,15 +90,23 @@ export const salvarServicoSupabase = async (servico: any) => {
   try {
     const diasManutencao = Number(servico.intervalo_manutencao_dias !== undefined ? servico.intervalo_manutencao_dias : (servico.retorno_dias ?? 20));
     
-    // Descrição sempre limpa e pura de qualquer metadado
-    const cleanDesc = (servico.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo) na descrição sem quebrar colunas
+    const descricaoComMetadados = encodeServicoDescricao(servico.descricao, {
+      sinal_tipo: servico.sinal_tipo,
+      sinal_valor: servico.sinal_valor,
+      materiais_utilizados: servico.materiais_utilizados,
+      servicos_pacote_detalhes: servico.servicos_pacote_detalhes,
+      foto: servico.foto,
+      fotos: servico.fotos,
+      destaque_catalogo: servico.destaque_catalogo
+    });
 
     // Envia exatamente as colunas existentes na tabela servicos do Supabase
     const payload = {
       id: servico.id,
       nome: servico.nome,
       categoria: servico.categoria || 'Geral',
-      descricao: cleanDesc || null,
+      descricao: descricaoComMetadados || null,
       duracao_minutos: Number(servico.duracao_minutos) || 60,
       preco: Number(servico.preco) || 0,
       ativo: servico.ativo !== false,

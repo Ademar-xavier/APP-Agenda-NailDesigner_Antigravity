@@ -59,15 +59,27 @@ export const Financeiro: React.FC = () => {
   const [despesaModal, setDespesaModal] = useState(false);
   const [financeTab, setFinanceTab] = useState<'pendentes' | 'despesas' | 'comissoes'>('pendentes');
 
-  // Keyboard Escape listener to close modal in Financeiro.tsx
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar modal em Financeiro.tsx
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && despesaModal) {
         setDespesaModal(false);
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (despesaModal) {
+        if (e.cancelable) e.preventDefault();
+        setDespesaModal(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [despesaModal]);
   
   // Form Despesa Fields

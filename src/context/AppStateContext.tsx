@@ -1083,7 +1083,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 sinal_tipo: extra.sinal_tipo || s.sinal_tipo || local?.sinal_tipo || 'nenhum',
                 sinal_valor: Number(extra.sinal_valor !== undefined ? extra.sinal_valor : (s.sinal_valor !== undefined ? s.sinal_valor : (local?.sinal_valor ?? 0))),
                 materiais_utilizados: extra.materiais_utilizados || s.materiais_utilizados || local?.materiais_utilizados || [],
-                servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || []
+                servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || [],
+                foto: extra.foto || s.foto || local?.foto || '',
+                fotos: extra.fotos || s.fotos || local?.fotos || [],
+                destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (s.destaque_catalogo !== undefined ? s.destaque_catalogo : (local?.destaque_catalogo ?? false))
               };
             });
           try { localStorage.setItem('nail_servicos', JSON.stringify(servicosFormatados)); } catch (e) {}

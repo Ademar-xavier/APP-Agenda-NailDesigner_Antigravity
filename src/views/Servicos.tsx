@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Plus, 
   Scissors, 
@@ -8,19 +8,63 @@ import {
   Trash2, 
   Edit, 
   Check, 
-  X,
-  RefreshCw,
-  Package,
-  Sparkles,
-  Search,
-  Crown,
-  Edit3,
-  Minus,
-  TrendingUp
+  X, 
+  RefreshCw, 
+  Package, 
+  Sparkles, 
+  Search, 
+  Crown, 
+  Edit3, 
+  Minus, 
+  TrendingUp,
+  Camera,
+  Share2,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura, ItemServicoPlano } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
+import { getCatalogoUrl } from '../utils/urlHelper';
+
+// Compressão automática de imagem para exibição rápida e economia de banda
+const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.8): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', qualidade));
+        } else {
+          resolve((e.target?.result as string) || '');
+        }
+      };
+      img.onerror = () => resolve((e.target?.result as string) || '');
+      img.src = (e.target?.result as string) || '';
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
 
 export const Servicos: React.FC = () => {
   const { 
@@ -79,17 +123,52 @@ export const Servicos: React.FC = () => {
   const [sinalValor, setSinalValor] = useState(0);
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
   const [descricao, setDescricao] = useState('');
+  const [fotoServico, setFotoServico] = useState('');
+  const [destaqueCatalogo, setDestaqueCatalogo] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
 
-  // Keyboard Escape listener to close modal in Servicos.tsx
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await comprimirImagem(file, 800, 0.8);
+      setFotoServico(base64);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem de serviço:', err);
+    }
+  };
+
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar modais
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && modalOpen) {
+      if (e.key === 'Escape') {
+        if (modalPlanoAberto) {
+          setModalPlanoAberto(false);
+        } else if (modalOpen) {
+          setModalOpen(false);
+        }
+      }
+    };
+
+    const handleAndroidBack = (e: Event) => {
+      if (modalPlanoAberto) {
+        if (e.cancelable) e.preventDefault();
+        setModalPlanoAberto(false);
+      } else if (modalOpen) {
+        if (e.cancelable) e.preventDefault();
         setModalOpen(false);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalOpen]);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
+  }, [modalOpen, modalPlanoAberto]);
   
   // Lista de materiais vinculados ao serviço
   const [materiaisSelecionados, setMateriaisSelecionados] = useState<{ material_id: string; quantidade: number }[]>([]);
@@ -144,6 +223,8 @@ export const Servicos: React.FC = () => {
     setMateriaisSelecionados([]);
     setIsPacote(false);
     setServicosPacoteDetalhes([]);
+    setFotoServico('');
+    setDestaqueCatalogo(false);
     setModalOpen(true);
   };
 
@@ -168,6 +249,8 @@ export const Servicos: React.FC = () => {
     setMateriaisSelecionados(serv.materiais_utilizados || []);
     setIsPacote(serv.is_pacote || false);
     setServicosPacoteDetalhes(serv.servicos_pacote_detalhes || (serv.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })));
+    setFotoServico(serv.foto || '');
+    setDestaqueCatalogo(!!serv.destaque_catalogo);
     setModalOpen(true);
   };
 
@@ -202,7 +285,9 @@ export const Servicos: React.FC = () => {
       is_pacote: isPacote,
       servicos_pacote: isPacote ? servicosPacoteDetalhes.map(d => d.servico_id) : [],
       servicos_pacote_detalhes: isPacote ? servicosPacoteDetalhes : [],
-      descricao: limparTextoDescricao(descricao)
+      descricao: limparTextoDescricao(descricao),
+      foto: fotoServico,
+      destaque_catalogo: destaqueCatalogo
     };
 
     if (servicoEdicao) {
@@ -391,13 +476,42 @@ export const Servicos: React.FC = () => {
           </p>
         </div>
         {abaAtiva === 'servicos' ? (
-          <button
-            onClick={handleOpenCriar}
-            className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
-          >
-            <Plus size={16} />
-            <span>Novo Serviço</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const url = getCatalogoUrl();
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(url);
+                  setLinkCopiado(true);
+                  setTimeout(() => setLinkCopiado(false), 2000);
+                }
+              }}
+              title="Copiar Link do Catálogo Online para Clientes"
+              className="flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C6D58] px-3 py-2 rounded-xl text-xs font-bold shadow-2xs transition-all"
+            >
+              {linkCopiado ? <CheckCircle2 size={14} className="text-emerald-600" /> : <Share2 size={14} />}
+              <span>{linkCopiado ? 'Link Copiado!' : 'Copiar Catálogo'}</span>
+            </button>
+
+            <a
+              href={getCatalogoUrl()}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-1.5 bg-[#FAF9F6] hover:bg-[#EFECE6] border border-[#EFECE6] text-[#5A4535] px-3 py-2 rounded-xl text-xs font-bold transition-all"
+            >
+              <ExternalLink size={14} />
+              <span>Ver Catálogo</span>
+            </a>
+
+            <button
+              onClick={handleOpenCriar}
+              className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm transition-all"
+            >
+              <Plus size={16} />
+              <span>Novo Serviço</span>
+            </button>
+          </div>
         ) : (
           <button
             onClick={abrirModalNovoPlano}
@@ -512,8 +626,22 @@ export const Servicos: React.FC = () => {
                     >
                       <div>
                         <div className="flex justify-between items-start gap-2">
-                          <div className="p-2.5 bg-[#F6ECE8] text-[#8C6D58] rounded-xl h-fit">
-                            <AlicateIcon size={18} />
+                          <div className="flex items-start gap-2.5">
+                            {s.foto ? (
+                              <div className="w-12 h-12 rounded-xl overflow-hidden border border-[#EFECE6] shrink-0 bg-[#FAF9F6] shadow-2xs">
+                                <img src={s.foto} alt={s.nome} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="p-2.5 bg-[#F6ECE8] text-[#8C6D58] rounded-xl h-fit">
+                                <AlicateIcon size={18} />
+                              </div>
+                            )}
+                            {s.destaque_catalogo && (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-200 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 self-start">
+                                <Sparkles size={10} className="text-amber-600" />
+                                <span>Destaque</span>
+                              </span>
+                            )}
                           </div>
                           <div className="text-right">
                             <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5 flex items-center justify-end gap-1">
@@ -899,14 +1027,84 @@ export const Servicos: React.FC = () => {
 
                 {/* Descrição do Serviço */}
                 <div>
-                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Descrição do Serviço (Visível para o Cliente)</label>
+                  <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Descrição do Serviço (Visível no Catálogo Online)</label>
                   <textarea 
                     rows={2}
                     value={descricao}
                     onChange={(e) => setDescricao(e.target.value)}
-                    placeholder="Descreva detalhes ou orientações sobre este serviço..."
+                    placeholder="Descreva detalhes, benefícios ou orientações sobre este serviço..."
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6] resize-none"
                   />
+                </div>
+
+                {/* Foto do Serviço & Destaque do Catálogo Online */}
+                <div className="bg-[#FAF9F6] p-3.5 rounded-xl border border-[#EFECE6] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">
+                      Foto do Procedimento (Catálogo)
+                    </label>
+                    {fotoServico && (
+                      <button
+                        type="button"
+                        onClick={() => setFotoServico('')}
+                        className="text-[10px] text-red-600 hover:underline font-semibold"
+                      >
+                        Remover Foto
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={handleFotoUpload}
+                    className="hidden"
+                  />
+
+                  <div className="flex items-center gap-3">
+                    {fotoServico ? (
+                      <div 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-20 h-20 rounded-xl overflow-hidden border-2 border-[#8C6D58] shrink-0 bg-white cursor-pointer relative group shadow-2xs"
+                        title="Clique para trocar a foto"
+                      >
+                        <img src={fotoServico} alt="Prévia do serviço" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Camera size={16} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-20 h-20 rounded-xl border-2 border-dashed border-[#C2B7AE] hover:border-[#8C6D58] bg-white flex flex-col items-center justify-center gap-1 text-[#8C7A6B] hover:text-[#5A4535] transition-colors shrink-0"
+                      >
+                        <Camera size={20} />
+                        <span className="text-[9px] font-bold">+ Foto</span>
+                      </button>
+                    )}
+
+                    <div className="text-[11px] text-[#8C7A6B] space-y-1">
+                      <p className="font-semibold text-[#5A4535]">Exiba o resultado real deste trabalho no catálogo online.</p>
+                      <p className="text-[10px]">A foto é compactada automaticamente para carregar sem travar no celular da cliente.</p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Destaque no Catálogo */}
+                  <div className="pt-2 border-t border-[#EFECE6] flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="toggle-destaque-catalogo"
+                      checked={destaqueCatalogo}
+                      onChange={(e) => setDestaqueCatalogo(e.target.checked)}
+                      className="rounded text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
+                    />
+                    <label htmlFor="toggle-destaque-catalogo" className="text-xs font-bold text-[#5A4535] cursor-pointer select-none flex items-center gap-1">
+                      <Sparkles size={13} className="text-amber-500" />
+                      <span>Destacar este serviço no Catálogo Online ("Mais Pedidos")</span>
+                    </label>
+                  </div>
                 </div>
 
                 {/* Categoria */}
@@ -1293,8 +1491,9 @@ export const Servicos: React.FC = () => {
                     step="0.01"
                     min="0"
                     required
-                    value={planoPrecoMensal}
-                    onChange={(e) => setPlanoPrecoMensal(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    value={planoPrecoMensal === 0 ? '' : planoPrecoMensal}
+                    onChange={(e) => setPlanoPrecoMensal(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -1304,8 +1503,9 @@ export const Servicos: React.FC = () => {
                     type="number"
                     min="1"
                     required
-                    value={planoQtdProcedimentos}
-                    onChange={(e) => setPlanoQtdProcedimentos(parseInt(e.target.value) || 1)}
+                    placeholder="1"
+                    value={planoQtdProcedimentos === 0 ? '' : planoQtdProcedimentos}
+                    onChange={(e) => setPlanoQtdProcedimentos(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -1315,8 +1515,9 @@ export const Servicos: React.FC = () => {
                     type="number"
                     min="1"
                     required
-                    value={planoValidadeDias}
-                    onChange={(e) => setPlanoValidadeDias(parseInt(e.target.value) || 30)}
+                    placeholder="30"
+                    value={planoValidadeDias === 0 ? '' : planoValidadeDias}
+                    onChange={(e) => setPlanoValidadeDias(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -1381,8 +1582,9 @@ export const Servicos: React.FC = () => {
                             <input
                               type="number"
                               min="0"
-                              value={qtd}
-                              onChange={(e) => definirQtdDiretaServicoPlano(s.id, parseInt(e.target.value) || 0)}
+                              placeholder="0"
+                              value={qtd === 0 ? '' : qtd}
+                              onChange={(e) => definirQtdDiretaServicoPlano(s.id, e.target.value === '' ? 0 : parseInt(e.target.value))}
                               className="w-10 text-center font-bold text-xs text-[#5A4535] bg-transparent focus:outline-none"
                             />
 

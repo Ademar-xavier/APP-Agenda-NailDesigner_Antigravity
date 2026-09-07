@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy, X, ChevronRight } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
@@ -11,6 +11,7 @@ import { Financeiro } from './views/Financeiro';
 import { Configuracoes } from './views/Configuracoes';
 import { PublicBooking } from './public-views/PublicBooking';
 import { PublicConfirmacao } from './public-views/PublicConfirmacao';
+import { PublicCatalogo } from './public-views/PublicCatalogo';
 import { Login } from './views/Login';
 import { Confirmacoes } from './views/Confirmacoes';
 import { Materiais } from './views/Materiais';
@@ -70,6 +71,12 @@ function AppContent() {
            window.location.pathname.toLowerCase().includes('confirmar');
   });
 
+  const [isCatalogoRoute, setIsCatalogoRoute] = useState<boolean>(() => {
+    return window.location.hash.toLowerCase().includes('catalogo') || 
+           window.location.search.toLowerCase().includes('catalogo') ||
+           window.location.pathname.toLowerCase().includes('catalogo');
+  });
+
   const [isInstalarRoute, setIsInstalarRoute] = useState<boolean>(() => {
     return window.location.hash.toLowerCase().includes('instalar') || 
            window.location.search.toLowerCase().includes('instalar') ||
@@ -113,20 +120,29 @@ function AppContent() {
       if (hash.includes('confirmar') || window.location.search.toLowerCase().includes('confirmar')) {
         setIsConfirmarRoute(true);
         setIsInstalarRoute(false);
+        setIsCatalogoRoute(false);
+      } else if (hash.includes('catalogo')) {
+        setIsConfirmarRoute(false);
+        setIsInstalarRoute(false);
+        setIsCatalogoRoute(true);
       } else if (hash.includes('instalar')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(true);
+        setIsCatalogoRoute(false);
       } else if (hash.includes('admin')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
+        setIsCatalogoRoute(false);
         setIsAdmin(true);
       } else if (hash.includes('agendar')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
+        setIsCatalogoRoute(false);
         setIsAdmin(false);
       } else if (hash === '' || hash === '#') {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
+        setIsCatalogoRoute(false);
         if (!isNative) {
           setIsAdmin(false);
         }
@@ -264,61 +280,96 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isNewAgendamentoModalOpen, selectedClienteIdForDetails]);
 
-  // Intercepta o botão voltar nativo do celular (Android) e histórico do navegador
+  // Mantém referência mutável para a ação de voltar sem re-registrar o listener nativo
+  const backActionRef = useRef<() => boolean>(() => false);
+
+  const handleVoltarAcao = (): boolean => {
+    // 1. Se houver modal de alerta ou confirmação geral aberto, fecha
+    if (modalAlerta) {
+      fecharAlerta();
+      return true;
+    }
+
+    // 2. Notifica componentes filhos via evento cancelável 'nail_android_back'
+    // Qualquer modal aberto (Servicos, Cadastros, Clientes, Agenda, Financeiro, Materiais)
+    // ou etapa do agendamento público (PublicBooking) intercepta e chama e.preventDefault()
+    const ev = new CustomEvent('nail_android_back', { cancelable: true });
+    window.dispatchEvent(ev);
+    if (ev.defaultPrevented) {
+      return true; // Ação tratada internamente por modal ou etapa
+    }
+
+    // 3. Se houver modal de novo agendamento aberto no App.tsx
+    if (isNewAgendamentoModalOpen) {
+      setIsNewAgendamentoModalOpen(false);
+      return true;
+    }
+
+    // 4. Se houver detalhes de cliente aberto no App.tsx
+    if (selectedClienteIdForDetails) {
+      setSelectedClienteIdForDetails(null);
+      return true;
+    }
+
+    // 5. Fallback: Procura por botões de fechar modal abertos no DOM
+    const modalCloseBtn = document.querySelector('[data-modal-close="true"], .modal-close-btn, button[aria-label="Fechar"]') as HTMLButtonElement | null;
+    if (modalCloseBtn) {
+      modalCloseBtn.click();
+      return true;
+    }
+
+    // 6. Se estiver em uma tela interna do painel admin que não seja o dashboard, volta ao dashboard
+    if (isAdmin && currentView !== 'dashboard') {
+      handleSetCurrentView('dashboard');
+      return true;
+    }
+
+    // 7. Não há mais nada para fechar ou recuar: estamos na tela raiz!
+    // (Dashboard no admin, ou Etapa 1 no agendamento público)
+    return false;
+  };
+
+  useEffect(() => {
+    backActionRef.current = handleVoltarAcao;
+  });
+
+  // Listener nativo permanente do Capacitor Android (botão físico / barra inferior de gestos)
   useEffect(() => {
     let listenerHandle: any = null;
 
-    const handleVoltarAcao = (): boolean => {
-      // 1. Se houver modal de alerta aberto, fecha o alerta
-      if (modalAlerta) {
-        fecharAlerta();
-        return true;
-      }
-
-      // 2. Se houver modal de novo agendamento aberto, fecha o modal
-      if (isNewAgendamentoModalOpen) {
-        setIsNewAgendamentoModalOpen(false);
-        return true;
-      }
-
-      // 3. Se houver detalhes de cliente aberto, volta para a lista
-      if (selectedClienteIdForDetails) {
-        setSelectedClienteIdForDetails(null);
-        return true;
-      }
-
-      // 4. Se estiver em uma tela interna do painel admin que não seja o dashboard, volta ao dashboard
-      if (isAdmin && currentView !== 'dashboard') {
-        handleSetCurrentView('dashboard');
-        return true;
-      }
-
-      // 5. Dispara evento cancelável para o fluxo público de agendamento ou outros componentes
-      const ev = new CustomEvent('nail_android_back', { cancelable: true });
-      window.dispatchEvent(ev);
-      if (ev.defaultPrevented) {
-        return true; // Foi tratado internamente (ex: recuou etapa no agendamento público)
-      }
-
-      return false; // Não há nada para voltar, pode minimizar o aplicativo
-    };
-
-    // Ouvinte nativo do Capacitor Android (botão físico / barra inferior de gestos)
     try {
       CapApp.addListener('backButton', () => {
-        const handled = handleVoltarAcao();
+        const handled = backActionRef.current();
         if (!handled) {
-          // Se estiver na tela raiz e nada foi consumido, minimiza o app sem deslogar
-          try { CapApp.minimizeApp(); } catch (e) {}
+          // Se estiver na tela raiz e nada foi consumido, minimiza o app em segundo plano
+          try { 
+            CapApp.minimizeApp(); 
+          } catch (e) {
+            console.error('Erro ao minimizar app:', e);
+          }
         }
       }).then(handle => {
         listenerHandle = handle;
       }).catch(() => {});
     } catch (e) {}
 
+    // Ouvinte nativo do ciclo de vida ao maximizar (retornar do segundo plano)
+    let appStateHandle: any = null;
+    try {
+      CapApp.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          // Ao retornar do segundo plano, garante que a tela atual seja preservada
+          const savedView = sessionStorage.getItem('nail_current_view');
+          if (savedView && isAdmin) {
+            setCurrentView(savedView);
+          }
+        }
+      }).then(h => { appStateHandle = h; }).catch(() => {});
+    } catch (e) {}
+
     // Ouvinte para Web / PWA móvel (popstate)
     const handlePopState = () => {
-      handleVoltarAcao();
+      backActionRef.current();
     };
     window.addEventListener('popstate', handlePopState);
 
@@ -326,9 +377,12 @@ function AppContent() {
       if (listenerHandle && typeof listenerHandle.remove === 'function') {
         listenerHandle.remove();
       }
+      if (appStateHandle && typeof appStateHandle.remove === 'function') {
+        appStateHandle.remove();
+      }
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [modalAlerta, isNewAgendamentoModalOpen, selectedClienteIdForDetails, isAdmin, currentView, fecharAlerta]);
+  }, []); // Registrado uma única vez no ciclo de vida!
 
   const openNewAgendamentoModal = () => {
     handleSetCurrentView('agenda');
@@ -399,6 +453,11 @@ function AppContent() {
   // 0. Se for rota pública de confirmação de agendamento em 1 toque (#confirmar?id=...)
   if (isConfirmarRoute) {
     return <PublicConfirmacao />;
+  }
+
+  // Se for rota pública de catálogo de serviços online (#catalogo)
+  if (isCatalogoRoute) {
+    return <PublicCatalogo />;
   }
 
   // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública

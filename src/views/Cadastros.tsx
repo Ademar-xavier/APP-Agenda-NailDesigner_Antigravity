@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   Bookmark, 
@@ -77,6 +77,29 @@ export const Cadastros: React.FC = () => {
   const [prodPrecoVenda, setProdPrecoVenda] = useState<number>(0);
   const [prodEstoqueAtual, setProdEstoqueAtual] = useState<number>(0);
   const [prodEstoqueMinimo, setProdEstoqueMinimo] = useState<number>(3);
+
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar o modal de produto
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && modalProdutoAberto) {
+        setModalProdutoAberto(false);
+      }
+    };
+
+    const handleAndroidBack = (e: Event) => {
+      if (modalProdutoAberto) {
+        if (e.cancelable) e.preventDefault();
+        setModalProdutoAberto(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
+  }, [modalProdutoAberto]);
 
   // Handlers Técnicas
   const handleSalvarTecnica = (e: React.FormEvent) => {
@@ -896,8 +919,9 @@ export const Cadastros: React.FC = () => {
                     step="0.01"
                     min="0"
                     required
-                    value={prodPrecoCusto}
-                    onChange={(e) => setProdPrecoCusto(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    value={prodPrecoCusto === 0 ? '' : prodPrecoCusto}
+                    onChange={(e) => setProdPrecoCusto(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -908,8 +932,9 @@ export const Cadastros: React.FC = () => {
                     step="0.01"
                     min="0"
                     required
-                    value={prodPrecoVenda}
-                    onChange={(e) => setProdPrecoVenda(parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                    value={prodPrecoVenda === 0 ? '' : prodPrecoVenda}
+                    onChange={(e) => setProdPrecoVenda(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -932,8 +957,9 @@ export const Cadastros: React.FC = () => {
                     type="number"
                     min="0"
                     required
-                    value={prodEstoqueAtual}
-                    onChange={(e) => setProdEstoqueAtual(parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    value={prodEstoqueAtual === 0 ? '' : prodEstoqueAtual}
+                    onChange={(e) => setProdEstoqueAtual(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
@@ -943,8 +969,9 @@ export const Cadastros: React.FC = () => {
                     type="number"
                     min="0"
                     required
-                    value={prodEstoqueMinimo}
-                    onChange={(e) => setProdEstoqueMinimo(parseInt(e.target.value) || 0)}
+                    placeholder="0"
+                    value={prodEstoqueMinimo === 0 ? '' : prodEstoqueMinimo}
+                    onChange={(e) => setProdEstoqueMinimo(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>

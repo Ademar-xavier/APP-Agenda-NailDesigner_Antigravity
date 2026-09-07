@@ -357,7 +357,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setNovoClienteModal(false);
   };
 
-  // Keyboard Escape listener to close modal or details in Clientes.tsx
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar modais ou detalhes
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -368,8 +368,23 @@ export const Clientes: React.FC<ClientesProps> = ({
         }
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (novoClienteModal) {
+        if (e.cancelable) e.preventDefault();
+        setNovoClienteModal(false);
+      } else if (selectedClienteIdForDetails) {
+        if (e.cancelable) e.preventDefault();
+        setSelectedClienteIdForDetails(null);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [novoClienteModal, selectedClienteIdForDetails, setSelectedClienteIdForDetails]);
 
   const handleExcluirCliente = (id: string) => {
@@ -1279,18 +1294,40 @@ export const Clientes: React.FC<ClientesProps> = ({
                           <p className="text-xs text-[#8C7A6B] mt-1">Sua retenção de clientes está excelente neste período.</p>
                         </div>
                       ) : (
-                        clientesSumidas.map((item) => (
+                        clientesSumidas.map((item) => {
+                          const fotosDaCliente = fotosClientes[item.cliente.id] || [];
+                          const fotosDepois = fotosDaCliente.filter(f => f.tipo === 'depois');
+                          const fotoThumb = fotosDepois.length > 0 
+                            ? fotosDepois[fotosDepois.length - 1] 
+                            : (fotosDaCliente.length > 0 ? fotosDaCliente[fotosDaCliente.length - 1] : null);
+
+                          return (
                           <div
                             key={item.cliente.id}
                             className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] shadow-sm flex flex-col justify-between gap-4 transition-all"
                           >
                             <div>
                               <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <h3 className="font-bold text-sm text-[#5A4535]">{item.cliente.nome}</h3>
-                                  <p className="text-[10px] text-[#8C7A6B]">{item.cliente.telefone}</p>
+                                <div className="flex items-start gap-3 min-w-0">
+                                  {fotoThumb ? (
+                                    <div className="w-10 h-10 rounded-xl overflow-hidden border border-[#EFECE6] shrink-0 bg-[#FAF9F6] shadow-2xs">
+                                      <img 
+                                        src={fotoThumb.url} 
+                                        alt={`Unhas de ${item.cliente.nome}`} 
+                                        className="w-full h-full object-cover" 
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-xl border border-[#EFECE6] bg-[#FAF9F6] flex items-center justify-center shrink-0 text-[#C2B7AE]">
+                                      <User size={18} className="text-[#A8988B]" />
+                                    </div>
+                                  )}
+                                  <div className="truncate">
+                                    <h3 className="font-bold text-sm text-[#5A4535] truncate">{item.cliente.nome}</h3>
+                                    <p className="text-[10px] text-[#8C7A6B]">{item.cliente.telefone}</p>
+                                  </div>
                                 </div>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                                   item.risco === 'vermelho'
                                     ? 'bg-red-100 text-red-800 border border-red-200'
                                     : item.risco === 'laranja'
@@ -1335,7 +1372,8 @@ export const Clientes: React.FC<ClientesProps> = ({
                               </button>
                             </div>
                           </div>
-                        ))
+                        );
+                      })
                       )}
                     </div>
                   </div>
@@ -1364,6 +1402,12 @@ export const Clientes: React.FC<ClientesProps> = ({
                       ) : (
                         clientesFiltrados.map((c) => {
                           const cliAgendamentos = agendamentos.filter(a => a.cliente_id === c.id && a.status === 'concluido');
+                          const fotosDaCliente = fotosClientes[c.id] || [];
+                          const fotosDepois = fotosDaCliente.filter(f => f.tipo === 'depois');
+                          const fotoThumb = fotosDepois.length > 0 
+                            ? fotosDepois[fotosDepois.length - 1] 
+                            : (fotosDaCliente.length > 0 ? fotosDaCliente[fotosDaCliente.length - 1] : null);
+
                           return (
                             <div
                               key={c.id}
@@ -1371,16 +1415,34 @@ export const Clientes: React.FC<ClientesProps> = ({
                               className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] cursor-pointer transition-all flex flex-col justify-between gap-4 shadow-sm"
                             >
                               <div>
-                                <div className="flex justify-between items-start gap-2">
-                                  <div>
-                                    <h3 className="font-bold text-sm text-[#5A4535]">{c.nome}</h3>
-                                    <p className="text-[10px] text-[#8C7A6B] mt-0.5">{c.telefone}</p>
-                                  </div>
-                                  {c.preferencias?.tecnica && (
-                                    <span className="text-[9px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-lg border border-[#F3ECE0]">
-                                      {c.preferencias.tecnica}
-                                    </span>
+                                <div className="flex items-start gap-3">
+                                  {fotoThumb ? (
+                                    <div className="w-12 h-12 rounded-xl overflow-hidden border border-[#EFECE6] shrink-0 bg-[#FAF9F6] shadow-2xs">
+                                      <img 
+                                        src={fotoThumb.url} 
+                                        alt={`Unhas de ${c.nome}`} 
+                                        className="w-full h-full object-cover" 
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="w-12 h-12 rounded-xl border border-[#EFECE6] bg-[#FAF9F6] flex items-center justify-center shrink-0 text-[#C2B7AE]">
+                                      <User size={20} className="text-[#A8988B]" />
+                                    </div>
                                   )}
+
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex justify-between items-start gap-2">
+                                      <div className="truncate">
+                                        <h3 className="font-bold text-sm text-[#5A4535] truncate">{c.nome}</h3>
+                                        <p className="text-[10px] text-[#8C7A6B] mt-0.5">{c.telefone}</p>
+                                      </div>
+                                      {c.preferencias?.tecnica && (
+                                        <span className="text-[9px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-lg border border-[#F3ECE0] shrink-0">
+                                          {c.preferencias.tecnica}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
 
                                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">

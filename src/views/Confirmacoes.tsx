@@ -305,7 +305,7 @@ export const Confirmacoes: React.FC = () => {
     return isNaN(d.getTime()) ? dataStr : d.toLocaleDateString('pt-BR');
   };
 
-  // Keyboard Escape listener to close details and modals in Confirmacoes.tsx
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar detalhes e modais em Confirmacoes.tsx
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -318,8 +318,26 @@ export const Confirmacoes: React.FC = () => {
         }
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (confirmarVagaItem) {
+        if (e.cancelable) e.preventDefault();
+        setConfirmarVagaItem(null);
+      } else if (loteModalOpen) {
+        if (e.cancelable) e.preventDefault();
+        setLoteModalOpen(false);
+      } else if (selectedAgendamentoId) {
+        if (e.cancelable) e.preventDefault();
+        setSelectedAgendamentoId(null);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [confirmarVagaItem, loteModalOpen, selectedAgendamentoId]);
 
   // Filtragem de dados com base nas abas
@@ -941,34 +959,34 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </button>
                     
-                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <div className="grid grid-cols-3 gap-2 w-full sm:w-auto sm:flex sm:items-center">
                       <button
                         onClick={() => handleEnviarMensagemWhatsApp(a, 'confirmacao')}
-                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                        className="h-10 px-3 py-2 flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-all shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
                         title="Enviar mensagem no WhatsApp solicitando confirmação"
                       >
-                        <MessageCircle size={14} className="text-[#25D366]" />
-                        <span>Pedir confirmação</span>
+                        <MessageCircle size={14} className="text-[#25D366] shrink-0" />
+                        <span className="truncate">Pedir confirmação</span>
                       </button>
                       <button
                         onClick={() => {
                           marcarAvisoComoLido(a.id);
                           updateAgendamentoStatus(a.id, 'confirmado');
                         }}
-                        className="flex items-center gap-1 px-3.5 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                        className="h-10 px-3.5 py-2 flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow-md cursor-pointer w-full sm:w-auto text-center"
                         title="Confirmar este agendamento e mover para Confirmados"
                       >
-                        <UserCheck size={14} />
-                        <span>Confirmar</span>
+                        <UserCheck size={14} className="shrink-0" />
+                        <span className="truncate">Confirmar</span>
                       </button>
                       <button
                         onClick={() => {
                           marcarAvisoComoLido(a.id);
                           setSelectedAgendamentoId(a.id);
                         }}
-                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] cursor-pointer"
+                        className="h-10 px-3.5 py-2 flex items-center justify-center bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
                       >
-                        Ver detalhes
+                        <span className="truncate">Ver detalhes</span>
                       </button>
                     </div>
                   </div>
@@ -1026,22 +1044,22 @@ export const Confirmacoes: React.FC = () => {
                       </div>
                     </button>
                     
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
                       <button
                         onClick={() => handleEnviarMensagemWhatsApp(a, 'lembrete')}
-                        className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                        className="h-10 px-3 py-2 flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] rounded-xl text-xs font-semibold transition-all shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
                       >
-                        <MessageCircle size={14} className="text-[#25D366]" />
-                        <span>Lembrete</span>
+                        <MessageCircle size={14} className="text-[#25D366] shrink-0" />
+                        <span className="truncate">Lembrete</span>
                       </button>
                       <button
                         onClick={() => {
                           marcarAvisoComoLido(a.id);
                           setSelectedAgendamentoId(a.id);
                         }}
-                        className="px-3.5 py-2 bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] cursor-pointer"
+                        className="h-10 px-3.5 py-2 flex items-center justify-center bg-[#F6ECE8] hover:bg-[#ebdace] text-[#8C6D58] rounded-xl text-xs font-bold transition-all border border-[#F3ECE0] shadow-2xs hover:shadow-xs cursor-pointer w-full sm:w-auto text-center"
                       >
-                        Ver detalhes
+                        <span className="truncate">Ver detalhes</span>
                       </button>
                     </div>
                   </div>
