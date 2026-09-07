@@ -659,7 +659,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               <button
                 type="button"
                 onClick={() => {
-                  const res = reservarRecorrenciaSemanalVip(agendamento.id);
+                  const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento);
                   if (!res.success) {
                     mostrarAlerta({
                       titulo: 'Recorrência Semanal VIP',
