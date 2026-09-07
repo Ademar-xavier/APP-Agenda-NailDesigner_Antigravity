@@ -84,6 +84,17 @@ export const PublicCatalogo: React.FC = () => {
   const [extrasSelecionados, setExtrasSelecionados] = useState<string[]>([]);
   const [extraFeedback, setExtraFeedback] = useState<string | null>(null);
 
+  const personalizacao = configSalao?.catalogo_personalizacao || {};
+  const heroSelo = personalizacao.hero_selo || 'Atendimento com hora marcada';
+  const heroTitulo = personalizacao.hero_titulo || 'Unhas impecáveis,\nno seu estilo.';
+  const heroSubtitulo = personalizacao.hero_subtitulo || 'Escolha seu serviço, veja o tempo estimado e encontre o melhor horário para você com atendimento exclusivo e técnicas modernas de alta durabilidade.';
+  const heroFotoUrl = personalizacao.hero_foto_url || 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
+  const heroCardSub = personalizacao.hero_card_subtitulo || 'Alongamentos & Cuidados';
+  const heroCardTag = personalizacao.hero_card_tag || 'Alta Durabilidade';
+  const badge1 = personalizacao.badge_confianca_1 || 'Materiais 100% esterilizados';
+  const badge2 = personalizacao.badge_confianca_2 || 'Atendimento personalizado';
+  const badge3 = personalizacao.badge_confianca_3 || 'Confirmação pelo WhatsApp';
+
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
@@ -220,6 +231,19 @@ export const PublicCatalogo: React.FC = () => {
     }
   };
 
+  const handleIrParaAgendamentoVip = (planoId: string) => {
+    window.location.hash = `agendar?plano_vip=${encodeURIComponent(planoId)}`;
+  };
+
+  const extrasList = useMemo(() => {
+    const custom = configSalao.catalogo_personalizacao?.extras;
+    if (custom && custom.length > 0) {
+      const ativ = custom.filter(e => e.ativo !== false);
+      if (ativ.length > 0) return ativ;
+    }
+    return EXTRAS_PADRAO;
+  }, [configSalao.catalogo_personalizacao]);
+
   const handleAbrirDetalhes = (s: Servico) => {
     setServicoDetalhe(s);
     setExtrasSelecionados([]);
@@ -245,7 +269,7 @@ export const PublicCatalogo: React.FC = () => {
     let duracao = servicoDetalhe.duracao_minutos;
 
     extrasSelecionados.forEach(eId => {
-      const extra = EXTRAS_PADRAO.find(e => e.id === eId);
+      const extra = extrasList.find(e => e.id === eId);
       if (extra) {
         preco += extra.preco;
         duracao += extra.duracao;
@@ -253,7 +277,7 @@ export const PublicCatalogo: React.FC = () => {
     });
 
     return { preco, duracao };
-  }, [servicoDetalhe, extrasSelecionados]);
+  }, [servicoDetalhe, extrasSelecionados, extrasList]);
 
   const handleContinuarParaHorariosComExtras = () => {
     if (!servicoDetalhe) return;
@@ -361,18 +385,17 @@ export const PublicCatalogo: React.FC = () => {
             {/* Selo */}
             <div className="inline-flex items-center gap-1.5 bg-[#F7E6EA] text-[#B85C78] px-3.5 py-1.5 rounded-full text-xs font-bold border border-[#EEDDE1]">
               <Sparkles size={13} />
-              <span>Atendimento com hora marcada</span>
+              <span>{heroSelo}</span>
             </div>
 
             {/* Título Principal */}
-            <h1 className="font-serif font-bold text-3xl sm:text-5xl text-[#2B2426] leading-[1.15] tracking-tight">
-              Unhas impecáveis, <br className="hidden sm:inline" />
-              <span className="text-[#B85C78] italic font-normal">no seu estilo.</span>
+            <h1 className="font-serif font-bold text-3xl sm:text-5xl text-[#2B2426] leading-[1.15] tracking-tight whitespace-pre-line">
+              {heroTitulo}
             </h1>
 
             {/* Subtítulo */}
             <p className="text-sm sm:text-base text-[#756B6D] max-w-xl leading-relaxed font-normal">
-              Escolha seu serviço, veja o tempo estimado e encontre o melhor horário para você com atendimento exclusivo e técnicas modernas de alta durabilidade.
+              {heroSubtitulo}
             </p>
 
             {/* Ações Primárias */}
@@ -397,17 +420,17 @@ export const PublicCatalogo: React.FC = () => {
             <div className="pt-4 border-t border-[#EEDDE1]/60 flex flex-wrap items-center gap-y-2 gap-x-4 text-xs font-medium text-[#756B6D]">
               <span className="flex items-center gap-1.5">
                 <ShieldCheck size={14} className="text-[#B85C78]" />
-                Materiais 100% esterilizados
+                {badge1}
               </span>
               <span className="text-[#EEDDE1] hidden sm:inline">·</span>
               <span className="flex items-center gap-1.5">
                 <Heart size={14} className="text-[#B85C78]" />
-                Atendimento personalizado
+                {badge2}
               </span>
               <span className="text-[#EEDDE1] hidden sm:inline">·</span>
               <span className="flex items-center gap-1.5">
                 <MessageCircle size={14} className="text-emerald-600" />
-                Confirmação pelo WhatsApp
+                {badge3}
               </span>
             </div>
           </div>
@@ -417,20 +440,23 @@ export const PublicCatalogo: React.FC = () => {
             <div className="relative mx-auto max-w-md lg:max-w-none">
               <div className="relative rounded-3xl overflow-hidden shadow-lg border border-[#EEDDE1] bg-white">
                 <img 
-                  src="https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85" 
-                  alt="Unhas impecáveis Sheila Santos" 
+                  src={heroFotoUrl} 
+                  alt={`Unhas impecáveis ${configSalao.nome || 'Sheila Santos'}`} 
                   className="w-full h-80 sm:h-96 object-cover object-center transform hover:scale-102 transition-transform duration-500"
                   loading="eager"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
+                  }}
                 />
                 
                 {/* Badge Flutuante no Card */}
                 <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-[#EEDDE1] shadow-md flex items-center justify-between gap-3">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-[#B85C78] tracking-wider block">Procedimento Especialista</span>
-                    <span className="font-serif font-bold text-sm text-[#2B2426]">Alongamentos & Cuidados</span>
+                    <span className="font-serif font-bold text-sm text-[#2B2426]">{heroCardSub}</span>
                   </div>
                   <span className="px-2.5 py-1 bg-[#F7E6EA] text-[#B85C78] text-[11px] font-bold rounded-lg whitespace-nowrap">
-                    Alta Durabilidade
+                    {heroCardTag}
                   </span>
                 </div>
               </div>
@@ -659,7 +685,10 @@ export const PublicCatalogo: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {planosAtivos.map((plano, idx) => {
-              const isRecomendado = plano.nome.toLowerCase().includes('alongamento') || idx === 1;
+              const temMarcado = planosAtivos.some(p => p.destaque_catalogo);
+              const isRecomendado = temMarcado
+                ? !!plano.destaque_catalogo
+                : (plano.nome.toLowerCase().includes('alongamento') || idx === 1);
               const valorPorSessao = plano.qtd_procedimentos_mes > 0 ? (plano.preco_mensal / plano.qtd_procedimentos_mes) : null;
 
               return (
@@ -724,7 +753,7 @@ export const PublicCatalogo: React.FC = () => {
                     </div>
 
                     <button
-                      onClick={() => handleIrParaAgendamento()}
+                      onClick={() => handleIrParaAgendamentoVip(plano.id)}
                       className={`w-full py-3 rounded-2xl text-xs font-bold transition-all shadow-xs active:scale-95 flex items-center justify-center gap-2 ${
                         isRecomendado
                           ? 'bg-[#B85C78] hover:bg-[#98455F] text-white'
@@ -755,7 +784,7 @@ export const PublicCatalogo: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {EXTRAS_PADRAO.map(extra => (
+            {extrasList.map(extra => (
               <div 
                 key={extra.id}
                 className="bg-white rounded-2xl p-4 sm:p-5 border border-[#EEDDE1] shadow-xs flex flex-col justify-between space-y-3 hover:border-[#B85C78]/40 transition-colors"
@@ -771,7 +800,16 @@ export const PublicCatalogo: React.FC = () => {
                 <div className="flex items-center justify-between pt-2 border-t border-[#EEDDE1]/60">
                   <span className="text-xs font-bold text-[#B85C78]">+{formatarMoeda(extra.preco)}</span>
                   <button
-                    onClick={() => handleIrParaAgendamento()}
+                    onClick={() => {
+                      if (extra.id === 'extra_nailart') {
+                        const sNail = servicos.find(s => s.nome.toLowerCase().includes('nail art') || s.categoria === 'decoracao');
+                        if (sNail) {
+                          handleIrParaAgendamento(sNail.id);
+                          return;
+                        }
+                      }
+                      handleIrParaAgendamento();
+                    }}
                     className="px-3 py-1.5 bg-[#F7E6EA] hover:bg-[#B85C78] text-[#B85C78] hover:text-white text-[11px] font-bold rounded-xl transition-all"
                   >
                     Adicionar ao Atendimento
@@ -931,38 +969,51 @@ export const PublicCatalogo: React.FC = () => {
               </div>
 
               {/* O que está incluso */}
-              <div className="bg-[#FFF9F8] rounded-2xl p-4 border border-[#EEDDE1] space-y-2">
-                <h4 className="text-xs font-bold text-[#2B2426] flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-[#B85C78]" />
-                  <span>O que está incluso neste atendimento:</span>
-                </h4>
-                <ul className="text-xs text-[#756B6D] space-y-1.5 pl-1">
-                  <li className="flex items-center gap-2">
-                    <Check size={13} className="text-emerald-600 shrink-0" />
-                    <span>Higienização e assepsia completa das mãos e unhas</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check size={13} className="text-emerald-600 shrink-0" />
-                    <span>Cutilagem russa ou combinada sem machucar</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check size={13} className="text-emerald-600 shrink-0" />
-                    <span>Preparação química e mecânica da lâmina natural</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Check size={13} className="text-emerald-600 shrink-0" />
-                    <span>Finalização com óleo nutritivo hidratante de cutículas</span>
-                  </li>
-                </ul>
-              </div>
+              {(() => {
+                const itens = (servicoDetalhe.itens_inclusos && servicoDetalhe.itens_inclusos.length > 0)
+                  ? servicoDetalhe.itens_inclusos
+                  : (configSalao.catalogo_personalizacao?.itens_inclusos_padrao && configSalao.catalogo_personalizacao.itens_inclusos_padrao.length > 0)
+                    ? configSalao.catalogo_personalizacao.itens_inclusos_padrao
+                    : [
+                        'Higienização e assepsia completa das mãos e unhas',
+                        'Cutilagem russa ou combinada sem machucar',
+                        'Preparação química e mecânica da lâmina natural',
+                        'Finalização com óleo nutritivo hidratante de cutículas'
+                      ];
 
-              {/* Antes de agendar (dicas) */}
-              <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-amber-900 text-xs leading-relaxed">
-                <Info size={16} className="shrink-0 text-amber-600 mt-0.5" />
-                <div>
-                  <strong>Antes de agendar:</strong> Se você já estiver com alongamento de outro salão, recomendamos selecionar o extra de <em>Remoção Segura</em> para garantir a aderência perfeita.
-                </div>
-              </div>
+                return (
+                  <div className="bg-[#FFF9F8] rounded-2xl p-4 border border-[#EEDDE1] space-y-2">
+                    <h4 className="text-xs font-bold text-[#2B2426] flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-[#B85C78]" />
+                      <span>O que está incluso neste atendimento:</span>
+                    </h4>
+                    <ul className="text-xs text-[#756B6D] space-y-1.5 pl-1">
+                      {itens.map((item, idx) => (
+                        <li key={idx} className="flex items-center gap-2">
+                          <Check size={13} className="text-emerald-600 shrink-0" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })()}
+
+              {/* Antes de agendar (dicas e orientações) */}
+              {(() => {
+                const orientacao = servicoDetalhe.orientacoes_agendamento?.trim() ||
+                  configSalao.catalogo_personalizacao?.orientacao_padrao?.trim() ||
+                  'Se você já estiver com alongamento de outro salão, recomendamos selecionar o extra de Remoção Segura para garantir a aderência perfeita.';
+
+                return (
+                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-amber-900 text-xs leading-relaxed">
+                    <Info size={16} className="shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <strong>Antes de agendar:</strong> {orientacao}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Venda Cruzada de Extras no Modal */}
               <div className="space-y-3">
@@ -972,7 +1023,7 @@ export const PublicCatalogo: React.FC = () => {
                 </h4>
 
                 <div className="space-y-2">
-                  {EXTRAS_PADRAO.map(extra => {
+                  {extrasList.map(extra => {
                     const isSelected = extrasSelecionados.includes(extra.id);
                     const isJustAdded = extraFeedback === extra.id;
 

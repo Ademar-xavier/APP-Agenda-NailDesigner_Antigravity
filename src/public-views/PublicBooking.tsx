@@ -115,13 +115,44 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const [horarioSelecionado, setHorarioSelecionado] = useState<string>('');
 
   // Seleção de Plano VIP pelo Cliente
-  const [planoVipEscolhidoId, setPlanoVipEscolhidoId] = useState<string>('');
-  const [subTabStep2, setSubTabStep2] = useState<'servicos' | 'planos_vip'>('servicos');
+  const [planoVipEscolhidoId, setPlanoVipEscolhidoId] = useState<string>(() => {
+    try {
+      const fullUrl = (typeof window !== 'undefined') ? (window.location.hash + window.location.search) : '';
+      const match = fullUrl.match(/[?&](?:plano_vip|plano)=([^&]+)/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]).trim();
+      }
+    } catch (e) {}
+    return '';
+  });
+  const [subTabStep2, setSubTabStep2] = useState<'servicos' | 'planos_vip'>(() => {
+    try {
+      const fullUrl = (typeof window !== 'undefined') ? (window.location.hash + window.location.search) : '';
+      if (fullUrl.includes('plano_vip=') || fullUrl.includes('plano=')) {
+        return 'planos_vip';
+      }
+    } catch (e) {}
+    return 'servicos';
+  });
 
   const planoVipEscolhido = useMemo(() => {
     if (!planoVipEscolhidoId) return null;
     return (planosAssinatura || []).find(p => p.id === planoVipEscolhidoId) || null;
   }, [planoVipEscolhidoId, planosAssinatura]);
+
+  // Se o cliente acessou diretamente com um Plano VIP pré-selecionado, sincroniza um serviço representativo se vazio
+  useEffect(() => {
+    if (planoVipEscolhido && servicosSelecionados.length === 0) {
+      const sIds = (planoVipEscolhido.itens_servicos || []).map(i => i.servico_id).filter(Boolean);
+      if (sIds.length > 0) {
+        setServicosSelecionados(sIds);
+      } else if (planoVipEscolhido.servicos_permitidos_ids && planoVipEscolhido.servicos_permitidos_ids.length > 0) {
+        setServicosSelecionados([planoVipEscolhido.servicos_permitidos_ids[0]]);
+      } else if (servicos.length > 0) {
+        setServicosSelecionados([servicos[0].id]);
+      }
+    }
+  }, [planoVipEscolhido, servicos, servicosSelecionados.length]);
 
   // Profissional Selecionada
   const [profissionalId, setProfissionalId] = useState<string>(''); // Vazio = Qualquer profissional disponível
@@ -575,13 +606,71 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               <p className="text-xs text-[#A88690] mt-0.5">Selecione quem irá realizar o seu atendimento</p>
             </div>
 
+            {/* Banner de Procedimento Pré-selecionado pelo Catálogo */}
+            {servicosSelecionados.length > 0 && !planoVipEscolhido && (
+              <div className="bg-gradient-to-r from-[#FFF0F4] to-[#FCE4EC] border border-[#FAD0DC] rounded-2xl p-3 flex items-center justify-between text-xs text-[#5A3F45] shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-[#C71585] shadow-xs shrink-0">
+                    <Sparkles size={15} />
+                  </div>
+                  <div>
+                    <span className="font-bold text-[#C71585] block text-[10px] uppercase tracking-wider">Procedimento Selecionado:</span>
+                    <span className="font-semibold text-xs text-[#5A3F45]">
+                      {servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ')}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-bold text-[#C71585] text-xs block">
+                    {formatarMoeda(precoTotal)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => irParaStep(2)}
+                    className="text-[10px] text-[#A88690] hover:text-[#C71585] underline"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Banner de Plano VIP Pré-selecionado pelo Catálogo */}
+            {planoVipEscolhido && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-950 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600 shadow-xs shrink-0">
+                    <Crown size={15} />
+                  </div>
+                  <div>
+                    <span className="font-bold text-amber-950 block text-[10px] uppercase tracking-wider">Plano VIP Selecionado:</span>
+                    <span className="font-semibold text-xs text-amber-900">{planoVipEscolhido.nome}</span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="font-bold text-amber-900 text-xs block">
+                    {formatarMoeda(planoVipEscolhido.preco_mensal)}/mês
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSubTabStep2('planos_vip');
+                      irParaStep(2);
+                    }}
+                    className="text-[10px] text-amber-700 hover:text-amber-900 underline"
+                  >
+                    Trocar
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2.5">
               {/* Opção Qualquer Profissional */}
               <button
                 type="button"
                 onClick={() => {
                   setProfissionalId('');
-                  setServicosSelecionados([]);
                   setHorarioSelecionado('');
                 }}
                 className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
@@ -616,7 +705,6 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     type="button"
                     onClick={() => {
                       setProfissionalId(p.id);
-                      setServicosSelecionados([]);
                       setHorarioSelecionado('');
                     }}
                     className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
@@ -646,12 +734,32 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
             <button
               type="button"
-              onClick={() => irParaStep(2)}
+              onClick={() => {
+                if (servicosSelecionados.length > 0 || planoVipEscolhidoId) {
+                  irParaStep(3);
+                } else {
+                  irParaStep(2);
+                }
+              }}
               className="w-full mt-4 bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
-              <span>Continuar para Escolha dos Serviços</span>
+              <span>
+                {(servicosSelecionados.length > 0 || planoVipEscolhidoId)
+                  ? 'Confirmar Profissional & Escolher Horário'
+                  : 'Continuar para Escolha dos Serviços'}
+              </span>
               <ChevronRight size={14} />
             </button>
+
+            {(servicosSelecionados.length > 0 || planoVipEscolhidoId) && (
+              <button
+                type="button"
+                onClick={() => irParaStep(2)}
+                className="w-full text-center text-[11px] text-[#A88690] hover:text-[#DB7093] font-medium py-1 transition-colors"
+              >
+                Deseja adicionar outros serviços ou trocar? Clique aqui
+              </button>
+            )}
           </div>
         )}
 
@@ -669,6 +777,18 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </p>
               </div>
             </div>
+
+            {/* Banner de Feedback do Serviço Selecionado */}
+            {servicosSelecionados.length > 0 && subTabStep2 === 'servicos' && (
+              <div className="bg-[#FFF0F4] border border-[#FAD0DC] rounded-xl p-2.5 flex items-center justify-between text-xs text-[#5A3F45]">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-[#C71585] shrink-0" />
+                  <span className="font-medium text-[11px]">
+                    Procedimento selecionado: <strong className="text-[#C71585]">{servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ')}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Seletor entre Procedimentos Avulsos e Planos do Clube VIP */}
             {planosAssinatura && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (

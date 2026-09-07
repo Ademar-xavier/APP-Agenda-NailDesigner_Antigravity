@@ -1099,7 +1099,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || [],
                 foto: extra.foto || s.foto || local?.foto || '',
                 fotos: extra.fotos || s.fotos || local?.fotos || [],
-                destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (s.destaque_catalogo !== undefined ? s.destaque_catalogo : (local?.destaque_catalogo ?? false))
+                destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (s.destaque_catalogo !== undefined ? s.destaque_catalogo : (local?.destaque_catalogo ?? false)),
+                itens_inclusos: extra.itens_inclusos || local?.itens_inclusos || undefined,
+                orientacoes_agendamento: extra.orientacoes_agendamento || local?.orientacoes_agendamento || undefined
               };
             });
           try { localStorage.setItem('nail_servicos', JSON.stringify(servicosFormatados)); } catch (e) {}
@@ -2480,7 +2482,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // --- Configurações ---
   const updateConfigSalao = (updated: Partial<ConfigSalao>) => {
-    setConfigSalao(prev => ({ ...prev, ...updated }));
+    setConfigSalao(prev => {
+      const next = { ...prev, ...updated };
+      salvarConfiguracoesSupabase({ configSalao: next }).catch(e => console.error('Erro ao salvar config no supabase:', e));
+      return next;
+    });
   };
 
   // --- Lógica de Manutenção Sugerida ---

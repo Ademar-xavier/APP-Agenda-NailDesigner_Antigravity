@@ -20,10 +20,18 @@ import {
   Camera,
   Share2,
   CheckCircle2,
-  ExternalLink
+  ExternalLink,
+  Palette,
+  Eye,
+  Save,
+  Image as ImageIcon,
+  Heart,
+  ShieldCheck,
+  MessageCircle,
+  Upload
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Servico, PlanoAssinatura, ItemServicoPlano } from '../types';
+import { Servico, PlanoAssinatura, ItemServicoPlano, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
 
@@ -82,10 +90,12 @@ export const Servicos: React.FC = () => {
     updatePlanoAssinatura,
     deletePlanoAssinatura,
     clientes,
-    equipe
+    equipe,
+    configSalao,
+    updateConfigSalao
   } = useAppState();
 
-  const [abaAtiva, setAbaAtiva] = useState<'servicos' | 'clube_vip'>('servicos');
+  const [abaAtiva, setAbaAtiva] = useState<'servicos' | 'clube_vip' | 'catalogo'>('servicos');
 
   // Helper para limpar tags de metadados das descrições
   const limparTextoDescricao = (text?: string): string => {
@@ -107,12 +117,13 @@ export const Servicos: React.FC = () => {
   const [planoServicosIds, setPlanoServicosIds] = useState<string[]>([]);
   const [planoQuantidadesServicos, setPlanoQuantidadesServicos] = useState<{ [servicoId: string]: number }>({});
   const [planoProfissionaisServicos, setPlanoProfissionaisServicos] = useState<{ [servicoId: string]: string }>({});
+  const [planoDestaqueCatalogo, setPlanoDestaqueCatalogo] = useState(false);
 
   // Filtros de busca
   const [buscaNome, setBuscaNome] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
 
-  // Form Fields
+  // Form Fields de Serviços
   const [nome, setNome] = useState('');
   const [categoria, setCategoria] = useState<string>('alongamento');
   const [customCategoria, setCustomCategoria] = useState('');
@@ -125,9 +136,64 @@ export const Servicos: React.FC = () => {
   const [descricao, setDescricao] = useState('');
   const [fotoServico, setFotoServico] = useState('');
   const [destaqueCatalogo, setDestaqueCatalogo] = useState(false);
+  const [itensInclusosTexto, setItensInclusosTexto] = useState('');
+  const [orientacoesAgendamento, setOrientacoesAgendamento] = useState('');
   const [linkCopiado, setLinkCopiado] = useState(false);
 
+  // Estados de Personalização da Página do Catálogo Online
+  const personalizacaoAtual = configSalao?.catalogo_personalizacao || {};
+  const [catHeroSelo, setCatHeroSelo] = useState(personalizacaoAtual.hero_selo ?? 'Atendimento com hora marcada');
+  const [catHeroTitulo, setCatHeroTitulo] = useState(personalizacaoAtual.hero_titulo ?? 'Unhas impecáveis, no seu estilo.');
+  const [catHeroSubtitulo, setCatHeroSubtitulo] = useState(personalizacaoAtual.hero_subtitulo ?? 'Escolha seu serviço, veja o tempo estimado e encontre o melhor horário para você com atendimento exclusivo e técnicas modernas de alta durabilidade.');
+  const [catHeroFotoUrl, setCatHeroFotoUrl] = useState(personalizacaoAtual.hero_foto_url ?? 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85');
+  const [catHeroCardSub, setCatHeroCardSub] = useState(personalizacaoAtual.hero_card_subtitulo ?? 'Alongamentos & Cuidados');
+  const [catHeroCardTag, setCatHeroCardTag] = useState(personalizacaoAtual.hero_card_tag ?? 'Alta Durabilidade');
+  const [catBadge1, setCatBadge1] = useState(personalizacaoAtual.badge_confianca_1 ?? 'Materiais 100% esterilizados');
+  const [catBadge2, setCatBadge2] = useState(personalizacaoAtual.badge_confianca_2 ?? 'Atendimento personalizado');
+  const [catBadge3, setCatBadge3] = useState(personalizacaoAtual.badge_confianca_3 ?? 'Confirmação pelo WhatsApp');
+  const [catItensPadrao, setCatItensPadrao] = useState((personalizacaoAtual.itens_inclusos_padrao || [
+    'Higienização e assepsia completa das mãos e unhas',
+    'Cutilagem russa ou combinada sem machucar',
+    'Preparação química e mecânica da lâmina natural',
+    'Finalização com óleo nutritivo hidratante de cutículas'
+  ]).join('\n'));
+  const [catOrientacaoPadrao, setCatOrientacaoPadrao] = useState(personalizacaoAtual.orientacao_padrao ?? 'Se você já estiver com alongamento de outro salão, recomendamos selecionar o extra de Remoção Segura para garantir a aderência perfeita.');
+  
+  const [catExtras, setCatExtras] = useState<CatalogoExtraConfig[]>(() => {
+    if (personalizacaoAtual.extras && personalizacaoAtual.extras.length > 0) {
+      return personalizacaoAtual.extras;
+    }
+    return [
+      {
+        id: 'extra_nailart',
+        nome: 'Nail Art Exclusiva',
+        duracao: 20,
+        preco: 25,
+        descricao: 'Decoração artística personalizada, francesinha, encapsulada ou efeito cromado.',
+        ativo: true
+      },
+      {
+        id: 'extra_spa',
+        nome: 'Spa das Mãos & Hidratação Profunda',
+        duracao: 15,
+        preco: 35,
+        descricao: 'Esfoliação revigorante com massagem relaxante e máscara de nutrição intensiva.',
+        ativo: true
+      },
+      {
+        id: 'extra_remocao',
+        nome: 'Remoção Segura de Alongamento Anterior',
+        duracao: 30,
+        preco: 40,
+        descricao: 'Remoção técnica cuidadosa sem agredir a lâmina ungueal natural.',
+        ativo: true
+      }
+    ];
+  });
+  const [salvoFeedback, setSalvoFeedback] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const heroFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -225,6 +291,8 @@ export const Servicos: React.FC = () => {
     setServicosPacoteDetalhes([]);
     setFotoServico('');
     setDestaqueCatalogo(false);
+    setItensInclusosTexto('');
+    setOrientacoesAgendamento('');
     setModalOpen(true);
   };
 
@@ -251,6 +319,8 @@ export const Servicos: React.FC = () => {
     setServicosPacoteDetalhes(serv.servicos_pacote_detalhes || (serv.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })));
     setFotoServico(serv.foto || '');
     setDestaqueCatalogo(!!serv.destaque_catalogo);
+    setItensInclusosTexto((serv.itens_inclusos || []).join('\n'));
+    setOrientacoesAgendamento(serv.orientacoes_agendamento || '');
     setModalOpen(true);
   };
 
@@ -272,6 +342,8 @@ export const Servicos: React.FC = () => {
       catFinal = customCategoria.trim();
     }
 
+    const itensInclusosList = itensInclusosTexto.split('\n').map(l => l.trim()).filter(Boolean);
+
     const dados = {
       nome,
       categoria: catFinal,
@@ -287,7 +359,9 @@ export const Servicos: React.FC = () => {
       servicos_pacote_detalhes: isPacote ? servicosPacoteDetalhes : [],
       descricao: limparTextoDescricao(descricao),
       foto: fotoServico,
-      destaque_catalogo: destaqueCatalogo
+      destaque_catalogo: destaqueCatalogo,
+      itens_inclusos: itensInclusosList.length > 0 ? itensInclusosList : undefined,
+      orientacoes_agendamento: orientacoesAgendamento.trim() || undefined
     };
 
     if (servicoEdicao) {
@@ -321,6 +395,7 @@ export const Servicos: React.FC = () => {
     setPlanoServicosIds([]);
     setPlanoQuantidadesServicos({});
     setPlanoProfissionaisServicos({});
+    setPlanoDestaqueCatalogo(false);
     setModalPlanoAberto(true);
   };
 
@@ -354,6 +429,7 @@ export const Servicos: React.FC = () => {
     }
     setPlanoQuantidadesServicos(qtds);
     setPlanoProfissionaisServicos(profsMap);
+    setPlanoDestaqueCatalogo(!!plano.destaque_catalogo);
     setModalPlanoAberto(true);
   };
 
@@ -427,7 +503,8 @@ export const Servicos: React.FC = () => {
         qtd_procedimentos_mes: totalProcedimentos,
         validade_dias: Number(planoValidadeDias),
         servicos_permitidos_ids: servicosPermitidosIds,
-        itens_servicos: itens_servicos
+        itens_servicos: itens_servicos,
+        destaque_catalogo: planoDestaqueCatalogo
       });
     } else {
       addPlanoAssinatura({
@@ -438,11 +515,48 @@ export const Servicos: React.FC = () => {
         validade_dias: Number(planoValidadeDias),
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
-        ativo: true
+        ativo: true,
+        destaque_catalogo: planoDestaqueCatalogo
       });
     }
 
     setModalPlanoAberto(false);
+  };
+
+  // --- Handlers de Personalização do Catálogo ---
+  const handleHeroFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await comprimirImagem(file, 1200, 0.85);
+      setCatHeroFotoUrl(base64);
+    } catch (err) {
+      console.error('Erro ao comprimir imagem de capa do catálogo:', err);
+    }
+  };
+
+  const handleSalvarPersonalizacaoCatalogo = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const itens_inclusos_padrao = catItensPadrao.split('\n').map(l => l.trim()).filter(Boolean);
+    const novaPersonalizacao: CatalogoPersonalizacao = {
+      hero_selo: catHeroSelo.trim(),
+      hero_titulo: catHeroTitulo.trim(),
+      hero_subtitulo: catHeroSubtitulo.trim(),
+      hero_foto_url: catHeroFotoUrl.trim(),
+      hero_card_subtitulo: catHeroCardSub.trim(),
+      hero_card_tag: catHeroCardTag.trim(),
+      badge_confianca_1: catBadge1.trim(),
+      badge_confianca_2: catBadge2.trim(),
+      badge_confianca_3: catBadge3.trim(),
+      itens_inclusos_padrao,
+      orientacao_padrao: catOrientacaoPadrao.trim(),
+      extras: catExtras
+    };
+    updateConfigSalao({
+      catalogo_personalizacao: novaPersonalizacao
+    });
+    setSalvoFeedback(true);
+    setTimeout(() => setSalvoFeedback(false), 2500);
   };
 
   // Serviços ordenados por nome (A a Z) e filtrados por busca e categoria
@@ -463,20 +577,28 @@ export const Servicos: React.FC = () => {
 
   return (
     <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
-      {/* Header com Sub-Abas: Catálogo de Serviços & Clube VIP */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-4">
+      {/* Header com Sub-Abas: Catálogo de Serviços, Clube VIP & Personalização */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#EFECE6] pb-4 mb-4">
         <div>
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">
-            {abaAtiva === 'servicos' ? 'Catálogo de Serviços' : 'Clube de Assinaturas VIP'}
+            {abaAtiva === 'servicos' 
+              ? 'Catálogo de Serviços' 
+              : abaAtiva === 'clube_vip' 
+                ? 'Clube de Assinaturas VIP' 
+                : 'Personalizar Catálogo Online'}
           </h2>
           <p className="text-xs text-[#8C7A6B]">
             {abaAtiva === 'servicos' 
               ? 'Gerencie preços, durações, depósitos de sinal e insumos vinculados' 
-              : 'Gerencie clubes de assinatura recorrente com sessões semanais garantidas'}
+              : abaAtiva === 'clube_vip' 
+                ? 'Gerencie clubes de assinatura recorrente com sessões semanais garantidas'
+                : 'Customize fotos de capa, textos de destaque, selos e extras da página pública'}
           </p>
         </div>
-        {abaAtiva === 'servicos' ? (
-          <div className="flex flex-wrap items-center gap-2">
+
+        {/* Ações do Topo: Grid uniforme no celular (50% / 50%) e linha no desktop */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
             <button
               type="button"
               onClick={() => {
@@ -488,67 +610,96 @@ export const Servicos: React.FC = () => {
                 }
               }}
               title="Copiar Link do Catálogo Online para Clientes"
-              className="flex items-center justify-center gap-1.5 bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C6D58] px-3 py-2 rounded-xl text-xs font-bold shadow-2xs transition-all"
+              className="h-11 sm:h-10 px-3.5 rounded-xl text-xs font-bold bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C6D58] flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer"
             >
-              {linkCopiado ? <CheckCircle2 size={14} className="text-emerald-600" /> : <Share2 size={14} />}
-              <span>{linkCopiado ? 'Link Copiado!' : 'Copiar Catálogo'}</span>
+              {linkCopiado ? <CheckCircle2 size={14} className="text-emerald-600 shrink-0" /> : <Share2 size={14} className="shrink-0" />}
+              <span className="truncate">{linkCopiado ? 'Link Copiado!' : 'Copiar Catálogo'}</span>
             </button>
 
             <a
               href={getCatalogoUrl()}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center justify-center gap-1.5 bg-[#FAF9F6] hover:bg-[#EFECE6] border border-[#EFECE6] text-[#5A4535] px-3 py-2 rounded-xl text-xs font-bold transition-all"
+              className="h-11 sm:h-10 px-3.5 rounded-xl text-xs font-bold bg-[#FAF9F6] hover:bg-[#EFECE6] border border-[#EFECE6] text-[#5A4535] flex items-center justify-center gap-1.5 transition-all text-center"
             >
-              <ExternalLink size={14} />
-              <span>Ver Catálogo</span>
+              <ExternalLink size={14} className="shrink-0" />
+              <span className="truncate">Ver Catálogo</span>
             </a>
+          </div>
 
+          {abaAtiva === 'servicos' && (
             <button
               onClick={handleOpenCriar}
-              className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-sm transition-all"
+              className="h-11 sm:h-10 w-full sm:w-auto px-4 rounded-xl text-xs font-bold bg-[#8C6D58] hover:bg-[#725743] text-white flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] cursor-pointer"
             >
-              <Plus size={16} />
+              <Plus size={16} className="shrink-0" />
               <span>Novo Serviço</span>
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={abrirModalNovoPlano}
-            className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
-          >
-            <Plus size={16} />
-            <span>Novo Plano VIP</span>
-          </button>
-        )}
+          )}
+
+          {abaAtiva === 'clube_vip' && (
+            <button
+              onClick={abrirModalNovoPlano}
+              className="h-11 sm:h-10 w-full sm:w-auto px-4 rounded-xl text-xs font-bold bg-[#8C6D58] hover:bg-[#725743] text-white flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+            >
+              <Plus size={16} className="shrink-0" />
+              <span>Novo Plano VIP</span>
+            </button>
+          )}
+
+          {abaAtiva === 'catalogo' && (
+            <button
+              onClick={handleSalvarPersonalizacaoCatalogo}
+              className={`h-11 sm:h-10 w-full sm:w-auto px-4 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 shadow-sm transition-all active:scale-[0.98] cursor-pointer ${
+                salvoFeedback ? 'bg-emerald-600' : 'bg-[#8C6D58] hover:bg-[#725743]'
+              }`}
+            >
+              {salvoFeedback ? <CheckCircle2 size={16} className="shrink-0" /> : <Save size={16} className="shrink-0" />}
+              <span>{salvoFeedback ? 'Alterações Salvas!' : 'Salvar Catálogo'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Navegação de Abas */}
-      <div className="flex items-center gap-2 mb-4">
+      {/* Navegação de Abas Uniformes */}
+      <div className="grid grid-cols-3 gap-2 mb-4 w-full sm:w-auto sm:flex sm:items-center">
         <button
           type="button"
           onClick={() => setAbaAtiva('servicos')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`h-11 sm:h-10 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             abaAtiva === 'servicos'
               ? 'bg-[#8C6D58] text-white shadow-sm'
               : 'bg-white text-[#8C7A6B] hover:bg-[#FAF9F6] border border-[#EFECE6]'
           }`}
         >
-          <AlicateIcon size={16} />
-          <span>Serviços & Combos ({servicos.filter(s => s.ativo).length})</span>
+          <AlicateIcon size={15} className="shrink-0" />
+          <span className="truncate">Serviços ({servicos.filter(s => s.ativo).length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setAbaAtiva('clube_vip')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+          className={`h-11 sm:h-10 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             abaAtiva === 'clube_vip'
               ? 'bg-[#8C6D58] text-white shadow-sm'
               : 'bg-white text-[#8C7A6B] hover:bg-[#FAF9F6] border border-[#EFECE6]'
           }`}
         >
-          <Crown size={16} className={abaAtiva === 'clube_vip' ? 'text-amber-300' : 'text-amber-500'} />
-          <span>Clube de Assinaturas VIP ({planosAssinatura.length})</span>
+          <Crown size={15} className={`shrink-0 ${abaAtiva === 'clube_vip' ? 'text-amber-300' : 'text-amber-500'}`} />
+          <span className="truncate">Clube VIP ({planosAssinatura.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAbaAtiva('catalogo')}
+          className={`h-11 sm:h-10 px-2 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            abaAtiva === 'catalogo'
+              ? 'bg-[#8C6D58] text-white shadow-sm'
+              : 'bg-white text-[#8C7A6B] hover:bg-[#FAF9F6] border border-[#EFECE6]'
+          }`}
+        >
+          <Sparkles size={15} className={`shrink-0 ${abaAtiva === 'catalogo' ? 'text-pink-200' : 'text-[#8C6D58]'}`} />
+          <span className="truncate">Personalizar Catálogo</span>
         </button>
       </div>
 
@@ -845,9 +996,17 @@ export const Servicos: React.FC = () => {
                     <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-amber-100 to-transparent rounded-bl-full pointer-events-none" />
                     <div>
                       <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <Crown size={16} className="text-amber-500" />
-                          <h4 className="font-serif font-bold text-base text-[#5A4535]">{plano.nome}</h4>
+                        <div>
+                          {plano.destaque_catalogo && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full mb-1.5 shadow-2xs">
+                              <Sparkles size={10} className="text-amber-600" />
+                              <span>Recomendado no Catálogo</span>
+                            </span>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <Crown size={16} className="text-amber-500" />
+                            <h4 className="font-serif font-bold text-base text-[#5A4535]">{plano.nome}</h4>
+                          </div>
                         </div>
                         <div className="flex items-center gap-1">
                           <button
@@ -984,6 +1143,406 @@ export const Servicos: React.FC = () => {
         </div>
       )}
 
+      {/* ======================================================== */}
+      {/* ABA 3: PERSONALIZAR CATÁLOGO ONLINE */}
+      {/* ======================================================== */}
+      {abaAtiva === 'catalogo' && (
+        <div className="flex-1 overflow-y-auto pr-1 pb-8 space-y-6 animate-in fade-in duration-200">
+          
+          {/* Top Banner Explicativo com Ações Rápidas */}
+          <div className="bg-gradient-to-r from-[#FAF6F0] via-[#F4EBE2] to-[#FAF6F0] border border-[#E8DFC8] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-[#8C6D58] text-white">
+                  <Palette size={16} />
+                </span>
+                <h3 className="font-serif font-bold text-base text-[#5A4535]">
+                  Personalização da Vitrine do Catálogo Online
+                </h3>
+              </div>
+              <p className="text-xs text-[#8C7A6B] max-w-xl">
+                Altere os textos da página inicial do seu catálogo, atualize a foto de capa, edite os diferenciais de confiança e ajuste os preços dos cuidados adicionais (extras).
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <a
+                href={getCatalogoUrl()}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 sm:flex-initial h-10 px-4 rounded-xl text-xs font-bold bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#5A4535] flex items-center justify-center gap-1.5 shadow-2xs transition-all text-center"
+              >
+                <Eye size={14} />
+                <span>Ver Catálogo</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={handleSalvarPersonalizacaoCatalogo}
+                className={`flex-1 sm:flex-initial h-10 px-5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer ${
+                  salvoFeedback ? 'bg-emerald-600' : 'bg-[#8C6D58] hover:bg-[#725743]'
+                }`}
+              >
+                {salvoFeedback ? <CheckCircle2 size={16} /> : <Save size={16} />}
+                <span>{salvoFeedback ? 'Salvo com Sucesso!' : 'Salvar Alterações'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Form em Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Coluna Esquerda: Hero Principal (Capa & Textos) */}
+            <div className="lg:col-span-7 space-y-6">
+              
+              {/* Card 1: Topo do Catálogo (Hero) */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-xs space-y-4">
+                <div className="border-b border-[#EFECE6] pb-3 flex items-center justify-between">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <Sparkles size={16} className="text-[#8C6D58]" />
+                    <span>Topo do Catálogo (Hero)</span>
+                  </h4>
+                  <span className="text-[10px] text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-full border border-[#EFECE6]">
+                    Primeira impressão do cliente
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Selo Superior em Destaque
+                  </label>
+                  <input
+                    type="text"
+                    value={catHeroSelo}
+                    onChange={(e) => setCatHeroSelo(e.target.value)}
+                    placeholder="Ex: Atendimento com hora marcada"
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] font-medium focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Título Principal de Impacto
+                  </label>
+                  <input
+                    type="text"
+                    value={catHeroTitulo}
+                    onChange={(e) => setCatHeroTitulo(e.target.value)}
+                    placeholder="Ex: Unhas impecáveis, no seu estilo."
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] font-bold focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Subtítulo Explicativo
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={catHeroSubtitulo}
+                    onChange={(e) => setCatHeroSubtitulo(e.target.value)}
+                    placeholder="Ex: Escolha seu serviço, veja o tempo estimado e encontre o melhor horário..."
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl p-3 text-xs text-[#5A4535] leading-relaxed focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                      Subtítulo do Card da Foto
+                    </label>
+                    <input
+                      type="text"
+                      value={catHeroCardSub}
+                      onChange={(e) => setCatHeroCardSub(e.target.value)}
+                      placeholder="Ex: Alongamentos & Cuidados"
+                      className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                      Tag do Card da Foto
+                    </label>
+                    <input
+                      type="text"
+                      value={catHeroCardTag}
+                      onChange={(e) => setCatHeroCardTag(e.target.value)}
+                      placeholder="Ex: Alta Durabilidade"
+                      className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Diferenciais de Confiança */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-xs space-y-4">
+                <div className="border-b border-[#EFECE6] pb-3">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <ShieldCheck size={16} className="text-[#8C6D58]" />
+                    <span>Selos de Confiança (Exibidos abaixo do botão de agendar)</span>
+                  </h4>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Selo 1</label>
+                    <input
+                      type="text"
+                      value={catBadge1}
+                      onChange={(e) => setCatBadge1(e.target.value)}
+                      placeholder="Ex: Materiais 100% esterilizados"
+                      className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Selo 2</label>
+                    <input
+                      type="text"
+                      value={catBadge2}
+                      onChange={(e) => setCatBadge2(e.target.value)}
+                      placeholder="Ex: Atendimento personalizado"
+                      className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Selo 3</label>
+                    <input
+                      type="text"
+                      value={catBadge3}
+                      onChange={(e) => setCatBadge3(e.target.value)}
+                      placeholder="Ex: Confirmação pelo WhatsApp"
+                      className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Padrões de Procedimento (Fallback) */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-xs space-y-4">
+                <div className="border-b border-[#EFECE6] pb-3">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <CheckCircle2 size={16} className="text-[#8C6D58]" />
+                    <span>Padrões de Procedimento ("O que está incluso" padrão)</span>
+                  </h4>
+                  <p className="text-[11px] text-[#8C7A6B] mt-0.5">
+                    Utilizado como padrão para qualquer serviço que não tiver itens próprios preenchidos no cadastro.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Itens Inclusos Padrão (1 por linha)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={catItensPadrao}
+                    onChange={(e) => setCatItensPadrao(e.target.value)}
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl p-3 text-xs text-[#5A4535] leading-relaxed focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-[#8C7A6B] uppercase mb-1">
+                    Orientações Antes de Agendar Padrão
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={catOrientacaoPadrao}
+                    onChange={(e) => setCatOrientacaoPadrao(e.target.value)}
+                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl p-3 text-xs text-[#5A4535] leading-relaxed focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+              </div>
+
+            </div>
+
+            {/* Coluna Direita: Foto de Capa do Hero & Cuidados Adicionais (Extras) */}
+            <div className="lg:col-span-5 space-y-6">
+              
+              {/* Foto de Capa do Hero */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-xs space-y-4">
+                <div className="border-b border-[#EFECE6] pb-3 flex items-center justify-between">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <ImageIcon size={16} className="text-[#8C6D58]" />
+                    <span>Foto de Capa do Catálogo</span>
+                  </h4>
+                  <span className="text-[10px] text-[#8C7A6B]">
+                    Banner principal
+                  </span>
+                </div>
+
+                <input
+                  type="file"
+                  ref={heroFileInputRef}
+                  accept="image/*"
+                  onChange={handleHeroFotoUpload}
+                  className="hidden"
+                />
+
+                <div className="relative rounded-2xl overflow-hidden border border-[#EFECE6] bg-[#FAF9F6] aspect-[4/3] group shadow-2xs">
+                  <img
+                    src={catHeroFotoUrl}
+                    alt="Capa do Catálogo"
+                    className="w-full h-full object-cover object-center"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => heroFileInputRef.current?.click()}
+                      className="px-3.5 py-2 bg-white text-[#5A4535] rounded-xl text-xs font-bold shadow-md hover:bg-[#FAF9F6] flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Camera size={14} />
+                      <span>Trocar Foto</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => heroFileInputRef.current?.click()}
+                    className="flex-1 h-10 rounded-xl text-xs font-bold bg-[#8C6D58] hover:bg-[#725743] text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Upload size={14} />
+                    <span>Escolher Nova Foto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCatHeroFotoUrl('https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85')}
+                    className="h-10 px-3 rounded-xl text-xs font-semibold bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#8C7A6B] transition-all cursor-pointer"
+                    title="Restaurar imagem padrão de unhas perfeitas"
+                  >
+                    Restaurar
+                  </button>
+                </div>
+                <p className="text-[10px] text-[#8C7A6B] text-center">
+                  Foto compactada automaticamente com qualidade profissional.
+                </p>
+              </div>
+
+              {/* Cuidados Adicionais (Extras de Venda Cruzada) */}
+              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-xs space-y-4">
+                <div className="border-b border-[#EFECE6] pb-3">
+                  <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                    <Heart size={16} className="text-[#8C6D58]" />
+                    <span>Cuidados Adicionais (Extras do Catálogo)</span>
+                  </h4>
+                  <p className="text-[11px] text-[#8C7A6B] mt-0.5">
+                    Oferecidos no catálogo e no modal para elevar o ticket médio do atendimento.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {catExtras.map((extra, idx) => (
+                    <div 
+                      key={extra.id} 
+                      className="p-3.5 bg-[#FAF9F6] rounded-xl border border-[#EFECE6] space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold text-[#8C6D58] uppercase">
+                          Extra #{idx + 1}
+                        </span>
+                        <label className="flex items-center gap-1.5 text-xs text-[#5A4535] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={extra.ativo !== false}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, ativo: checked } : ex));
+                            }}
+                            className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                          />
+                          <span className="font-semibold text-[11px]">Ativo no catálogo</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-0.5">Nome</label>
+                          <input
+                            type="text"
+                            value={extra.nome}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, nome: val } : ex));
+                            }}
+                            className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-0.5">Preço (R$)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={extra.preco}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, preco: val } : ex));
+                            }}
+                            className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] font-bold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-0.5">Duração (min)</label>
+                          <input
+                            type="number"
+                            min="5"
+                            step="5"
+                            value={extra.duracao}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, duracao: val } : ex));
+                            }}
+                            className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535]"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-0.5">Descrição Curta</label>
+                          <input
+                            type="text"
+                            value={extra.descricao}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, descricao: val } : ex));
+                            }}
+                            className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Botão de Salvar no Rodapé */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleSalvarPersonalizacaoCatalogo}
+                  className={`w-full h-12 rounded-2xl text-xs font-bold text-white flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer ${
+                    salvoFeedback ? 'bg-emerald-600' : 'bg-[#8C6D58] hover:bg-[#725743]'
+                  }`}
+                >
+                  {salvoFeedback ? <CheckCircle2 size={18} /> : <Save size={18} />}
+                  <span>{salvoFeedback ? 'Alterações Salvas no Catálogo Online!' : 'Salvar Todas as Alterações'}</span>
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
       {/* --- MODAL ADICIONAR / EDITAR SERVIÇO --- */}
       {modalOpen && (
         <div 
@@ -1104,6 +1663,40 @@ export const Servicos: React.FC = () => {
                       <Sparkles size={13} className="text-amber-500" />
                       <span>Destacar este serviço no Catálogo Online ("Mais Pedidos")</span>
                     </label>
+                  </div>
+
+                  {/* Itens Inclusos no Atendimento (Catálogo) */}
+                  <div className="pt-2.5 border-t border-[#EFECE6] space-y-1">
+                    <label className="block text-[11px] font-bold text-[#5A4535]">
+                      Itens Inclusos no Procedimento (Catálogo Online)
+                    </label>
+                    <p className="text-[10px] text-[#8C7A6B]">
+                      Digite um item por linha. Cada linha será exibida com um check verde no catálogo. Se deixar vazio, usará os padrões do estúdio.
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={itensInclusosTexto}
+                      onChange={(e) => setItensInclusosTexto(e.target.value)}
+                      placeholder={"Higienização e assepsia completa\nCutilagem russa ou combinada sem machucar\nPreparação química e mecânica da lâmina natural\nFinalização com óleo nutritivo hidratante"}
+                      className="w-full bg-white border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
+
+                  {/* Orientações Pré-Agendamento (Catálogo) */}
+                  <div className="pt-2 border-t border-[#EFECE6] space-y-1">
+                    <label className="block text-[11px] font-bold text-[#5A4535]">
+                      Orientações Antes de Agendar (Catálogo Online)
+                    </label>
+                    <p className="text-[10px] text-[#8C7A6B]">
+                      Aviso exibido em destaque no card de detalhes antes do agendamento.
+                    </p>
+                    <textarea
+                      rows={2}
+                      value={orientacoesAgendamento}
+                      onChange={(e) => setOrientacoesAgendamento(e.target.value)}
+                      placeholder="Ex: Se você já estiver com alongamento de outro salão, recomendamos selecionar o extra de Remoção Segura."
+                      className="w-full bg-white border border-[#EFECE6] rounded-xl p-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                    />
                   </div>
                 </div>
 
@@ -1632,6 +2225,21 @@ export const Servicos: React.FC = () => {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Destacar como Plano Recomendado no Catálogo */}
+              <div className="p-3 bg-amber-50/80 border border-amber-200/90 rounded-xl flex items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  id="toggle-plano-destaque-catalogo"
+                  checked={planoDestaqueCatalogo}
+                  onChange={(e) => setPlanoDestaqueCatalogo(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4 cursor-pointer"
+                />
+                <label htmlFor="toggle-plano-destaque-catalogo" className="text-xs font-bold text-[#5A4535] cursor-pointer select-none flex items-center gap-1.5">
+                  <Crown size={14} className="text-amber-500 shrink-0" />
+                  <span>Destacar como "Plano Recomendado" no Catálogo Online</span>
+                </label>
               </div>
 
               <div className="pt-3 border-t border-[#EFECE6] flex gap-2 justify-end">

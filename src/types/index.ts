@@ -62,6 +62,8 @@ export interface Servico {
   foto?: string; // Foto principal de vitrine para o catálogo online
   fotos?: string[]; // Galeria de fotos adicionais do serviço
   destaque_catalogo?: boolean; // Se o serviço fica em destaque na vitrine
+  itens_inclusos?: string[]; // Itens inclusos no procedimento (exibidos em detalhes no catálogo)
+  orientacoes_agendamento?: string; // Dicas ou observações pré-agendamento (exibidos em detalhes no catálogo)
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';
@@ -190,6 +192,33 @@ export interface ConfigSalao {
     accessToken: string;
     ativo: boolean;
   };
+  catalogo_personalizacao?: CatalogoPersonalizacao;
+}
+
+export interface CatalogoExtraConfig {
+  id: string;
+  nome: string;
+  duracao: number;
+  preco: number;
+  descricao: string;
+  ativo?: boolean;
+}
+
+export interface CatalogoPersonalizacao {
+  hero_selo?: string; // ex: "Atendimento com hora marcada"
+  hero_titulo?: string; // ex: "Unhas impecáveis, no seu estilo."
+  hero_subtitulo?: string; // ex: "Escolha seu serviço, veja o tempo estimado..."
+  hero_foto_url?: string; // Imagem em destaque do Hero
+  hero_card_subtitulo?: string; // ex: "Alongamentos & Cuidados"
+  hero_card_tag?: string; // ex: "Alta Durabilidade"
+  badge_confianca_1?: string;
+  badge_confianca_2?: string;
+  badge_confianca_3?: string;
+  sobre_titulo?: string;
+  sobre_descricao?: string;
+  itens_inclusos_padrao?: string[];
+  orientacao_padrao?: string;
+  extras?: CatalogoExtraConfig[];
 }
 
 export const REGRA_DEVOLUCAO_PADRAO = 'Cancelamentos realizados com até {horas} horas de antecedência têm devolução integral do sinal via Pix. Após esse prazo, o valor não é reembolsável.';
@@ -324,6 +353,7 @@ export interface PlanoAssinatura {
   servicos_permitidos_ids: string[];
   validade_dias: number;
   ativo: boolean;
+  destaque_catalogo?: boolean; // Se marcado, exibe o selo "Plano Recomendado" no catálogo online
 }
 
 export interface AssinaturaCliente {
