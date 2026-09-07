@@ -37,6 +37,9 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
     plataformaCorreta: PlatformType;
   } | null>(null);
 
+  // Modal de instruções e download Windows
+  const [modalWindowsAberto, setModalWindowsAberto] = useState(false);
+
   useEffect(() => {
     // Detectar plataforma do usuário
     const ua = navigator.userAgent.toLowerCase();
@@ -117,14 +120,31 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
     setDeferredPrompt(null);
   };
 
+  const baixarArquivoAtalhoWindows = () => {
+    try {
+      const appUrl = `${window.location.origin}${window.location.pathname}#admin`;
+      const urlContent = `[InternetShortcut]\r\nURL=${appUrl}\r\nIconIndex=0\r\nHotKey=0\r\n[{000214A0-0000-0000-C000-000000000046}]\r\nProp3=19,0\r\n`;
+      const blob = new Blob([urlContent], { type: 'application/octet-stream' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'Agenda_Nails_Designer.url';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    } catch (err) {
+      console.error('Erro ao baixar atalho Windows:', err);
+    }
+  };
+
   // 2. Ação para Windows
   const handleBaixarWindows = () => {
     if (plataformaAtual === 'android') {
       setModalIncompativel({
         aberta: true,
         titulo: 'Instalador Incompatível',
-        mensagem: 'Você está navegando em um celular Android. O arquivo executável do Windows (.exe) não abre em celulares. Instale a versão própria para Android acima!',
-        plataformaTentada: 'Windows (.exe)',
+        mensagem: 'Você está navegando em um celular Android. O arquivo do Windows (.url / .exe) não abre em celulares. Instale a versão própria para Android acima!',
+        plataformaTentada: 'Windows Desktop',
         plataformaCorreta: 'android'
       });
       return;
@@ -134,19 +154,25 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
       setModalIncompativel({
         aberta: true,
         titulo: 'Instalador Incompatível',
-        mensagem: 'O instalador Windows (.exe) não roda em aparelhos iPhone/iPad. Siga as instruções da versão iOS abaixo.',
-        plataformaTentada: 'Windows (.exe)',
+        mensagem: 'O arquivo do Windows não roda em aparelhos iPhone/iPad. Siga as instruções da versão iOS abaixo.',
+        plataformaTentada: 'Windows Desktop',
         plataformaCorreta: 'ios'
       });
       return;
     }
 
-    // Se estiver no Windows:
-    mostrarAlerta({
-      titulo: 'Instalação no Windows',
-      mensagem: 'Para instalar o aplicativo no seu computador Windows:\n\n1. No Google Chrome ou Edge, clique no ícone de computador que aparece no lado direito da barra de endereços.\n2. Ou clique nos 3 pontinhos do navegador ➔ "Instalar aplicativo Agenda Nails Designer".\n3. Um ícone exclusivo na Área de Trabalho será criado com abertura ultrarrápida!',
-      tipo: 'info'
-    });
+    // Se houver prompt PWA pendente do Chrome/Edge, dispara o instalador integrado
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+      } catch (e) {}
+    }
+
+    // Executa o download automático do atalho do Windows
+    baixarArquivoAtalhoWindows();
+
+    // Abre o modal de instrução em primeiro plano
+    setModalWindowsAberto(true);
   };
 
   // 3. Ação para iPhone (iOS)
@@ -367,7 +393,7 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
 
       {/* MODAL DE BLOQUEIO DE PLATAFORMA INCOMPATÍVEL */}
       {modalIncompativel?.aberta && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-[#1C1917] border border-amber-600/40 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
               <AlertTriangle size={24} />
@@ -397,6 +423,63 @@ export const InstalarApp: React.FC<InstalarAppProps> = ({ onEntrarAdmin, onIrAge
             >
               Entendido, vou usar a versão correta
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE INSTRUÇÕES E DOWNLOAD WINDOWS */}
+      {modalWindowsAberto && (
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#1C1917] border border-[#8C6D58]/60 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400">
+              <Monitor size={28} />
+            </div>
+
+            <div className="text-center space-y-2">
+              <h3 className="font-serif font-bold text-lg text-white">
+                Download do Atalho Windows Concluído!
+              </h3>
+              <p className="text-xs text-[#B8A89A] leading-relaxed">
+                O arquivo <strong className="text-white">Agenda_Nails_Designer.url</strong> foi gerado e baixado no seu computador.
+              </p>
+            </div>
+
+            <div className="bg-[#26221F] border border-[#38312B] p-3.5 rounded-2xl text-xs text-[#D8C7B8] space-y-2.5 text-left">
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-[#8C6D58] shrink-0">1.</span>
+                <span>Mova o arquivo baixado para a sua <strong>Área de Trabalho</strong> para abrir o sistema em 1 clique rápido!</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="font-bold text-[#8C6D58] shrink-0">2.</span>
+                <span><strong>No Chrome ou Edge:</strong> Você também pode clicar no ícone de computador (🖥️) no lado direito da barra de endereços para instalar como app nativo no Windows.</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={onEntrarAdmin}
+                className="w-full py-3 bg-gradient-to-r from-[#8C6D58] to-[#705441] hover:from-[#785B46] hover:to-[#5E4433] text-white rounded-xl font-bold text-xs transition-all shadow-md active:scale-98 flex items-center justify-center gap-2"
+              >
+                <span>Acessar Painel do Salão Agora</span>
+                <ArrowRight size={14} />
+              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={baixarArquivoAtalhoWindows}
+                  className="flex-1 py-2.5 bg-[#2A2522] hover:bg-[#36302C] border border-[#423933] text-[#D8C7B8] rounded-xl font-medium text-[11px] transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Download size={13} />
+                  <span>Baixar Novamente</span>
+                </button>
+                <button
+                  onClick={() => setModalWindowsAberto(false)}
+                  className="px-4 py-2.5 bg-[#2A2522] hover:bg-[#36302C] border border-[#423933] text-[#A69485] hover:text-white rounded-xl font-medium text-[11px] transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

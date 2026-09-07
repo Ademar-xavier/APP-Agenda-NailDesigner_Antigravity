@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, 
   Clock, 
@@ -13,7 +13,8 @@ import {
   Heart,
   Users,
   RotateCcw,
-  MessageCircle
+  MessageCircle,
+  Crown
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
@@ -42,15 +43,41 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     obterProximoHorarioLivre,
     checkConflitoHorario,
     equipe,
-    logout
+    logout,
+    planosAssinatura,
+    vincularAssinaturaCliente,
+    reservarRecorrenciaSemanalVip
   } = useAppState();
 
   const [step, setStep] = useState<number>(1);
+  
+  // Responde ao botão voltar físico / virtual do Android
+  useEffect(() => {
+    const handleAndroidBack = () => {
+      setStep(prev => {
+        if (prev > 1 && prev !== 5) {
+          return prev - 1;
+        }
+        return prev;
+      });
+    };
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => window.removeEventListener('nail_android_back', handleAndroidBack);
+  }, []);
   
   // Agendamento State
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
   const [dataSelecionada, setDataSelecionada] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [horarioSelecionado, setHorarioSelecionado] = useState<string>('');
+
+  // Seleção de Plano VIP pelo Cliente
+  const [planoVipEscolhidoId, setPlanoVipEscolhidoId] = useState<string>('');
+  const [subTabStep2, setSubTabStep2] = useState<'servicos' | 'planos_vip'>('servicos');
+
+  const planoVipEscolhido = useMemo(() => {
+    if (!planoVipEscolhidoId) return null;
+    return (planosAssinatura || []).find(p => p.id === planoVipEscolhidoId) || null;
+  }, [planoVipEscolhidoId, planosAssinatura]);
 
   // Profissional Selecionada
   const [profissionalId, setProfissionalId] = useState<string>(''); // Vazio = Qualquer profissional disponível
@@ -102,24 +129,51 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   }, [servicos, profSelecionada]);
 
   // Duração e Preço Totais
-  const duracaoTotal = servicosSelecionados.reduce((acc, id) => {
-    const s = servicos.find(item => item.id === id);
-    return acc + (s?.duracao_minutos || 0);
-  }, 0);
+  const duracaoTotal = useMemo(() => {
+    if (planoVipEscolhido) {
+      if (planoVipEscolhido.itens_servicos && planoVipEscolhido.itens_servicos.length > 0) {
+        const dur = planoVipEscolhido.itens_servicos.reduce((acc, it) => {
+          const s = servicos.find(item => item.id === it.servico_id);
+          return acc + (s?.duracao_minutos || 0);
+        }, 0);
+        if (dur > 0) return dur;
+      }
+      if (planoVipEscolhido.servicos_permitidos_ids && planoVipEscolhido.servicos_permitidos_ids.length > 0) {
+        const dur = planoVipEscolhido.servicos_permitidos_ids.reduce((acc, sid) => {
+          const s = servicos.find(item => item.id === sid);
+          return acc + (s?.duracao_minutos || 0);
+        }, 0);
+        if (dur > 0) return dur;
+      }
+      return 60;
+    }
+    return servicosSelecionados.reduce((acc, id) => {
+      const s = servicos.find(item => item.id === id);
+      return acc + (s?.duracao_minutos || 0);
+    }, 0);
+  }, [planoVipEscolhido, servicosSelecionados, servicos]);
 
-  const precoTotal = servicosSelecionados.reduce((acc, id) => {
-    const s = servicos.find(item => item.id === id);
-    return acc + (s?.preco || 0);
-  }, 0);
+  const precoTotal = useMemo(() => {
+    if (planoVipEscolhido) {
+      return planoVipEscolhido.preco_mensal;
+    }
+    return servicosSelecionados.reduce((acc, id) => {
+      const s = servicos.find(item => item.id === id);
+      return acc + (s?.preco || 0);
+    }, 0);
+  }, [planoVipEscolhido, servicosSelecionados, servicos]);
 
-  // Sinal Exigido (soma dos sinais dos serviços selecionados)
-  const sinalTotal = servicosSelecionados.reduce((acc, id) => {
-    const s = servicos.find(item => item.id === id);
-    if (!s) return acc;
-    if (s.sinal_tipo === 'fixo') return acc + s.sinal_valor;
-    if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * s.sinal_valor / 100);
-    return acc;
-  }, 0);
+  // Sinal Exigido (se for Plano VIP, o sinal é isento)
+  const sinalTotal = useMemo(() => {
+    if (planoVipEscolhido) return 0;
+    return servicosSelecionados.reduce((acc, id) => {
+      const s = servicos.find(item => item.id === id);
+      if (!s) return acc;
+      if (s.sinal_tipo === 'fixo') return acc + s.sinal_valor;
+      if (s.sinal_tipo === 'porcentagem') return acc + (s.preco * s.sinal_valor / 100);
+      return acc;
+    }, 0);
+  }, [planoVipEscolhido, servicosSelecionados, servicos]);
 
   // Cálculo inteligente de horários disponíveis para o dia selecionado
   const obterHorariosDisponiveis = (): string[] => {
@@ -213,12 +267,21 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       await salvarClienteSupabase(novoCli);
     }
 
+    // Se o cliente escolheu um plano VIP nesta sessão:
+    if (planoVipEscolhido) {
+      vincularAssinaturaCliente(cId, planoVipEscolhido.id);
+    }
+
     // Regras de Cobrança do Sinal:
+    const isVipAtivo = !!(planoVipEscolhido || (cliExistente?.assinatura && cliExistente.assinatura.status === 'ativo'));
     const cobrarTodos = !!configSalao.regras?.sinal_obrigatorio_todos;
     const cobrarNovos = !!(configSalao.regras?.sinal_obrigatorio_novos ?? configSalao.regras?.sinal_obrigatorio_geral ?? true);
 
     let deveCobrarSinal = false;
-    if (cobrarTodos) {
+    if (isVipAtivo) {
+      // Clientes do Clube VIP são isentas de sinal (coberto pelo plano)
+      deveCobrarSinal = false;
+    } else if (cobrarTodos) {
       deveCobrarSinal = true;
     } else if (cobrarNovos && isClienteNovo) {
       deveCobrarSinal = true;
@@ -260,15 +323,18 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
 
     const profNome = profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
-    const obsComProf = observacoes ? `[Atendente: ${profNome}] ${observacoes}` : `[Atendente: ${profNome}]`;
+    const nomePlanoVip = planoVipEscolhido?.nome || cliExistente?.assinatura?.nome_plano || 'Clube VIP';
+    const obsVip = isVipAtivo ? `[👑 Clube VIP: ${nomePlanoVip}] ` : '';
+    const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
     const res = addAgendamento({
       cliente_id: cId,
       profissional_id: profFinalId,
       inicio: dataInicioStr,
       status: statusFinal,
-      valor_total: precoTotal,
+      valor_total: isVipAtivo ? 0 : precoTotal,
       valor_sinal: valorSinalFinal,
+      pago_com_clube: isVipAtivo,
       observacoes: obsComProf,
       origem: 'cliente'
     }, servicosSelecionados);
@@ -276,6 +342,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     if (res.success && res.agendamento) {
       // Garante persistência no Supabase com integridade referencial antes de mudar de etapa
       await salvarAgendamentoSupabase(res.agendamento, servicosSelecionados, clienteParaSalvar);
+
+      // Se for cliente VIP, reserva as sessões semanais restantes no mesmo dia e horário
+      if (isVipAtivo) {
+        setTimeout(() => {
+          reservarRecorrenciaSemanalVip(res.agendamento!.id);
+        }, 400);
+      }
 
       setCodigoReserva(res.agendamento.id);
       setValorSinal(valorSinalFinal);
@@ -399,7 +472,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       <div className="absolute bottom-[-10%] right-[-10%] w-80 h-80 rounded-full bg-[#E57399] opacity-20 blur-3xl pointer-events-none" />
 
       {/* Barra de Identificação Superior da Cliente */}
-      <div className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-4 py-2.5 flex justify-center items-center text-xs relative z-20 shadow-sm">
+      <div className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-4 py-2 flex justify-center items-center text-xs relative z-20 shadow-sm">
         <span className="flex items-center gap-1.5 font-semibold">
           <Heart size={12} className="fill-white animate-pulse" />
           <span>Agendamento Online · {configSalao.nome || 'Salão de Beleza'}</span>
@@ -499,7 +572,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                       <div>
                         <h4 className="font-bold text-xs">{p.nome}</h4>
                         <p className={`text-[10px] mt-0.5 ${isSelected ? 'text-pink-100' : 'text-[#A88690]'}`}>
-                          {p.perfil === 'admin' ? 'Especialista Master' : 'Designer'} · {totalProcedimentos ? `${totalProcedimentos} procedimentos` : 'Todos os procedimentos'}
+                          {p.especialidade || (p.perfil === 'admin' ? 'Especialista Master' : 'Designer')} · {totalProcedimentos ? `${totalProcedimentos} procedimentos` : 'Todos os procedimentos'}
                         </p>
                       </div>
                     </div>
@@ -534,99 +607,240 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </p>
               </div>
             </div>
- 
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {servsDisponiveis.length === 0 ? (
-                <div className="p-6 text-center text-xs text-[#A88690] bg-[#FFF5F7]/30 rounded-2xl border border-[#FAD0DC]/50">
-                  Nenhum procedimento cadastrado para esta profissional.
-                </div>
-              ) : (
-                servsDisponiveis.map(s => {
-                  const checked = servicosSelecionados.includes(s.id);
-                  return (
-                    <label 
-                      key={s.id}
-                      className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
-                        checked 
-                          ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
-                          : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <input 
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setServicosSelecionados(prev => [...prev, s.id]);
-                            } else {
-                              setServicosSelecionados(prev => prev.filter(id => id !== s.id));
-                            }
-                          }}
-                          className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
-                        />
-                        <div>
-                          <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
-                          {s.descricao && (
-                            <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
-                              {s.descricao}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
-                          
-                          {/* Se for Pacote, detalha os serviços internos para o cliente */}
-                          {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
-                            <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
-                              <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
-                              {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
-                                const sub = servicos.find(item => item.id === det.servico_id);
-                                return sub ? (
-                                  <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
-                                    <div className="flex justify-between font-bold text-[#5A3F45]">
-                                      <span>{det.quantidade}x {sub.nome}</span>
-                                    </div>
-                                    {sub.descricao && (
-                                      <span className="text-[8px] text-[#A88690] leading-snug italic">"{sub.descricao}"</span>
-                                    )}
-                                    <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
-                                      <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
-                                    </span>
-                                  </div>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
- 
-            {/* Sumário */}
-            {servicosSelecionados.length > 0 && (
-              <div className="bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-xs text-[#5A3F45] space-y-1">
-                <div className="flex justify-between">
-                  <span>Duração Total:</span>
-                  <span className="font-bold">{duracaoTotal} minutos</span>
-                </div>
-                <div className="flex justify-between text-sm pt-1 border-t border-[#FAD0DC]/30">
-                  <span className="font-bold">Valor Total:</span>
-                  <span className="font-extrabold text-[#C71585]">{formatarMoeda(precoTotal)}</span>
-                </div>
+
+            {/* Seletor entre Procedimentos Avulsos e Planos do Clube VIP */}
+            {planosAssinatura && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (
+              <div className="flex bg-[#FFF0F4] p-1 rounded-xl border border-[#FAD0DC]/50 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubTabStep2('servicos');
+                    setPlanoVipEscolhidoId('');
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    subTabStep2 === 'servicos'
+                      ? 'bg-white text-[#C71585] shadow-sm'
+                      : 'text-[#8C7A6B] hover:text-[#5A3F45]'
+                  }`}
+                >
+                  <span>💅 Procedimentos & Combos</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubTabStep2('planos_vip');
+                  }}
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    subTabStep2 === 'planos_vip'
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm'
+                      : 'text-amber-800 hover:text-amber-950 font-bold'
+                  }`}
+                >
+                  <Crown size={14} />
+                  <span>👑 Planos do Clube VIP</span>
+                </button>
               </div>
             )}
- 
-            <button
-              onClick={() => setStep(3)}
-              disabled={servicosSelecionados.length === 0}
-              className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
-            >
-              <span>Avançar para Data & Horário</span>
-              <ChevronRight size={14} />
-            </button>
+
+            {subTabStep2 === 'planos_vip' ? (
+              <div className="space-y-3">
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-950 text-left space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <Crown size={15} className="text-amber-600" />
+                    <span>Como funcionam os Planos VIP?</span>
+                  </div>
+                  <p className="text-[11px] text-amber-800 leading-relaxed">
+                    Ao assinar um plano VIP, você garante atendimento semanal com horário reservado automaticamente no mesmo dia e horário toda semana, com isenção total de taxa de sinal online.
+                  </p>
+                </div>
+
+                <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
+                  {planosAssinatura.filter(p => p.ativo !== false).map(p => {
+                    const isSelected = planoVipEscolhidoId === p.id;
+                    const servicosInclusos = (p.itens_servicos || [])
+                      .map(item => {
+                        const s = servicos.find(serv => serv.id === item.servico_id);
+                        return s ? `${item.quantidade || 1}x ${s.nome}` : null;
+                      })
+                      .filter(Boolean);
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-3.5 rounded-2xl border transition-all text-left space-y-2.5 ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-400 shadow-md ring-2 ring-amber-300'
+                            : 'bg-white border-amber-200/80 hover:border-amber-400 shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <Crown size={16} className="text-amber-600" />
+                              <h4 className="font-bold text-xs text-amber-950">{p.nome}</h4>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className="text-[11px] text-amber-800 font-medium">
+                                {p.qtd_procedimentos_mes} sessões no mês · 1 por semana
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
+                                <Clock size={11} /> {(() => {
+                                  const dur = (p.itens_servicos && p.itens_servicos.length > 0)
+                                    ? p.itens_servicos.reduce((acc, it) => {
+                                        const s = servicos.find(serv => serv.id === it.servico_id);
+                                        return acc + (s?.duracao_minutos || 0);
+                                      }, 0)
+                                    : (p.servicos_permitidos_ids && p.servicos_permitidos_ids.length > 0)
+                                      ? p.servicos_permitidos_ids.reduce((acc, sid) => {
+                                          const s = servicos.find(serv => serv.id === sid);
+                                          return acc + (s?.duracao_minutos || 0);
+                                        }, 0)
+                                      : 60;
+                                  return `${dur} min / sessão`;
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-amber-900 block">
+                              {formatarMoeda(p.preco_mensal)}
+                            </span>
+                            <span className="text-[9px] text-amber-700 font-medium">/mês</span>
+                          </div>
+                        </div>
+
+                        {/* Itens Inclusos */}
+                        {servicosInclusos.length > 0 && (
+                          <div className="bg-amber-100/40 rounded-xl p-2 text-[10px] text-amber-900 border border-amber-200/50 space-y-1">
+                            <span className="font-bold block text-amber-950">Itens inclusos por mês:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {servicosInclusos.map((itemStr, idx) => (
+                                <span key={idx} className="bg-white/80 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                                  ✓ {itemStr}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const sIds = (p.itens_servicos || []).map(i => i.servico_id);
+                            setPlanoVipEscolhidoId(p.id);
+                            setServicosSelecionados(sIds.length > 0 ? sIds : (servicos.length > 0 ? [servicos[0].id] : []));
+                            setStep(3);
+                          }}
+                          className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <Crown size={14} />
+                          <span>Selecionar este Plano & Agendar 1ª Sessão →</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {servsDisponiveis.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-[#A88690] bg-[#FFF5F7]/30 rounded-2xl border border-[#FAD0DC]/50">
+                      Nenhum procedimento cadastrado para esta profissional.
+                    </div>
+                  ) : (
+                    servsDisponiveis.map(s => {
+                      const checked = servicosSelecionados.includes(s.id);
+                      return (
+                        <label 
+                          key={s.id}
+                          className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
+                            checked 
+                              ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
+                              : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setServicosSelecionados(prev => [...prev, s.id]);
+                                } else {
+                                  setServicosSelecionados(prev => prev.filter(id => id !== s.id));
+                                }
+                              }}
+                              className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
+                            />
+                            <div>
+                              <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
+                              {(() => {
+                                const descLimpa = (s.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+                                return descLimpa ? (
+                                  <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
+                                    "{descLimpa}"
+                                  </span>
+                                ) : null;
+                              })()}
+                              <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
+                              
+                              {/* Se for Pacote, detalha os serviços internos para o cliente */}
+                              {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
+                                <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
+                                  <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
+                                  {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
+                                    const sub = servicos.find(item => item.id === det.servico_id);
+                                    const subDesc = sub ? (sub.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim() : '';
+                                    return sub ? (
+                                      <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
+                                        <div className="flex justify-between font-bold text-[#5A3F45]">
+                                          <span>{det.quantidade}x {sub.nome}</span>
+                                        </div>
+                                        {subDesc && (
+                                          <span className="text-[8px] text-[#A88690] leading-snug italic">"{subDesc}"</span>
+                                        )}
+                                        <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
+                                          <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
+                                        </span>
+                                      </div>
+                                    ) : null;
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Sumário */}
+                {servicosSelecionados.length > 0 && (
+                  <div className="bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-xs text-[#5A3F45] space-y-1">
+                    <div className="flex justify-between">
+                      <span>Duração Total:</span>
+                      <span className="font-bold">{duracaoTotal} minutos</span>
+                    </div>
+                    <div className="flex justify-between text-sm pt-1 border-t border-[#FAD0DC]/30">
+                      <span className="font-bold">Valor Total:</span>
+                      <span className="font-extrabold text-[#C71585]">{formatarMoeda(precoTotal)}</span>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={servicosSelecionados.length === 0}
+                  className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
+                >
+                  <span>Avançar para Data & Horário</span>
+                  <ChevronRight size={14} />
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -644,6 +858,19 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </p>
               </div>
             </div>
+
+            {/* Aviso de Recorrência do Plano VIP */}
+            {planoVipEscolhido && (
+              <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-amber-950 flex items-start gap-2.5 text-left animate-in fade-in duration-200">
+                <Crown size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block text-amber-950">1ª Sessão do Plano {planoVipEscolhido.nome}</span>
+                  <p className="text-[11px] text-amber-800 mt-0.5 leading-snug">
+                    Escolha a data e o horário da sua 1ª sessão. As demais {planoVipEscolhido.qtd_procedimentos_mes - 1} semanas serão reservadas <strong>automaticamente no mesmo dia da semana e horário</strong>!
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Input de Data */}
             <div>
@@ -741,30 +968,42 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
-                    <RotateCcw size={14} className="text-[#DB7093] shrink-0" />
-                    <div>
-                      <span className="text-[#A88690] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
-                      <strong className="text-xs text-[#5A3F45]">
-                        {(() => {
-                          const diasRetornoArr = servicos
-                            .filter(s => servicosSelecionados.includes(s.id))
-                            .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
-                            .filter(d => d > 0);
-                          const menorRetorno = diasRetornoArr.length > 0 ? Math.min(...diasRetornoArr) : 0;
-                          if (menorRetorno > 0 && dataSelecionada) {
-                            const d = new Date(dataSelecionada + 'T12:00:00');
-                            d.setDate(d.getDate() + menorRetorno);
-                            const diaF = String(d.getDate()).padStart(2, '0');
-                            const mesF = String(d.getMonth() + 1).padStart(2, '0');
-                            const anoF = d.getFullYear();
-                            return `${menorRetorno} dias (${diaF}/${mesF}/${anoF})`;
-                          }
-                          return 'Não exige retorno';
-                        })()}
-                      </strong>
+                  {planoVipEscolhido ? (
+                    <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 p-2.5 rounded-xl border border-amber-300">
+                      <Crown size={15} className="text-amber-600 shrink-0" />
+                      <div>
+                        <span className="text-amber-800 block text-[9px] uppercase font-bold">Retorno Semanal VIP</span>
+                        <strong className="text-xs text-amber-950">
+                          Sessões garantidas toda semana no mesmo dia e horário
+                        </strong>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
+                      <RotateCcw size={14} className="text-[#DB7093] shrink-0" />
+                      <div>
+                        <span className="text-[#A88690] block text-[9px] uppercase font-bold">Sugestão de Retorno</span>
+                        <strong className="text-xs text-[#5A3F45]">
+                          {(() => {
+                            const diasRetornoArr = servicos
+                              .filter(s => servicosSelecionados.includes(s.id))
+                              .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
+                              .filter(d => d > 0);
+                            const menorRetorno = diasRetornoArr.length > 0 ? Math.min(...diasRetornoArr) : 0;
+                            if (menorRetorno > 0 && dataSelecionada) {
+                              const d = new Date(dataSelecionada + 'T12:00:00');
+                              d.setDate(d.getDate() + menorRetorno);
+                              const diaF = String(d.getDate()).padStart(2, '0');
+                              const mesF = String(d.getMonth() + 1).padStart(2, '0');
+                              const anoF = d.getFullYear();
+                              return `${menorRetorno} dias (${diaF}/${mesF}/${anoF})`;
+                            }
+                            return 'Não exige retorno';
+                          })()}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -828,6 +1067,43 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
+
+              {/* Plano VIP Escolhido nesta Reserva */}
+              {planoVipEscolhido && (
+                <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">
+                  <Crown size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-amber-950 block">
+                      👑 Adesão ao Clube VIP: {planoVipEscolhido.nome}
+                    </span>
+                    <p className="text-[11px] text-amber-900 mt-0.5 leading-snug">
+                      Plano mensal de <strong>{formatarMoeda(planoVipEscolhido.preco_mensal)}</strong> com <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões semanais</strong> garantidas no mesmo horário. Agendamento isento de sinal online!
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Reconhecimento automático de Cliente VIP */}
+              {(() => {
+                const telLimpo = telefone.replace(/\D/g, '');
+                if (telLimpo.length < 8) return null;
+                const cliVip = clientes.find(c => c.telefone.replace(/\D/g, '').endsWith(telLimpo.slice(-8)) && c.assinatura?.status === 'ativo');
+                if (!cliVip) return null;
+
+                return (
+                  <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">
+                    <Crown size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold text-amber-950 block">
+                        👑 Bem-vinda, {cliVip.nome}! Assinante VIP Reconhecida
+                      </span>
+                      <p className="text-[11px] text-amber-900 mt-0.5 leading-snug">
+                        Seu plano <strong>{cliVip.assinatura?.nome_plano}</strong> está ativo. Este agendamento é isento de sinal e suas sessões semanais serão reservadas no mesmo dia e horário!
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div>
@@ -866,6 +1142,19 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               </p>
             </div>
 
+            {/* Banner de Sucesso do Plano VIP */}
+            {planoVipEscolhido && (
+              <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl text-xs text-amber-950 space-y-1.5 text-left animate-in fade-in duration-200">
+                <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                  <Crown size={16} className="text-amber-600" />
+                  <span>Vaga VIP Semanal Garantida!</span>
+                </div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Você agora é assinante do <strong>{planoVipEscolhido.nome}</strong>! Suas <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões semanais</strong> foram reservadas no mesmo dia e horário até o fim do ciclo mensal.
+                </p>
+              </div>
+            )}
+
             {/* Ficha Resumo */}
             <div className="bg-[#FFF5F7]/30 border border-[#FAD0DC]/50 rounded-2xl p-4 text-xs space-y-2">
               <div className="flex justify-between">
@@ -886,7 +1175,19 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   {servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).join(' + ')}
                 </span>
               </div>
-              {(() => {
+              <div className="flex justify-between">
+                <span className="text-[#A88690]">Duração Prevista:</span>
+                <span className="font-bold">{duracaoTotal} minutos</span>
+              </div>
+              {planoVipEscolhido ? (
+                <div className="flex justify-between text-amber-800 pt-1">
+                  <span className="font-semibold flex items-center gap-1">
+                    <Crown size={12} className="text-amber-600" />
+                    Frequência VIP:
+                  </span>
+                  <span className="font-bold">Sessões semanais garantidas</span>
+                </div>
+              ) : (() => {
                 const diasRetornoArr = servicos
                   .filter(s => servicosSelecionados.includes(s.id))
                   .map(s => Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0)
@@ -912,7 +1213,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               })()}
               <div className="flex justify-between pt-2 border-t border-[#FAD0DC]/50 text-sm">
                 <span className="font-bold">Total do Atendimento:</span>
-                <span className="font-extrabold text-[#C71585]">{formatarMoeda(valorTotal)}</span>
+                <span className="font-extrabold text-[#C71585]">
+                  {planoVipEscolhido ? `${formatarMoeda(planoVipEscolhido.preco_mensal)}/mês (Clube VIP)` : formatarMoeda(valorTotal)}
+                </span>
               </div>
             </div>
 
@@ -1037,7 +1340,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               >
                 <option value="">Qualquer profissional disponível</option>
                 {profissionaisAtivas.map(p => (
-                  <option key={p.id} value={p.id}>💅 {p.nome} ({p.perfil === 'admin' ? 'Master' : 'Designer'})</option>
+                  <option key={p.id} value={p.id}>💅 {p.nome} ({p.especialidade || (p.perfil === 'admin' ? 'Master' : 'Designer')})</option>
                 ))}
               </select>
             </div>

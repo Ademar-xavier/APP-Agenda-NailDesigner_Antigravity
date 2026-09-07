@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Cloud, CheckCircle2, AlertTriangle, AlertCircle, Sparkles, Copy, X, ChevronRight } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
 import { AppStateProvider, useAppState } from './context/AppStateContext';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './views/Dashboard';
@@ -52,9 +53,11 @@ function AppContent() {
     const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.();
     const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator as any).standalone === true;
     const isAppParam = window.location.search.includes('app=1') || window.location.hash.toLowerCase().includes('admin');
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const isExplicitAgendamento = typeof window !== 'undefined' && window.location.hash.toLowerCase().includes('agendar');
 
-    // Em todas as plataformas instaladas, inicia SEMPRE na tela administrativa (Login)
-    if (isElectron || isCapacitor || isStandalone || isAppParam) {
+    // Em plataformas instaladas ou em desenvolvimento local (localhost) sem #agendar explícito, inicia no painel admin!
+    if (isElectron || isCapacitor || isStandalone || isAppParam || (isLocalhost && !isExplicitAgendamento)) {
       return true;
     }
 
@@ -73,7 +76,22 @@ function AppContent() {
            window.location.pathname.toLowerCase().includes('instalar');
   });
 
-  const [currentView, setCurrentView] = useState<string>('dashboard');
+  const [currentView, setCurrentView] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('nail_current_view');
+      if (saved && ['dashboard', 'agenda', 'clientes', 'confirmacoes', 'servicos', 'cadastros', 'materiais', 'financeiro', 'configuracoes'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return 'dashboard';
+  });
+
+  const handleSetCurrentView = (view: string) => {
+    setCurrentView(view);
+    try {
+      localStorage.setItem('nail_current_view', view);
+    } catch (e) {}
+  };
   const [selectedClienteIdForDetails, setSelectedClienteIdForDetails] = useState<string | null>(null);
 
   // Sincroniza com navegação por hash (#admin, #instalar, #agendar ou #confirmar)
@@ -81,12 +99,14 @@ function AppContent() {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase();
       const isStandalone = (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator as any).standalone === true;
+      const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       const isNative = 
         window.location.protocol === 'file:' || 
         navigator.userAgent.includes('Electron') ||
         !!(window as any).Capacitor?.isNativePlatform?.() ||
         isStandalone ||
-        window.location.search.includes('app=1');
+        window.location.search.includes('app=1') ||
+        isLocalhost;
 
       if (hash.includes('confirmar') || window.location.search.toLowerCase().includes('confirmar')) {
         setIsConfirmarRoute(true);
@@ -98,10 +118,13 @@ function AppContent() {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsAdmin(true);
-      } else if (hash.includes('agendar') || hash === '' || hash === '#') {
+      } else if (hash.includes('agendar')) {
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
-        // Se for aplicativo instalado (Desktop, Android ou PWA), NUNCA perde o modo admin!
+        setIsAdmin(false);
+      } else if (hash === '' || hash === '#') {
+        setIsConfirmarRoute(false);
+        setIsInstalarRoute(false);
         if (!isNative) {
           setIsAdmin(false);
         }
@@ -239,8 +262,69 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isNewAgendamentoModalOpen, selectedClienteIdForDetails]);
 
+  // Intercepta o botão voltar nativo do celular (Android) e histórico do navegador
+  useEffect(() => {
+    let listenerHandle: any = null;
+
+    const handleVoltarAcao = () => {
+      // 1. Se houver modal de alerta aberto, fecha o alerta
+      if (modalAlerta) {
+        fecharAlerta();
+        return;
+      }
+
+      // 2. Se houver modal de novo agendamento aberto, fecha o modal
+      if (isNewAgendamentoModalOpen) {
+        setIsNewAgendamentoModalOpen(false);
+        return;
+      }
+
+      // 3. Se houver detalhes de cliente aberto, volta para a lista
+      if (selectedClienteIdForDetails) {
+        setSelectedClienteIdForDetails(null);
+        return;
+      }
+
+      // 4. Se estiver em uma tela interna do painel admin que não seja o dashboard, volta ao dashboard
+      if (isAdmin && currentView !== 'dashboard') {
+        handleSetCurrentView('dashboard');
+        return;
+      }
+
+      // 5. Dispara evento customizado para o fluxo público de agendamento recuar de etapa
+      window.dispatchEvent(new CustomEvent('nail_android_back'));
+    };
+
+    // Ouvinte nativo do Capacitor Android (botão físico / barra inferior de gestos)
+    try {
+      CapApp.addListener('backButton', () => {
+        if (modalAlerta || isNewAgendamentoModalOpen || selectedClienteIdForDetails || (isAdmin && currentView !== 'dashboard')) {
+          handleVoltarAcao();
+        } else {
+          // Se estiver na tela raiz, minimiza o app sem deslogar
+          try { CapApp.minimizeApp(); } catch (e) {}
+        }
+      }).then(handle => {
+        listenerHandle = handle;
+      }).catch(() => {});
+    } catch (e) {}
+
+    // Ouvinte para Web / PWA móvel (popstate)
+    const handlePopState = () => {
+      handleVoltarAcao();
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      if (listenerHandle && typeof listenerHandle.remove === 'function') {
+        listenerHandle.remove();
+      }
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [modalAlerta, isNewAgendamentoModalOpen, selectedClienteIdForDetails, isAdmin, currentView, fecharAlerta]);
+
   const openNewAgendamentoModal = () => {
-    setCurrentView('agenda');
+    handleSetCurrentView('agenda');
     setIsNewAgendamentoModalOpen(true);
   };
 
@@ -249,7 +333,7 @@ function AppContent() {
       case 'dashboard':
         return (
           <Dashboard 
-            setCurrentView={setCurrentView}
+            setCurrentView={handleSetCurrentView}
             setSelectedClienteIdForDetails={setSelectedClienteIdForDetails}
             openNewAgendamentoModal={openNewAgendamentoModal}
           />
@@ -285,7 +369,7 @@ function AppContent() {
       default:
         return (
           <Dashboard 
-            setCurrentView={setCurrentView}
+            setCurrentView={handleSetCurrentView}
             openNewAgendamentoModal={() => setIsNewAgendamentoModalOpen(true)}
           />
         );
@@ -322,38 +406,150 @@ function AppContent() {
     );
   }
 
+  // Renderizador do Modal Global de Alerta (disponível em todas as telas)
+  const renderModalAlerta = () => {
+    if (!modalAlerta) return null;
+    return (
+      <div 
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+        onClick={fecharAlerta}
+      >
+        <div 
+          className="bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#F4ECE1] max-w-sm w-full text-center space-y-4 animate-in zoom-in-95 duration-200 relative overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Barra de destaque colorida no topo */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D37F64] via-[#DB7093] to-[#8C6D58]" />
+
+          {/* Ícone estilizado com badge circular */}
+          <div className="pt-2 flex justify-center">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner ${
+              modalAlerta.tipo === 'sucesso'
+                ? 'bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]'
+                : modalAlerta.tipo === 'erro'
+                ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
+                : modalAlerta.tipo === 'aviso'
+                ? 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
+                : 'bg-[#FFF0F5] text-[#DB7093] border border-[#FBCFE8]'
+            }`}>
+              {modalAlerta.tipo === 'sucesso' ? (
+                <CheckCircle2 size={32} />
+              ) : modalAlerta.tipo === 'erro' ? (
+                <AlertTriangle size={32} />
+              ) : modalAlerta.tipo === 'aviso' ? (
+                <AlertCircle size={32} />
+              ) : (
+                <Sparkles size={32} />
+              )}
+            </div>
+          </div>
+
+          {/* Título e Mensagem */}
+          <div className="space-y-2">
+            <h3 className="font-serif font-bold text-lg text-[#5A4535]">
+              {modalAlerta.titulo}
+            </h3>
+            <p className="text-xs text-[#8C7A6B] leading-relaxed whitespace-pre-line px-1">
+              {modalAlerta.mensagem}
+            </p>
+          </div>
+
+          {/* Caixa de Link Copiável se houver */}
+          {modalAlerta.link && (
+            <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3 text-left space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-mono text-[#5A4535] truncate select-all flex-1 font-medium">
+                  {modalAlerta.link}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(modalAlerta.link!);
+                    mostrarNotificacaoGlobal('Link copiado com sucesso!', 'sucesso');
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-[11px] font-bold shrink-0 transition-colors shadow-sm"
+                >
+                  <Copy size={12} />
+                  <span>Copiar</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Botões de Ação */}
+          <div className="pt-2 flex items-center gap-2">
+            {modalAlerta.isConfirm && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (modalAlerta.onCancel) modalAlerta.onCancel();
+                  fecharAlerta();
+                }}
+                className="flex-1 py-3 px-4 border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-2xl transition-all"
+              >
+                {modalAlerta.textoCancelar || 'Cancelar'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (modalAlerta.onConfirm) modalAlerta.onConfirm();
+                fecharAlerta();
+              }}
+              className={`flex-1 py-3 px-4 text-white text-xs font-bold rounded-2xl transition-all shadow-md active:scale-[0.98] ${
+                modalAlerta.tipo === 'erro'
+                  ? 'bg-gradient-to-r from-[#D32F2F] to-[#B71C1C] hover:opacity-95'
+                  : modalAlerta.tipo === 'aviso'
+                  ? 'bg-gradient-to-r from-[#B78103] to-[#8C6D58] hover:opacity-95'
+                  : 'bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:opacity-95'
+              }`}
+            >
+              {modalAlerta.textoBotao || (modalAlerta.isConfirm ? 'Confirmar' : 'OK, Entendido')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // 2. BLOQUEIO OBRIGATÓRIO DE LICENÇA (Vitalícia ou Assinatura Mensal Ativa):
   // Se for qualquer aplicativo instalado ou rota administrativa sem licença ativa
   if ((isInstalledApp || isAdmin) && !temLicenca) {
     return (
-      <AtivacaoLicenca 
-        onLicencaAtivada={() => {
-          setTemLicenca(true);
-          setIsAdmin(true);
-        }}
-        onVoltarAgendamento={() => {
-          setIsAdmin(false);
-          window.location.hash = 'agendar';
-        }}
-      />
+      <>
+        <AtivacaoLicenca 
+          onLicencaAtivada={() => {
+            setTemLicenca(true);
+            setIsAdmin(true);
+          }}
+          onVoltarAgendamento={() => {
+            setIsAdmin(false);
+            window.location.hash = 'agendar';
+          }}
+        />
+        {renderModalAlerta()}
+      </>
     );
   }
 
   // 3. Se for navegador comum acessando a rota exclusiva de instalação (#instalar)
   if (isInstalarRoute && !isInstalledApp) {
     return (
-      <InstalarApp 
-        onEntrarAdmin={() => {
-          setIsInstalarRoute(false);
-          setIsAdmin(true);
-          window.location.hash = 'admin';
-        }}
-        onIrAgendar={() => {
-          setIsInstalarRoute(false);
-          setIsAdmin(false);
-          window.location.hash = 'agendar';
-        }}
-      />
+      <>
+        <InstalarApp 
+          onEntrarAdmin={() => {
+            setIsInstalarRoute(false);
+            setIsAdmin(true);
+            window.location.hash = 'admin';
+          }}
+          onIrAgendar={() => {
+            setIsInstalarRoute(false);
+            setIsAdmin(false);
+            window.location.hash = 'agendar';
+          }}
+        />
+        {renderModalAlerta()}
+      </>
     );
   }
 
@@ -391,7 +587,7 @@ function AppContent() {
         currentView={currentView} 
         setCurrentView={(view) => {
           setSelectedClienteIdForDetails(null);
-          setCurrentView(view);
+          handleSetCurrentView(view);
         }} 
         isAdmin={isAdmin}
         setIsAdmin={setIsAdmin}
@@ -512,107 +708,7 @@ function AppContent() {
       )}
 
       {/* MODAL GLOBAL ELEGANTE (Substituto dos popups nativos do navegador) */}
-      {modalAlerta && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={fecharAlerta}
-        >
-          <div 
-            className="bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-[#F4ECE1] max-w-sm w-full text-center space-y-4 animate-in zoom-in-95 duration-200 relative overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Barra de destaque colorida no topo */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#D37F64] via-[#DB7093] to-[#8C6D58]" />
-
-            {/* Ícone estilizado com badge circular */}
-            <div className="pt-2 flex justify-center">
-              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-inner ${
-                modalAlerta.tipo === 'sucesso'
-                  ? 'bg-[#F0FDF4] text-[#16A34A] border border-[#BBF7D0]'
-                  : modalAlerta.tipo === 'erro'
-                  ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
-                  : modalAlerta.tipo === 'aviso'
-                  ? 'bg-[#FFFBEB] text-[#D97706] border border-[#FDE68A]'
-                  : 'bg-[#FFF0F5] text-[#DB7093] border border-[#FBCFE8]'
-              }`}>
-                {modalAlerta.tipo === 'sucesso' ? (
-                  <CheckCircle2 size={32} />
-                ) : modalAlerta.tipo === 'erro' ? (
-                  <AlertTriangle size={32} />
-                ) : modalAlerta.tipo === 'aviso' ? (
-                  <AlertCircle size={32} />
-                ) : (
-                  <Sparkles size={32} />
-                )}
-              </div>
-            </div>
-
-            {/* Título e Mensagem */}
-            <div className="space-y-2">
-              <h3 className="font-serif font-bold text-lg text-[#5A4535]">
-                {modalAlerta.titulo}
-              </h3>
-              <p className="text-xs text-[#8C7A6B] leading-relaxed whitespace-pre-line px-1">
-                {modalAlerta.mensagem}
-              </p>
-            </div>
-
-            {/* Caixa de Link Copiável se houver */}
-            {modalAlerta.link && (
-              <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3 text-left space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-mono text-[#5A4535] truncate select-all flex-1 font-medium">
-                    {modalAlerta.link}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(modalAlerta.link!);
-                      mostrarNotificacaoGlobal('Link copiado com sucesso!', 'sucesso');
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-[11px] font-bold shrink-0 transition-colors shadow-sm"
-                  >
-                    <Copy size={12} />
-                    <span>Copiar</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Botões de Ação */}
-            <div className="pt-2 flex items-center gap-2">
-              {modalAlerta.isConfirm && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (modalAlerta.onCancel) modalAlerta.onCancel();
-                    fecharAlerta();
-                  }}
-                  className="flex-1 py-3 px-4 border border-[#EFECE6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-[#FAF9F6] text-xs font-bold rounded-2xl transition-all"
-                >
-                  {modalAlerta.textoCancelar || 'Cancelar'}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  if (modalAlerta.onConfirm) modalAlerta.onConfirm();
-                  fecharAlerta();
-                }}
-                className={`flex-1 py-3 px-4 text-white text-xs font-bold rounded-2xl transition-all shadow-md active:scale-[0.98] ${
-                  modalAlerta.tipo === 'erro'
-                    ? 'bg-gradient-to-r from-[#D32F2F] to-[#B71C1C] hover:opacity-95'
-                    : modalAlerta.tipo === 'aviso'
-                    ? 'bg-gradient-to-r from-[#B78103] to-[#8C6D58] hover:opacity-95'
-                    : 'bg-gradient-to-r from-[#8C6D58] to-[#725743] hover:opacity-95'
-                }`}
-              >
-                {modalAlerta.textoBotao || (modalAlerta.isConfirm ? 'Confirmar' : 'OK, Entendido')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderModalAlerta()}
     </div>
   );
 }

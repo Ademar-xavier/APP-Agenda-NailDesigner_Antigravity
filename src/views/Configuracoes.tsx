@@ -321,15 +321,22 @@ export const Configuracoes: React.FC = () => {
       'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no Sheila Santos Nails? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}';
   });
 
+  const [templateClientesSumidas, setTemplateClientesSumidas] = useState(() => {
+    return configSalao.templates_whatsapp.clientes_sumidas || 
+      'Olá, {cliente}! Sentimos muito a sua falta por aqui! ✨ Já faz {dias_sumida} dias desde seu último procedimento. Preparamos um carinho especial para você retornar: use o cupom *VOLTAREIDOSA* e ganhe R$ 15 OFF na sua próxima visita! 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}';
+  });
+
   // --- EQUIPE MODAL STATE ---
   const [isEquipeModalOpen, setIsEquipeModalOpen] = useState(false);
   const [novoMembroNome, setNovoMembroNome] = useState('');
   const [novoMembroFone, setNovoMembroFone] = useState('');
+  const [novoMembroEspecialidade, setNovoMembroEspecialidade] = useState('');
   const [novoMembroSenha, setNovoMembroSenha] = useState('');
   const [novoMembroPerfil, setNovoMembroPerfil] = useState<'admin' | 'profissional'>('profissional');
   const [novoMembroServicos, setNovoMembroServicos] = useState<string[]>([]);
   const [novoMembroChavePix, setNovoMembroChavePix] = useState('');
   const [novoMembroUsarPixProprio, setNovoMembroUsarPixProprio] = useState(false);
+  const [novoMembroComissao, setNovoMembroComissao] = useState<number | ''>(50);
 
   // --- ALTERAR SENHA MODAL STATE ---
   const [isAlterarSenhaModalOpen, setIsAlterarSenhaModalOpen] = useState(false);
@@ -341,11 +348,13 @@ export const Configuracoes: React.FC = () => {
   const [membroEditando, setMembroEditando] = useState<Usuario | null>(null);
   const [editNome, setEditNome] = useState('');
   const [editFone, setEditFone] = useState('');
+  const [editEspecialidade, setEditEspecialidade] = useState('');
   const [editPerfil, setEditPerfil] = useState<'admin' | 'profissional'>('profissional');
   const [editAtivo, setEditAtivo] = useState(true);
   const [editServicosHabilitados, setEditServicosHabilitados] = useState<string[]>([]);
   const [editChavePix, setEditChavePix] = useState('');
   const [editUsarPixProprio, setEditUsarPixProprio] = useState(false);
+  const [editComissao, setEditComissao] = useState<number | ''>(50);
 
   const formatarMoedaLocal = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
@@ -355,11 +364,13 @@ export const Configuracoes: React.FC = () => {
     setMembroEditando(membro);
     setEditNome(membro.nome);
     setEditFone(membro.telefone || '');
+    setEditEspecialidade(membro.especialidade || (membro.perfil === 'admin' ? 'Especialista Master' : 'Designer'));
     setEditPerfil(membro.perfil);
     setEditAtivo(membro.ativo);
     setEditServicosHabilitados(membro.servicos_habilitados || []);
     setEditChavePix(membro.chave_pix || '');
     setEditUsarPixProprio(membro.usar_pix_proprio || false);
+    setEditComissao(membro.comissao_padrao_porcentagem ?? 50);
     setIsEditarMembroModalOpen(true);
   };
 
@@ -370,11 +381,13 @@ export const Configuracoes: React.FC = () => {
     updateEquipe(membroEditando.id, {
       nome: editNome.trim(),
       telefone: editFone.trim(),
+      especialidade: editEspecialidade.trim() || (editPerfil === 'admin' ? 'Especialista Master' : 'Designer'),
       perfil: editPerfil,
       ativo: editAtivo,
       servicos_habilitados: editServicosHabilitados,
       chave_pix: editChavePix.trim(),
-      usar_pix_proprio: editUsarPixProprio
+      usar_pix_proprio: editUsarPixProprio,
+      comissao_padrao_porcentagem: Number(editComissao)
     });
 
     setIsEditarMembroModalOpen(false);
@@ -449,7 +462,8 @@ export const Configuracoes: React.FC = () => {
       confirmacao: templateConfirmacao,
       lembrete: templateLembrete,
       retorno_manutencao: templateManutencao,
-      contato_geral: templateContatoGeral
+      contato_geral: templateContatoGeral,
+      clientes_sumidas: templateClientesSumidas
     };
     updateConfigSalao({
       templates_whatsapp: updatedTemplates
@@ -477,19 +491,23 @@ export const Configuracoes: React.FC = () => {
       telefone: novoMembroFone,
       email: novoMembroNome.toLowerCase().replace(/\s+/g, '') + '@agenda.com',
       perfil: novoMembroPerfil,
+      especialidade: novoMembroEspecialidade.trim() || (novoMembroPerfil === 'admin' ? 'Especialista Master' : 'Designer'),
       senha: novoMembroSenha.trim() || (novoMembroPerfil === 'admin' ? 'admin' : '1234'),
       servicos_habilitados: novoMembroServicos,
       chave_pix: novoMembroChavePix.trim(),
-      usar_pix_proprio: novoMembroUsarPixProprio
+      usar_pix_proprio: novoMembroUsarPixProprio,
+      comissao_padrao_porcentagem: Number(novoMembroComissao)
     });
 
     setNovoMembroNome('');
     setNovoMembroFone('');
+    setNovoMembroEspecialidade('');
     setNovoMembroSenha('');
     setNovoMembroPerfil('profissional');
     setNovoMembroServicos([]);
     setNovoMembroChavePix('');
     setNovoMembroUsarPixProprio(false);
+    setNovoMembroComissao(50);
     setIsEquipeModalOpen(false);
     exibirToast(`✅ Profissional ${novoMembroNome} cadastrada e sincronizada com a nuvem!`);
     triggerSuccess();
@@ -1293,6 +1311,37 @@ export const Configuracoes: React.FC = () => {
                     placeholder="Mensagem disparada pelo botão [Chamar] na ficha da cliente..."
                   />
                 </div>
+
+                {/* Template Resgate de Clientes Sumidas (CRM Churn) */}
+                <div className="space-y-1.5 pt-2 border-t border-[#EFECE6]/50">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase flex items-center gap-1.5">
+                      <span>🎯 CRM: Resgate de Clientes Sumidas / Inativas</span>
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {['{cliente}', '{dias_sumida}', '{link_agendamento}', '{salao}'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTemplateClientesSumidas(prev => prev + ' ' + tag)}
+                        className="text-[10px] bg-white border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] px-1.5 py-0.5 rounded cursor-pointer font-mono"
+                      >
+                        +{tag}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea 
+                    rows={4} 
+                    value={templateClientesSumidas} 
+                    onChange={(e) => setTemplateClientesSumidas(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] resize-none"
+                    placeholder="Mensagem enviada no funil de resgate de clientes sumidas há mais de 30/45/60 dias..."
+                  />
+                  <p className="text-[11px] text-[#8C7A6B]">
+                    💡 Essa mensagem é enviada ao clicar em "Resgatar via WhatsApp" na aba <strong>Clientes ➔ CRM Clientes Sumidas</strong>.
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end pt-4 border-t border-[#EFECE6]">
@@ -1332,110 +1381,133 @@ export const Configuracoes: React.FC = () => {
                   return (
                     <div 
                       key={membro.id} 
-                      className="p-4 border border-[#EFECE6] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:border-[#8C6D58] transition-colors"
+                      className="p-5 border border-[#EFECE6] rounded-2xl bg-white hover:border-[#8C6D58] transition-all shadow-xs space-y-3.5"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-xs shrink-0">
-                          {iniciais}
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-[#5A4535] flex items-center gap-2">
-                            <span>{membro.nome}</span>
-                          </h4>
-                          <p className="text-xs text-[#8C7A6B] mt-0.5">
-                            {membro.perfil === 'admin' 
-                              ? 'Administradora' 
-                              : 'Profissional · Sem Acesso A Dados Financeiros Globais'}
-                          </p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {membro.telefone && (
-                              <span className="text-[10px] text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#EFECE6]">
-                                📱 {membro.telefone}
+                      {/* Linha Superior: Perfil + Ações Principais */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-full bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                            {iniciais}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-bold text-[#5A4535]">{membro.nome}</h4>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6]">
+                                ✨ {membro.especialidade || (membro.perfil === 'admin' ? 'Especialista Master' : 'Designer')}
                               </span>
-                            )}
-                            {membro.usar_pix_proprio && membro.chave_pix ? (
-                              <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60" title={`Chave Pix: ${membro.chave_pix}`}>
-                                🟢 Pix Direto: {membro.chave_pix}
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                membro.perfil === 'admin' 
+                                  ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                                  : 'bg-[#F6ECE8] text-[#8C6D58] border-[#EFECE6]'
+                              }`}>
+                                {membro.perfil === 'admin' ? '👑 Administradora' : '💅 Profissional'}
                               </span>
-                            ) : (
-                              <span className="text-[10px] text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#EFECE6]">
-                                🏦 Pix Salão
+                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                membro.ativo 
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                  : 'bg-gray-100 text-gray-500 border-gray-200'
+                              }`}>
+                                {membro.ativo ? 'Ativa' : 'Inativa'}
                               </span>
-                            )}
-                            {(!membro.servicos_habilitados || membro.servicos_habilitados.length === 0) ? (
-                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
-                                ✨ Realiza todos os serviços
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-semibold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-md border border-[#EFECE6]">
-                                💅 {membro.servicos_habilitados.length} serviço{membro.servicos_habilitados.length > 1 ? 's' : ''} habilitado{membro.servicos_habilitados.length > 1 ? 's' : ''}
-                              </span>
-                            )}
+                            </div>
+                            <p className="text-xs text-[#8C7A6B] mt-0.5">
+                              {membro.perfil === 'admin' 
+                                ? 'Acesso total a relatórios, configurações e financeiro' 
+                                : 'Acesso à agenda de atendimentos e clientes'}
+                            </p>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Ações: Editar + Alterar Senha + Toggle Ativo */}
-                      <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() => handleAbrirEditarMembro(membro)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-colors shadow-2xs"
-                        >
-                          <Edit2 size={13} />
-                          <span>Editar</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMembroParaAlterarSenha(membro);
-                            setNovaSenhaInput(membro.senha || '');
-                            setIsAlterarSenhaModalOpen(true);
-                          }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF9F6] border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] rounded-xl text-xs font-bold transition-colors"
-                        >
-                          <Key size={13} />
-                          <span>Alterar Senha</span>
-                        </button>
-
-                        <div className="flex items-center gap-2 pl-2 border-l border-[#EFECE6]">
+                        {/* Grupo de Ações Fixo e Elegante */}
+                        <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
                           <button
                             type="button"
-                            onClick={() => toggleEquipeAtivo(membro.id)}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                              membro.ativo ? 'bg-[#8C6D58]' : 'bg-gray-200'
-                            }`}
+                            onClick={() => handleAbrirEditarMembro(membro)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
                           >
-                            <span
-                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                membro.ativo ? 'translate-x-5' : 'translate-x-0'
-                              }`}
-                            />
+                            <Edit2 size={13} />
+                            <span>Editar</span>
                           </button>
-                          <span className="text-xs font-semibold text-[#8C7A6B]">
-                            {membro.ativo ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </div>
 
-                        {equipe.length > 1 && (
                           <button
                             type="button"
                             onClick={() => {
-                              confirmarAcao({
-                                titulo: 'Remover Usuário',
-                                mensagem: `Deseja realmente remover o usuário ${membro.nome}?`,
-                                tipo: 'erro',
-                                textoConfirmar: 'Remover',
-                                onConfirm: () => deleteEquipe(membro.id)
-                              });
+                              setMembroParaAlterarSenha(membro);
+                              setNovaSenhaInput(membro.senha || '');
+                              setIsAlterarSenhaModalOpen(true);
                             }}
-                            className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-1"
-                            title="Remover usuário"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF9F6] border border-[#EFECE6] hover:border-[#8C6D58] text-[#8C6D58] rounded-xl text-xs font-bold transition-colors"
                           >
-                            <Trash2 size={15} />
+                            <Key size={13} />
+                            <span>Alterar Senha</span>
                           </button>
+
+                          <div className="flex items-center gap-2 pl-2 border-l border-[#EFECE6]">
+                            <button
+                              type="button"
+                              onClick={() => toggleEquipeAtivo(membro.id)}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                membro.ativo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                              }`}
+                              title={membro.ativo ? 'Desativar profissional' : 'Ativar profissional'}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  membro.ativo ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          {equipe.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                confirmarAcao({
+                                  titulo: 'Remover Usuário',
+                                  mensagem: `Deseja realmente remover o usuário ${membro.nome}?`,
+                                  tipo: 'erro',
+                                  textoConfirmar: 'Remover',
+                                  onConfirm: () => deleteEquipe(membro.id)
+                                });
+                              }}
+                              className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors ml-1"
+                              title="Remover usuário"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Linha Inferior: Badges Informativas (Telefone, Pix, Serviços, Repasse) */}
+                      <div className="pt-2.5 border-t border-[#FAF9F6] flex flex-wrap items-center gap-2">
+                        {membro.telefone && (
+                          <span className="text-[11px] text-[#8C7A6B] bg-[#FAF9F6] px-2.5 py-1 rounded-lg border border-[#EFECE6] flex items-center gap-1">
+                            📱 {membro.telefone}
+                          </span>
                         )}
+                        {membro.usar_pix_proprio && membro.chave_pix ? (
+                          <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center gap-1" title={`Chave Pix: ${membro.chave_pix}`}>
+                            🟢 Pix Direto: <strong className="font-mono">{membro.chave_pix}</strong>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[#8C7A6B] bg-[#FAF9F6] px-2.5 py-1 rounded-lg border border-[#EFECE6] flex items-center gap-1">
+                            🏦 Pix Salão Principal
+                          </span>
+                        )}
+                        {(!membro.servicos_habilitados || membro.servicos_habilitados.length === 0) ? (
+                          <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 flex items-center gap-1">
+                            ✨ Realiza todos os serviços
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-[#8C6D58] bg-[#F6ECE8] px-2.5 py-1 rounded-lg border border-[#EFECE6] flex items-center gap-1">
+                            💅 {membro.servicos_habilitados.length} serviço{membro.servicos_habilitados.length > 1 ? 's' : ''} habilitado{membro.servicos_habilitados.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                        <span className="text-[11px] font-semibold text-[#5A4535] bg-[#FAF9F6] px-2.5 py-1 rounded-lg border border-[#EFECE6] flex items-center gap-1" title="Porcentagem de repasse (Lei do Salão-Parceiro)">
+                          💼 Repasse: <strong>{membro.comissao_padrao_porcentagem ?? 50}%</strong>
+                        </span>
                       </div>
                     </div>
                   );
@@ -1909,6 +1981,20 @@ export const Configuracoes: React.FC = () => {
               </div>
 
               <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Especialidade / Título Profissional</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Especialista Master, Designer de Alongamento, Manicure Russa..."
+                  value={novoMembroEspecialidade} 
+                  onChange={(e) => setNovoMembroEspecialidade(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                />
+                <p className="text-[10px] text-[#8C7A6B] mt-1">
+                  Exibido na página pública de agendamento abaixo do nome da profissional.
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Perfil de acesso</label>
                 <select
                   value={novoMembroPerfil}
@@ -1918,6 +2004,36 @@ export const Configuracoes: React.FC = () => {
                   <option value="profissional">Profissional da equipe</option>
                   <option value="admin">Administradora</option>
                 </select>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-bold text-[#8C7A6B]">Comissão / Repasse Padrão (%)</label>
+                  <span className="text-[10px] text-[#8C6D58] font-bold">Lei do Salão-Parceiro</span>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    min="0"
+                    max="100"
+                    value={novoMembroComissao} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setNovoMembroComissao('');
+                      } else {
+                        const num = Number(val);
+                        setNovoMembroComissao(isNaN(num) ? '' : Math.min(100, Math.max(0, num)));
+                      }
+                    }}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 pr-8 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8C7A6B] pointer-events-none">%</span>
+                </div>
+                <p className="text-[10px] text-[#8C7A6B] mt-1">
+                  Porcentagem bruta repassada à profissional nos relatórios de comissões.
+                </p>
               </div>
 
               <div>
@@ -2089,6 +2205,50 @@ export const Configuracoes: React.FC = () => {
                     <option value="admin">Administradora</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">Especialidade / Título Profissional</label>
+                <input 
+                  type="text" 
+                  placeholder="Ex: Especialista Master, Designer de Alongamento, Manicure Russa..."
+                  value={editEspecialidade} 
+                  onChange={(e) => setEditEspecialidade(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                />
+                <p className="text-[10px] text-[#8C7A6B] mt-1">
+                  Exibido na página pública de agendamento abaixo do nome da profissional.
+                </p>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-bold text-[#8C7A6B]">Comissão / Repasse Padrão (%)</label>
+                  <span className="text-[10px] text-[#8C6D58] font-bold">Lei do Salão-Parceiro</span>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    min="0"
+                    max="100"
+                    value={editComissao} 
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setEditComissao('');
+                      } else {
+                        const num = Number(val);
+                        setEditComissao(isNaN(num) ? '' : Math.min(100, Math.max(0, num)));
+                      }
+                    }}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 pr-8 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#8C7A6B] pointer-events-none">%</span>
+                </div>
+                <p className="text-[10px] text-[#8C7A6B] mt-1">
+                  Porcentagem bruta repassada à profissional nos relatórios de comissões e repasses.
+                </p>
               </div>
 
               {/* Recebimento de Sinal & Pix Próprio */}

@@ -79,7 +79,7 @@ export const dispararNotificacaoBarraStatus = async (
         }
       }
 
-      // Disparo imediato com prioridade alta e foreground=true para banner heads-up garantido
+      // Disparo imediato com prioridade alta para Notification Tray / Shade no Android
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -89,8 +89,8 @@ export const dispararNotificacaoBarraStatus = async (
             channelId: 'agendamentos_nail_v2',
             smallIcon: 'ic_launcher',
             iconColor: '#C71585',
-            foreground: true,
-            schedule: { at: new Date(Date.now() + 50), allowWhileIdle: true },
+            ongoing: false,
+            autoCancel: true,
             extra: { agendamentoId }
           }
         ]
@@ -107,6 +107,21 @@ export const dispararNotificacaoBarraStatus = async (
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         try { await Notification.requestPermission(); } catch (e) {}
+      }
+
+      // Notifica o service worker ativo via postMessage
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'SHOW_NOTIFICATION',
+          title: titulo,
+          options: {
+            body: corpo,
+            icon: './logo.png?v=3',
+            badge: './logo.png?v=3',
+            vibrate: [250, 100, 250],
+            data: { agendamentoId }
+          }
+        });
       }
 
       if (typeof Notification === 'undefined' || Notification.permission === 'granted') {

@@ -368,11 +368,12 @@ export const Confirmacoes: React.FC = () => {
     }
   });
 
-  // Manutenções a Confirmar (ordenadas por data sugerida do menor para o maior)
+  // Manutenções a Confirmar (apenas as que vencem nos próximos 7 dias ou atrasadas para não poluir os campos)
   const manutencoesAConfirmar = useMemo(() => {
     const recs = obterRecomendacoesManutencao();
     return recs
       .filter(r => !dispensadosManutencao.includes(`${r.cliente.id}_${r.servico.id}`))
+      .filter(r => r.diasRestantes <= 7)
       .sort((a, b) => a.dataSugerida.localeCompare(b.dataSugerida));
   }, [obterRecomendacoesManutencao, dispensadosManutencao]);
 

@@ -137,7 +137,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const taxaOcupacao = Math.min(100, Math.round((minutosAgendadosHoje / minutosTotaisExpediente) * 100));
 
   const aguardandoConfirmacao = atendimentosHoje.filter(a => a.status === 'pendente');
-  const recomendacoesManutencao = obterRecomendacoesManutencao().slice(0, 4);
+  // Exibe apenas manutenções a vencer nos próximos 7 dias (1 semana) ou já atrasadas para não poluir
+  const recomendacoesManutencao = obterRecomendacoesManutencao()
+    .filter(r => r.diasRestantes <= 7)
+    .slice(0, 4);
   const listaEsperaAtiva = useMemo(() => {
     return (listaEspera || []).filter(item => item.status === 'aguardando');
   }, [listaEspera]);
@@ -663,7 +666,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </h3>
 
               {recomendacoesManutencao.length === 0 ? (
-                <p className="text-xs text-[#8C7A6B] py-3 text-center">Nenhum cliente com manutenção pendente hoje.</p>
+                <p className="text-xs text-[#8C7A6B] py-3 text-center">Nenhum cliente com manutenção pendente para os próximos 7 dias.</p>
               ) : (
                 <div className="space-y-3">
                   {recomendacoesManutencao.map((rec, idx) => (
@@ -673,8 +676,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <p className="text-[10px] text-[#8C7A6B] mt-0.5">
                           {rec.servico.nome} ({rec.servico.intervalo_manutencao_dias}d)
                         </p>
-                        <span className="inline-block text-[9px] font-medium text-[#D37F64] bg-[#F6ECE8] px-1.5 py-0.5 rounded mt-1">
-                          {rec.diasAtraso === 0 ? 'Vence hoje' : `Atrasada há ${rec.diasAtraso}d`}
+                        <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 ${
+                          rec.diasRestantes < 0
+                            ? 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]'
+                            : rec.diasRestantes === 0
+                              ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]'
+                              : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                        }`}>
+                          {rec.diasRestantes < 0
+                            ? `Atrasada há ${rec.diasAtraso}d`
+                            : rec.diasRestantes === 0
+                              ? 'Vence hoje'
+                              : `Vence em ${rec.diasRestantes}d`}
                         </span>
                       </div>
 

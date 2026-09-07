@@ -12,10 +12,14 @@ import {
   CheckCircle,
   TrendingUp,
   AlertTriangle,
-  Calendar
+  Calendar,
+  ShoppingBag,
+  Crown,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO } from '../types';
+import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
@@ -43,7 +47,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     concluirAtendimento,
     obterServicosDeAgendamento,
     confirmarAcao,
-    mostrarAlerta
+    mostrarAlerta,
+    produtos,
+    reservarRecorrenciaSemanalVip
   } = useAppState();
 
   const [acao, setAcao] = useState<Acao>(null);
@@ -57,6 +63,17 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const servs = agendamento ? obterServicosDeAgendamento(agendamento.id) : [];
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
+
+  // Estados de Produtos na Comanda e Clube VIP
+  const [produtosComanda, setProdutosComanda] = useState<ItemComandaProduto[]>(agendamento?.produtos || []);
+  const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('');
+  const [produtoQtd, setProdutoQtd] = useState(1);
+  const temAssinaturaAtiva = Boolean(cliente?.assinatura && cliente.assinatura.status === 'ativo' && cliente.assinatura.saldo_restante > 0);
+  const [usarSaldoClube, setUsarSaldoClube] = useState(false);
+  const servicoCorrespondente = servs.find(s => 
+    cliente?.assinatura?.itens_saldo?.some(item => item.servico_id === s.id && item.saldo_restante > 0)
+  ) || servs[0];
+  const [servicoAbaterId, setServicoAbaterId] = useState<string>(servicoCorrespondente?.id || '');
 
   // Valor a cobrar de sinal (se o agendamento já possuir valor_sinal > 0, usa ele; senão calcula dos serviços ou sugere 15)
   const [valorSinalCobrar, setValorSinalCobrar] = useState<number>(() => {
@@ -94,15 +111,20 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     if (agendamento?.status) {
       setStatusVisual(agendamento.status);
     }
+    if (agendamento?.produtos) {
+      setProdutosComanda(agendamento.produtos);
+    }
   }, [agendamento?.id, agendamento?.status]);
 
   useEffect(() => {
     if (agendamento) {
-      // Por padrão, sugere o valor total a receber na conclusão
-      const jaPago = agendamento.status === 'confirmado' ? agendamento.valor_sinal : 0;
-      setValorRecebido(agendamento.valor_total - jaPago);
+      // Calcula o valor total a receber considerando sinal, clube vip e produtos de balcão
+      const jaPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
+      const totalProdutos = produtosComanda.reduce((acc, p) => acc + p.subtotal, 0);
+      const valorServico = usarSaldoClube ? 0 : Math.max(0, agendamento.valor_total - jaPago);
+      setValorRecebido(valorServico + totalProdutos);
     }
-  }, [agendamento]);
+  }, [agendamento, produtosComanda, usarSaldoClube]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -398,8 +420,51 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     onClose();
   };
 
+  const handleAdicionarProdutoComanda = () => {
+    if (!produtoSelecionadoId) return;
+    const prod = produtos.find(p => p.id === produtoSelecionadoId);
+    if (!prod) return;
+
+    const qtd = Math.max(1, Number(produtoQtd) || 1);
+    const subtotal = prod.preco_venda * qtd;
+
+    setProdutosComanda(prev => {
+      const existe = prev.find(item => item.produto_id === prod.id);
+      if (existe) {
+        return prev.map(item => item.produto_id === prod.id ? {
+          ...item,
+          quantidade: item.quantidade + qtd,
+          subtotal: (item.quantidade + qtd) * item.preco_unitario
+        } : item);
+      }
+      return [...prev, {
+        id: 'item_' + Date.now(),
+        produto_id: prod.id,
+        nome_produto: prod.nome,
+        quantidade: qtd,
+        preco_unitario: prod.preco_venda,
+        subtotal
+      }];
+    });
+
+    setProdutoSelecionadoId('');
+    setProdutoQtd(1);
+  };
+
+  const handleRemoverProdutoComanda = (produtoId: string) => {
+    setProdutosComanda(prev => prev.filter(p => p.produto_id !== produtoId));
+  };
+
   const handleConcluir = () => {
-    concluirAtendimento(agendamento.id, valorRecebido, metodoPgto);
+    concluirAtendimento(
+      agendamento.id, 
+      valorRecebido, 
+      metodoPgto, 
+      undefined, 
+      produtosComanda.length > 0 ? produtosComanda : undefined, 
+      usarSaldoClube,
+      usarSaldoClube ? servicoAbaterId : undefined
+    );
     setAcao(null);
     onClose();
   };
@@ -423,11 +488,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto"
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto"
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6] my-8 animate-in fade-in zoom-in duration-200"
+        className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-xl border border-[#EFECE6] my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         
@@ -561,6 +626,47 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           );
         })()}
 
+        {/* Card Clube VIP & Recorrência Semanal */}
+        {temAssinaturaAtiva && (
+          <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Crown size={15} className="text-amber-600" />
+                <span className="text-xs font-bold text-amber-950">
+                  Clube VIP: {cliente?.assinatura?.nome_plano}
+                </span>
+              </div>
+              <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
+                {cliente?.assinatura?.saldo_restante} {cliente?.assinatura?.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-amber-900 leading-snug">
+              Os atendimentos deste plano são semanais (mesmo dia e horário).
+            </p>
+
+            {agendamento.status !== 'cancelado' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const res = reservarRecorrenciaSemanalVip(agendamento.id);
+                  if (!res.success) {
+                    mostrarAlerta({
+                      titulo: 'Recorrência Semanal VIP',
+                      mensagem: res.mensagem,
+                      tipo: 'info'
+                    });
+                  }
+                }}
+                className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
+              >
+                <Crown size={14} />
+                <span>Reservar Sessões Semanais do Plano</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Lembretes WhatsApp e Cobrança de Sinal */}
         {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
           <div className="space-y-3 mb-5">
@@ -661,7 +767,174 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         {/* Concluir inline */}
         {acao === 'concluir' && (
-          <div className="p-3 border border-[#8C6D58]/20 bg-[#FAF6F0] rounded-xl space-y-3 mb-4">
+          <div className="p-3 border border-[#8C6D58]/25 bg-[#FAF6F0] rounded-xl space-y-3 mb-4 animate-in fade-in duration-200">
+            {/* Banner Clube VIP (se tiver assinatura ativa) */}
+            {temAssinaturaAtiva && (
+              <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Crown size={15} className="text-amber-600" />
+                    <span className="text-xs font-bold text-amber-900">
+                      Clube VIP: {cliente?.assinatura?.nome_plano}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold bg-amber-200/80 text-amber-950 px-2 py-0.5 rounded-full">
+                    {cliente?.assinatura?.saldo_restante} {cliente?.assinatura?.saldo_restante === 1 ? 'sessão restante' : 'sessões restantes'}
+                  </span>
+                </div>
+
+                {/* Saldos específicos por serviço */}
+                {cliente?.assinatura?.itens_saldo && cliente.assinatura.itens_saldo.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {cliente.assinatura.itens_saldo.map(item => (
+                      <span 
+                        key={item.servico_id}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-bold border ${
+                          item.saldo_restante > 0 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-gray-100 text-gray-400 border-gray-200'
+                        }`}
+                      >
+                        {item.nome_servico}: {item.saldo_restante}/{item.total_mes}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <label className="flex items-center gap-2 cursor-pointer pt-1 border-t border-amber-200/50">
+                  <input
+                    type="checkbox"
+                    checked={usarSaldoClube}
+                    onChange={(e) => setUsarSaldoClube(e.target.checked)}
+                    className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                  />
+                  <span className="text-xs text-amber-950 font-medium">
+                    Debitar atendimento do plano do Clube (Isenta cobrança do serviço)
+                  </span>
+                </label>
+
+                {usarSaldoClube && cliente?.assinatura?.itens_saldo && cliente.assinatura.itens_saldo.length > 1 && (
+                  <div className="pt-1">
+                    <label className="block text-[10px] font-bold text-amber-900 mb-1">Qual serviço abater do saldo?</label>
+                    <select
+                      value={servicoAbaterId}
+                      onChange={(e) => setServicoAbaterId(e.target.value)}
+                      className="w-full text-xs bg-white border border-amber-300 rounded-lg p-1.5 text-amber-950 font-semibold"
+                    >
+                      {cliente.assinatura.itens_saldo.map(item => (
+                        <option key={item.servico_id} value={item.servico_id} disabled={item.saldo_restante <= 0}>
+                          {item.nome_servico} ({item.saldo_restante} restantes)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* PDV Balcão: Adicionar produtos à comanda */}
+            <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <ShoppingBag size={14} className="text-[#8C6D58]" />
+                  <span className="text-[10px] font-bold text-[#8C6D58] uppercase tracking-wider">
+                    Produtos de Balcão (PDV)
+                  </span>
+                </div>
+                <span className="text-[10px] text-[#8C7A6B]">Home care e óleos</span>
+              </div>
+
+              {/* Seletor de produtos em 2 linhas para nunca cortar botões */}
+              <div className="space-y-2">
+                <select
+                  value={produtoSelecionadoId}
+                  onChange={(e) => setProdutoSelecionadoId(e.target.value)}
+                  className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs bg-[#FAF9F6] text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                >
+                  <option value="">+ Selecionar produto em estoque...</option>
+                  {produtos.filter(p => p.ativo !== false && p.estoque_atual > 0).map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome} (R$ {p.preco_venda.toFixed(2)} - {p.estoque_atual} un)
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-bold text-[#8C7A6B] uppercase">Qtd:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={produtoQtd}
+                      onChange={(e) => setProdutoQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-14 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-center font-bold bg-[#FAF9F6] text-[#5A4535]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAdicionarProdutoComanda}
+                    disabled={!produtoSelecionadoId}
+                    className="flex-1 py-1.5 px-3 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-40 text-white rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Plus size={13} />
+                    <span>Adicionar à Comanda</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Itens adicionados à comanda */}
+              {produtosComanda.length > 0 && (
+                <div className="space-y-1 pt-1.5 border-t border-[#FAF9F6]">
+                  {produtosComanda.map(item => (
+                    <div key={item.produto_id} className="flex items-center justify-between text-xs bg-[#FAF9F6] p-1.5 rounded-lg border border-[#EFECE6]/60">
+                      <div>
+                        <span className="font-semibold text-[#5A4535]">{item.quantidade}x {item.nome_produto}</span>
+                        <span className="text-[10px] text-[#8C7A6B] block">R$ {item.preco_unitario.toFixed(2)} un</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-[#5A4535] font-serif">R$ {item.subtotal.toFixed(2)}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoverProdutoComanda(item.produto_id)}
+                          className="text-red-500 hover:text-red-700 p-1"
+                          title="Remover produto da comanda"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Resumo da Comanda */}
+            <div className="bg-white/80 p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-xs">
+              <div className="flex justify-between text-[#8C7A6B]">
+                <span>Serviço realizado:</span>
+                <span className={usarSaldoClube ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
+                  {formatarMoeda(agendamento.valor_total)}
+                </span>
+              </div>
+              {usarSaldoClube && (
+                <div className="flex justify-between text-amber-800 font-medium">
+                  <span>Plano Clube VIP:</span>
+                  <span>R$ 0,00 (1 sessão debitada)</span>
+                </div>
+              )}
+              {agendamento.status === 'confirmado' && agendamento.valor_sinal > 0 && !usarSaldoClube && (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Sinal já pago:</span>
+                  <span>-{formatarMoeda(agendamento.valor_sinal)}</span>
+                </div>
+              )}
+              {produtosComanda.length > 0 && (
+                <div className="flex justify-between text-[#8C6D58] font-semibold">
+                  <span>Produtos na comanda:</span>
+                  <span>+{formatarMoeda(produtosComanda.reduce((acc, p) => acc + p.subtotal, 0))}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Forma de Pagamento e Valor Recebido */}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">Forma de pagamento</label>
@@ -677,17 +950,18 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">Valor recebido</label>
+                <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">Valor a receber (R$)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={valorRecebido}
                   onChange={(e) => setValorRecebido(Number(e.target.value))}
-                  className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 bg-white text-[#5A4535]"
+                  className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 bg-white text-[#5A4535] font-bold font-serif"
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 text-xs">
+
+            <div className="flex justify-end gap-2 text-xs pt-1">
               <button 
                 type="button" onClick={() => { setAcao(null); setStatusVisual(agendamento.status); }}
                 className="px-3 py-1.5 text-[#8C6D58] hover:bg-[#F3ECE0] rounded-lg font-semibold"
@@ -696,9 +970,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </button>
               <button 
                 type="button" onClick={handleConcluir}
-                className="px-3 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-lg font-semibold shadow-sm"
+                className="px-4 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-lg font-semibold shadow-sm flex items-center gap-1.5"
               >
-                Concluir e registrar
+                <CheckCircle size={14} />
+                <span>Concluir e registrar</span>
               </button>
             </div>
           </div>

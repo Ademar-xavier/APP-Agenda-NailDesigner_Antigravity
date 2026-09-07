@@ -14,13 +14,23 @@ import {
   ModalAlertaConfig,
   NotificacaoClienteAcao,
   AvisoCliente,
-  REGRA_DEVOLUCAO_PADRAO
+  REGRA_DEVOLUCAO_PADRAO,
+  Anamnese,
+  Produto,
+  ItemComandaProduto,
+  PlanoAssinatura,
+  AssinaturaCliente,
+  FechamentoComissao
 } from '../types';
+import { dbSetAll, dbSetItem, dbDeleteItem, STORES, migrarLocalStorageParaIndexedDB } from '../services/dbStorage';
+import { registrarListenerSync, enfileirarTarefaSync, processarFilaOffline } from '../services/syncQueue';
 import { 
   supabase,
   salvarClienteSupabase,
   deletarClienteSupabase,
   salvarServicoSupabase,
+  deletarServicoSupabase,
+  decodeServicoDescricao,
   salvarAgendamentoSupabase,
   atualizarStatusAgendamentoSupabase,
   atualizarValorSinalAgendamentoSupabase,
@@ -134,7 +144,15 @@ interface AppStateContextType {
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
-  concluirAtendimento: (id: string, valorRestante: number, metodo: MetodoPagamento, dataProximaManutencao?: string) => void;
+  concluirAtendimento: (
+    id: string, 
+    valorRestante: number, 
+    metodo: MetodoPagamento, 
+    dataProximaManutencao?: string,
+    produtosVendidos?: ItemComandaProduto[],
+    pagoComClube?: boolean,
+    servicoAbaterId?: string
+  ) => void;
   
   // Ações de Lista de Espera
   addListaEspera: (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>) => ListaEspera;
@@ -152,6 +170,7 @@ interface AppStateContextType {
   desconectarGoogleAgenda: () => void;
   sincronizarGoogleAgenda: (eventos: any[]) => void;
   limparAgendamentosSimuladosGoogle: () => void;
+  deduplicarClientes: () => Promise<{ removidos: number; unificados: number }>;
 
   // Sincronização em Nuvem (Supabase)
   isSyncingCloud: boolean;
@@ -197,8 +216,8 @@ interface AppStateContextType {
     servico: Servico; 
     dataSugerida: string; 
     diasAtraso: number;
-    diasRestantes?: number;
-    statusManutencao?: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
+    diasRestantes: number;
+    statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
   }[];
   obterProximoHorarioLivre: (data: string, duracaoMinutos: number) => string | null;
   notificacaoGlobal: { mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null;
@@ -222,6 +241,35 @@ interface AppStateContextType {
   avisosNaoLidos: AvisoCliente[];
   marcarAvisoComoLido: (idOuRefId: string) => void;
   marcarTodosAvisosComoLidos: () => void;
+
+  // Produtos e PDV de Balcão
+  produtos: Produto[];
+  addProduto: (produto: Omit<Produto, 'id'>) => void;
+  updateProduto: (id: string, produto: Partial<Produto>) => void;
+  deleteProduto: (id: string) => void;
+  darBaixaEstoqueProduto: (produtoId: string, quantidade: number) => void;
+
+  // Anamnese Digital
+  salvarAnamneseCliente: (clienteId: string, anamnese: Anamnese) => void;
+
+  // Clube de Assinatura Recorrente
+  planosAssinatura: PlanoAssinatura[];
+  addPlanoAssinatura: (plano: Omit<PlanoAssinatura, 'id'>) => void;
+  updatePlanoAssinatura: (id: string, plano: Partial<PlanoAssinatura>) => void;
+  deletePlanoAssinatura: (id: string) => void;
+  vincularAssinaturaCliente: (clienteId: string, planoId: string) => void;
+  cancelarAssinaturaCliente: (clienteId: string) => void;
+  abaterSaldoAssinatura: (clienteId: string, servicoId?: string) => boolean;
+  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string) => { success: boolean; criados: number; mensagem: string };
+
+  // Comissões (Lei do Salão-Parceiro)
+  fechamentosComissao: FechamentoComissao[];
+  salvarFechamentoComissao: (fechamento: Omit<FechamentoComissao, 'id'>) => void;
+  deleteFechamentoComissao: (fechamentoId: string) => void;
+
+  // Sincronização e Conectividade Offline
+  syncStatus: { online: boolean; pendentes: number; sincronizando: boolean };
+  processarFilaSync: () => void;
 }
 
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
@@ -245,8 +293,8 @@ const clientesIniciais: Cliente[] = [
 
 // Equipe inicial com dados reais e senha padrão para comercialização
 const equipeInicial: Usuario[] = [
-  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', ativo: true, senha: 'admin' },
-  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', ativo: true, senha: 'admin' }
+  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', especialidade: 'Especialista Master', ativo: true, senha: 'admin' },
+  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', especialidade: 'Designer', ativo: true, senha: 'admin' }
 ];
 
 // Agendamentos, pagamentos e lista de espera iniciam vazios (alimentados pelo banco de dados da nuvem)
@@ -623,6 +671,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (parsed && parsed.length > 0) {
           return parsed.map(u => ({ 
             ...u, 
+            especialidade: u.especialidade || (u.perfil === 'admin' ? 'Especialista Master' : 'Designer'),
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin') 
           }));
         }
@@ -632,11 +681,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     return equipeInicial.map(u => ({
       ...u,
+      especialidade: u.especialidade || (u.perfil === 'admin' ? 'Especialista Master' : 'Designer'),
       senha: u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : (u.senha || 'admin')
     }));
   });
 
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null);
+  const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
+    try {
+      const saved = localStorage.getItem('nail_current_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id) return parsed;
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  // Salva a sessão do usuário no localStorage para não perder o login ao minimizar o app no celular
+  useEffect(() => {
+    try {
+      if (currentUser) {
+        localStorage.setItem('nail_current_user', JSON.stringify(currentUser));
+      } else {
+        localStorage.removeItem('nail_current_user');
+      }
+    } catch (e) {}
+  }, [currentUser]);
 
   const [despesas, setDespesas] = useState<Despesa[]>(() => {
     const saved = localStorage.getItem('nail_despesas');
@@ -702,7 +772,83 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     ];
   });
 
-  // Salvar no LocalStorage sempre que houver modificações
+  // Produtos e Balcão de Vendas (PDV)
+  const [produtos, setProdutos] = useState<Produto[]>(() => {
+    try {
+      const saved = localStorage.getItem('nail_produtos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { id: 'prod_1', nome: 'Óleo Hidratante de Cutículas (Caneta)', marca: 'O.P.I', categoria: 'Home Care', preco_custo: 8.0, preco_venda: 22.0, estoque_atual: 15, estoque_minimo: 5, ativo: true },
+      { id: 'prod_2', nome: 'Creme Reparador de Mãos e Pés 60g', marca: 'Granado', categoria: 'Hidratação', preco_custo: 14.5, preco_venda: 35.0, estoque_atual: 8, estoque_minimo: 3, ativo: true },
+      { id: 'prod_3', nome: 'Sérum Fortalecedor com Queratina', marca: 'D&Z', categoria: 'Tratamento', preco_custo: 18.0, preco_venda: 45.0, estoque_atual: 10, estoque_minimo: 4, ativo: true },
+      { id: 'prod_4', nome: 'Lixa Diamantada Profissional', marca: 'O.P.I', categoria: 'Acessórios', preco_custo: 3.5, preco_venda: 12.0, estoque_atual: 25, estoque_minimo: 8, ativo: true }
+    ];
+  });
+
+  // Clube de Assinatura Recorrente de Unhas
+  const [planosAssinatura, setPlanosAssinatura] = useState<PlanoAssinatura[]>(() => {
+    try {
+      const saved = localStorage.getItem('nail_planos_assinatura');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      { id: 'plano_1', nome: 'Clube VIP Manicure Semanal', descricao: '4 atendimentos no mês de Manicure Tradicional ou Mão Simples', preco_mensal: 150.0, qtd_procedimentos_mes: 4, servicos_permitidos_ids: ['s9', 's8'], validade_dias: 30, ativo: true },
+      { id: 'plano_2', nome: 'Clube VIP Pé & Mão Completo', descricao: '4 atendimentos no mês com Pé e Mão garantidos', preco_mensal: 280.0, qtd_procedimentos_mes: 4, servicos_permitidos_ids: ['s4', 's8', 's5'], validade_dias: 30, ativo: true },
+      { id: 'plano_3', nome: 'Clube Manutenção de Alongamento', descricao: '2 manutenções mensais inclusas com esmaltação', preco_mensal: 190.0, qtd_procedimentos_mes: 2, servicos_permitidos_ids: ['s3', 's2'], validade_dias: 30, ativo: true }
+    ];
+  });
+
+  // Comissões e Repasses (Salão-Parceiro)
+  const [fechamentosComissao, setFechamentosComissao] = useState<FechamentoComissao[]>(() => {
+    try {
+      const saved = localStorage.getItem('nail_fechamentos_comissao');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  // Status de Conectividade e Fila Offline (SyncQueue)
+  const [syncStatus, setSyncStatus] = useState<{ online: boolean; pendentes: number; sincronizando: boolean }>({
+    online: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    pendentes: 0,
+    sincronizando: false
+  });
+
+  // Migração para IndexedDB e ouvinte de conexão na montagem
+  useEffect(() => {
+    migrarLocalStorageParaIndexedDB();
+    const unsub = registrarListenerSync((status) => {
+      setSyncStatus(status);
+    });
+    return () => unsub();
+  }, []);
+
+  // Salvar no LocalStorage e no IndexedDB sempre que houver modificações
+  useEffect(() => {
+    localStorage.setItem('nail_produtos', JSON.stringify(produtos));
+    dbSetAll(STORES.PRODUTOS, produtos);
+  }, [produtos]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_planos_assinatura', JSON.stringify(planosAssinatura));
+    dbSetAll(STORES.PLANOS_ASSINATURA, planosAssinatura);
+  }, [planosAssinatura]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_fechamentos_comissao', JSON.stringify(fechamentosComissao));
+    dbSetAll(STORES.COMISSOES, fechamentosComissao);
+  }, [fechamentosComissao]);
+
   useEffect(() => {
     localStorage.setItem('nail_app_seeded', 'true');
   }, []);
@@ -814,10 +960,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { sucesso: false, mensagem: 'Não foi possível conectar ao banco Supabase.' };
       }
 
-      // 1. Clientes da Nuvem
+      // 1. Clientes da Nuvem (mescla inteligente preservando anamnese e assinatura)
       if (dados.clientes && dados.clientes.length > 0) {
-        setClientes(dados.clientes);
-        try { localStorage.setItem('nail_clientes', JSON.stringify(dados.clientes)); } catch (e) {}
+        setClientes(prevClientes => {
+          const clientesMesclados = dados.clientes.map((cNu: any) => {
+            const cLocal = prevClientes.find(p => p.id === cNu.id);
+            const anamnese = cNu.anamnese || cNu.preferencias?.anamnese || cLocal?.anamnese;
+            const assinatura = cNu.assinatura || cNu.preferencias?.assinatura || cLocal?.assinatura;
+
+            return {
+              ...cNu,
+              anamnese,
+              assinatura
+            };
+          });
+
+          try { localStorage.setItem('nail_clientes', JSON.stringify(clientesMesclados)); } catch (e) {}
+          dbSetAll(STORES.CLIENTES, clientesMesclados);
+
+          return clientesMesclados;
+        });
       }
 
       // 2. Agendamentos da Nuvem
@@ -850,22 +1012,32 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_lista_espera', JSON.stringify(dados.listaEspera)); } catch (e) {}
       }
 
-      // 4. Serviços da Nuvem (com intervalo de manutenção preservado)
+      // 4. Serviços da Nuvem (com regras de sinal e intervalo de manutenção preservados)
       if (dados.servicos && dados.servicos.length > 0) {
-        const servicosFormatados = dados.servicos.map((s: any) => {
-          const dias = Number(s.intervalo_manutencao_dias !== undefined ? s.intervalo_manutencao_dias : (s.retorno_dias ?? 0));
-          return {
-            ...s,
-            duracao_minutos: Number(s.duracao_minutos) || 60,
-            preco: Number(s.preco) || 0,
-            intervalo_manutencao_dias: dias,
-            retorno_dias: dias,
-            sinal_tipo: s.sinal_tipo || 'nenhum',
-            sinal_valor: Number(s.sinal_valor) || 0
-          };
+        setServicos(prevServicos => {
+          const servicosFormatados = dados.servicos
+            .filter((s: any) => s.ativo !== false)
+            .map((s: any) => {
+              const { descricao: cleanDesc, extra } = decodeServicoDescricao(s.descricao);
+              const dias = Number(s.intervalo_manutencao_dias !== undefined ? s.intervalo_manutencao_dias : (s.retorno_dias ?? 0));
+              const local = prevServicos.find(p => p.id === s.id);
+              return {
+                ...s,
+                descricao: cleanDesc,
+                duracao_minutos: Number(s.duracao_minutos) || 60,
+                preco: Number(s.preco) || 0,
+                intervalo_manutencao_dias: dias,
+                retorno_dias: dias,
+                sinal_tipo: extra.sinal_tipo || s.sinal_tipo || local?.sinal_tipo || 'nenhum',
+                sinal_valor: Number(extra.sinal_valor !== undefined ? extra.sinal_valor : (s.sinal_valor !== undefined ? s.sinal_valor : (local?.sinal_valor ?? 0))),
+                materiais_utilizados: extra.materiais_utilizados || s.materiais_utilizados || local?.materiais_utilizados || [],
+                servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || []
+              };
+            });
+          try { localStorage.setItem('nail_servicos', JSON.stringify(servicosFormatados)); } catch (e) {}
+          dbSetAll(STORES.SERVICOS, servicosFormatados);
+          return servicosFormatados;
         });
-        setServicos(servicosFormatados);
-        try { localStorage.setItem('nail_servicos', JSON.stringify(servicosFormatados)); } catch (e) {}
       }
 
       // 5. Usuários / Equipe da Nuvem (com serviços habilitados preservados de config_salao e usuarios)
@@ -1468,6 +1640,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const logout = () => {
+    try { localStorage.removeItem('nail_current_user'); } catch (e) {}
     setCurrentUser(null);
   };
 
@@ -1594,18 +1767,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteServico = async (id: string) => {
     limparFocoAtivo();
-    let servicoDesativado: Servico | undefined;
     setServicos(prev => {
-      const next = prev.map(s => s.id === id ? { ...s, ativo: false } : s);
-      servicoDesativado = next.find(s => s.id === id);
+      const next = prev.filter(s => s.id !== id);
       try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
+      dbDeleteItem(STORES.SERVICOS, id);
       return next;
     });
-    if (servicoDesativado) {
-      const res = await salvarServicoSupabase(servicoDesativado);
-      if (res.sucesso) {
-        mostrarNotificacaoGlobal('✅ Serviço desativado e verificado na nuvem!');
-      }
+
+    // Remove referências do serviço excluído de qualquer plano VIP existente
+    setPlanosAssinatura(prev => {
+      const atualizados = prev.map(p => {
+        let mudou = false;
+        let itens = p.itens_servicos;
+        if (itens && itens.some(i => i.servico_id === id)) {
+          itens = itens.filter(i => i.servico_id !== id);
+          mudou = true;
+        }
+        let permitidos = p.servicos_permitidos_ids;
+        if (permitidos && permitidos.includes(id)) {
+          permitidos = permitidos.filter(sid => sid !== id);
+          mudou = true;
+        }
+        return mudou ? { ...p, itens_servicos: itens, servicos_permitidos_ids: permitidos } : p;
+      });
+      return atualizados;
+    });
+
+    const res = await deletarServicoSupabase(id);
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal('✅ Serviço excluído definitivamente do catálogo e da nuvem!');
+    } else {
+      mostrarNotificacaoGlobal('✅ Serviço excluído localmente!');
     }
   };
 
@@ -1632,8 +1824,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteDespesa = (id: string) => {
     limparFocoAtivo();
+    const despesaParaDeletar = despesas.find(d => d.id === id);
     setDespesas(prev => prev.filter(d => d.id !== id));
     deletarDespesaSupabase(id);
+
+    // Se for uma despesa decorrente de comissão/repasse pago, estorna o fechamento de comissão correspondente
+    if (despesaParaDeletar) {
+      setFechamentosComissao(prev => prev.filter(f => {
+        if (despesaParaDeletar.fechamento_id && f.id === despesaParaDeletar.fechamento_id) {
+          return false;
+        }
+        if (despesaParaDeletar.categoria === 'Comissões' && 
+            despesaParaDeletar.descricao.includes(f.nome_profissional) && 
+            despesaParaDeletar.descricao.includes(f.periodo_inicio)) {
+          return false;
+        }
+        return true;
+      }));
+    }
+
     mostrarNotificacaoGlobal('✅ Despesa removida da nuvem!');
   };
 
@@ -1752,33 +1961,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     mostrarNotificacaoGlobal('✅ Material removido da nuvem!');
   };
 
-  // --- Lógica de Conflitos (100% à prova de distorção de fuso horário UTC vs Local) ---
-  const checkConflitoHorario = (inicioStr: string, fimStr: string, profissionalId: string, ignorarAgendamentoId?: string) => {
-    const normalizarDataHora = (str: string): number => {
-      if (!str) return 0;
-      const limpo = str.replace('Z', '').split('+')[0];
-      const [data, hora] = limpo.split('T');
-      if (!data || !hora) return 0;
-      const [ano, mes, dia] = data.split('-').map(Number);
-      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
-      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
-    };
-
-    const inicio = normalizarDataHora(inicioStr);
-    const fim = normalizarDataHora(fimStr);
-    
-    return agendamentos.some(a => {
-      if (a.id === ignorarAgendamentoId) return false;
-      if (a.status === 'cancelado' || a.status === 'falta') return false;
-      if (a.profissional_id !== profissionalId) return false;
-      
-      const aInicio = normalizarDataHora(a.inicio);
-      const aFim = normalizarDataHora(a.fim);
-      
-      return Math.max(inicio, aInicio) < Math.min(fim, aFim);
-    });
-  };
-
   const obterServicosDeAgendamento = (agendamentoId: string): Servico[] => {
     let ids = itensAgendamento[agendamentoId] || [];
     if (ids.length === 0) {
@@ -1803,13 +1985,51 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return expandedServs;
   };
 
+  // --- Lógica de Conflitos (100% à prova de distorção de fuso horário UTC vs Local) ---
+  const checkConflitoHorario = (inicioStr: string, fimStr: string, profissionalId: string, ignorarAgendamentoId?: string) => {
+    const normalizarDataHora = (str: string): number => {
+      if (!str) return 0;
+      const limpo = str.replace('Z', '').split('+')[0];
+      const [data, hora] = limpo.split('T');
+      if (!data || !hora) return 0;
+      const [ano, mes, dia] = data.split('-').map(Number);
+      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
+      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
+    };
+
+    const inicio = normalizarDataHora(inicioStr);
+    let fim = normalizarDataHora(fimStr);
+    if (!fim || fim <= inicio) {
+      fim = inicio + 30 * 60000;
+    }
+    
+    return agendamentos.some(a => {
+      if (a.id === ignorarAgendamentoId) return false;
+      if (a.status === 'cancelado' || a.status === 'falta') return false;
+      if (a.profissional_id !== profissionalId) return false;
+      
+      const aInicio = normalizarDataHora(a.inicio);
+      let aFim = normalizarDataHora(a.fim);
+      if (!aFim || aFim <= aInicio) {
+        const sServs = obterServicosDeAgendamento(a.id);
+        const dur = sServs.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0) || 60;
+        aFim = aInicio + dur * 60000;
+      }
+      
+      return Math.max(inicio, aInicio) < Math.min(fim, aFim);
+    });
+  };
+
   // --- Ações de Agendamento ---
   const addAgendamento = (
     novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
     servicosSelecionados: string[]
   ) => {
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
-    const duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
+    let duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
+    if (duracaoTotal <= 0) {
+      duracaoTotal = 60;
+    }
     
     const dataInicio = new Date(novoAgendamento.inicio);
     const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
@@ -1858,6 +2078,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
     mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
 
+    // Regra de Negócio: Se já foi criado confirmado ou com clube VIP, agenda as sessões semanais
+    if (agendamento.status === 'confirmado' || agendamento.pago_com_clube) {
+      setTimeout(() => {
+        reservarRecorrenciaSemanalVip(id);
+      }, 350);
+    }
+
     return { success: true, agendamento };
   };
 
@@ -1893,6 +2120,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return prev;
       });
+
+      // Regra de Negócio: Se a cliente possui Clube VIP ativo, reserva os horários semanais no mesmo dia e horário
+      setTimeout(() => {
+        reservarRecorrenciaSemanalVip(id);
+      }, 300);
     } else if (status === 'cancelado') {
       setPagamentos(prev => prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
         ? { ...p, status: 'estornado' }
@@ -2014,10 +2246,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     agendamentoId: string, 
     valorRestante: number, 
     metodo: MetodoPagamento,
-    dataProximaManutencao?: string
+    dataProximaManutencao?: string,
+    produtosVendidos?: ItemComandaProduto[],
+    pagoComClube?: boolean,
+    servicoAbaterId?: string
   ) => {
-    setAgendamentos(prev => prev.map(a => a.id === agendamentoId ? { ...a, status: 'concluido' } : a));
+    // 1. Atualizar agendamento com status concluído, produtos e clube
+    setAgendamentos(prev => {
+      const atualizados = prev.map(a => {
+        if (a.id === agendamentoId) {
+          const totalAdicionalProdutos = produtosVendidos ? produtosVendidos.reduce((acc, p) => acc + p.subtotal, 0) : 0;
+          const novoValorTotal = pagoComClube 
+            ? totalAdicionalProdutos 
+            : (a.valor_total + totalAdicionalProdutos);
 
+          const atualizado: Agendamento = {
+            ...a,
+            status: 'concluido',
+            produtos: produtosVendidos && produtosVendidos.length > 0 ? produtosVendidos : undefined,
+            pago_com_clube: pagoComClube,
+            valor_total: novoValorTotal
+          };
+          salvarAgendamentoSupabase(atualizado);
+          return atualizado;
+        }
+        return a;
+      });
+      return atualizados;
+    });
+
+    // 2. Dar baixa no estoque de cada produto vendido
+    if (produtosVendidos && produtosVendidos.length > 0) {
+      produtosVendidos.forEach(item => {
+        darBaixaEstoqueProduto(item.produto_id, item.quantidade);
+      });
+    }
+
+    // 3. Se foi pago com clube, abater saldo do cliente
+    if (pagoComClube) {
+      const ag = agendamentos.find(a => a.id === agendamentoId);
+      const servs = obterServicosDeAgendamento(agendamentoId);
+      if (ag?.cliente_id) {
+        abaterSaldoAssinatura(ag.cliente_id, servicoAbaterId || servs[0]?.id);
+      }
+    }
+
+    // 4. Registrar pagamento do valor recebido (restante do serviço + produtos)
     if (valorRestante > 0) {
       const pagFinal: Pagamento = {
         id: 'p_' + gerarId(),
@@ -2118,7 +2392,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
           const diffMs = dataSugZero.getTime() - hojeZero.getTime();
           const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
-          const diasAtraso = -diasRestantes;
+          const diasAtraso = diasRestantes < 0 ? Math.abs(diasRestantes) : 0;
 
           let statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada' = 'programada';
           if (diasRestantes < 0) {
@@ -2127,6 +2401,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             statusManutencao = 'hoje';
           } else if (diasRestantes <= 7) {
             statusManutencao = 'em_breve';
+          } else {
+            statusManutencao = 'programada';
           }
 
           recomendacoes.push({
@@ -2136,7 +2412,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               intervalo_manutencao_dias: intervaloDias
             },
             dataSugerida: dataSugerida.toISOString().split('T')[0],
-            diasAtraso: diasAtraso > 0 ? diasAtraso : 0,
+            diasAtraso,
             diasRestantes,
             statusManutencao
           });
@@ -2231,17 +2507,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const sincronizarGoogleAgenda = (eventos: any[]) => {
     let importados = 0;
+    const clientesLocais = [...clientes];
     eventos.forEach(evento => {
       let clientNome = (evento.clienteNome || 'Cliente').trim();
       let clientFone = evento.clienteTelefone ? evento.clienteTelefone.replace(/\D/g, '') : '';
       let servId = evento.servicoId || 's1';
 
-      // 1. Encontrar ou cadastrar cliente
-      let client = clientes.find(c => {
+      // 1. Encontrar ou cadastrar cliente usando a lista acumuladora local
+      let client = clientesLocais.find(c => {
         if (clientFone && clientFone.length >= 8) {
           return c.telefone.replace(/\D/g, '').endsWith(clientFone.slice(-8));
         }
-        return c.nome.toLowerCase() === clientNome.toLowerCase();
+        return c.nome.trim().toLowerCase() === clientNome.toLowerCase();
       });
 
       if (!client) {
@@ -2250,6 +2527,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           telefone: evento.clienteTelefone || '',
           consentimento_imagem: false
         });
+        clientesLocais.push(client);
       }
 
       // 2. Prevenir duplicações: não insere se já existe agendamento nessa data/hora para o mesmo cliente ou mesmo Google Event ID
@@ -2277,6 +2555,506 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setGoogleLastSync(new Date().toLocaleString('pt-BR'));
     localStorage.setItem('nail_google_last_sync', new Date().toLocaleString('pt-BR'));
     mostrarNotificacaoGlobal(`✅ ${importados} compromisso(s) real(is) importado(s) sem duplicações!`);
+  };
+
+  const deduplicarClientes = async (): Promise<{ removidos: number; unificados: number }> => {
+    // 1. Agrupar clientes por nome normalizado (ou telefone)
+    const grupos = new Map<string, Cliente[]>();
+    clientes.forEach(c => {
+      const key = c.nome.trim().toLowerCase();
+      if (!grupos.has(key)) grupos.set(key, []);
+      grupos.get(key)!.push(c);
+    });
+
+    let totalRemovidos = 0;
+    let gruposUnificados = 0;
+    const idsParaExcluir: string[] = [];
+    const mapaReatribuicao = new Map<string, string>(); // dupId -> primaryId
+    let clientesAtualizados = [...clientes];
+
+    for (const [_, lista] of grupos.entries()) {
+      if (lista.length <= 1) continue;
+
+      gruposUnificados++;
+
+      // Escolhe o cliente principal:
+      // 1. Tem assinatura ativa
+      // 2. Tem mais agendamentos vinculados
+      // 3. Tem telefone preenchido
+      // 4. Mais antigo (id ou criado_em)
+      const ordenados = [...lista].sort((a, b) => {
+        const aTemAssinatura = a.assinatura?.status === 'ativo' ? 2 : (a.assinatura ? 1 : 0);
+        const bTemAssinatura = b.assinatura?.status === 'ativo' ? 2 : (b.assinatura ? 1 : 0);
+        if (aTemAssinatura !== bTemAssinatura) return bTemAssinatura - aTemAssinatura;
+
+        const aAgs = agendamentos.filter(ag => ag.cliente_id === a.id).length;
+        const bAgs = agendamentos.filter(ag => ag.cliente_id === b.id).length;
+        if (aAgs !== bAgs) return bAgs - aAgs;
+
+        const aTemTel = a.telefone?.replace(/\D/g, '').length ? 1 : 0;
+        const bTemTel = b.telefone?.replace(/\D/g, '').length ? 1 : 0;
+        if (aTemTel !== bTemTel) return bTemTel - aTemTel;
+
+        return a.id.localeCompare(b.id);
+      });
+
+      const principal = ordenados[0];
+      const duplicados = ordenados.slice(1);
+
+      let mudouPrincipal = false;
+      let principalMerged = { ...principal };
+      duplicados.forEach(dup => {
+        if (!principalMerged.telefone && dup.telefone) {
+          principalMerged.telefone = dup.telefone;
+          mudouPrincipal = true;
+        }
+        if (!principalMerged.email && dup.email) {
+          principalMerged.email = dup.email;
+          mudouPrincipal = true;
+        }
+        if (!principalMerged.aniversario && dup.aniversario) {
+          principalMerged.aniversario = dup.aniversario;
+          mudouPrincipal = true;
+        }
+        if (!principalMerged.alergias && dup.alergias) {
+          principalMerged.alergias = dup.alergias;
+          mudouPrincipal = true;
+        }
+        if (!principalMerged.observacoes && dup.observacoes) {
+          principalMerged.observacoes = dup.observacoes;
+          mudouPrincipal = true;
+        }
+        idsParaExcluir.push(dup.id);
+        mapaReatribuicao.set(dup.id, principal.id);
+        totalRemovidos++;
+      });
+
+      if (mudouPrincipal) {
+        clientesAtualizados = clientesAtualizados.map(c => c.id === principal.id ? principalMerged : c);
+        salvarClienteSupabase(principalMerged);
+      }
+    }
+
+    if (totalRemovidos === 0) {
+      mostrarNotificacaoGlobal('✨ Nenhum cliente duplicado encontrado. O banco de clientes já está 100% limpo!');
+      return { removidos: 0, unificados: 0 };
+    }
+
+    // 2. Reatribuir agendamentos dos IDs duplicados para o ID principal
+    let agendamentosAtualizados = agendamentos.map(a => {
+      if (mapaReatribuicao.has(a.cliente_id)) {
+        const novoId = mapaReatribuicao.get(a.cliente_id)!;
+        const atualizado = { ...a, cliente_id: novoId };
+        salvarAgendamentoSupabase(atualizado, itensAgendamento[a.id] || []);
+        return atualizado;
+      }
+      return a;
+    });
+
+    // 3. Excluir duplicados do Supabase
+    for (const dupId of idsParaExcluir) {
+      await deletarClienteSupabase(dupId);
+    }
+
+    // 4. Filtrar clientes locais
+    clientesAtualizados = clientesAtualizados.filter(c => !idsParaExcluir.includes(c.id));
+    setClientes(clientesAtualizados);
+    setAgendamentos(agendamentosAtualizados);
+
+    try { localStorage.setItem('nail_clientes', JSON.stringify(clientesAtualizados)); } catch (e) {}
+    try { localStorage.setItem('nail_agendamentos', JSON.stringify(agendamentosAtualizados)); } catch (e) {}
+    dbSetAll(STORES.CLIENTES, clientesAtualizados);
+    dbSetAll(STORES.AGENDAMENTOS, agendamentosAtualizados);
+
+    mostrarNotificacaoGlobal(`🧹 Sucesso! ${totalRemovidos} cadastro(s) duplicado(s) foram excluídos da nuvem e unificados!`);
+    return { removidos: totalRemovidos, unificados: gruposUnificados };
+  };
+
+  // --- Ações de Produtos (PDV de Balcão) ---
+  const addProduto = (prod: Omit<Produto, 'id'>) => {
+    const novoProduto: Produto = {
+      ...prod,
+      id: 'prod_' + gerarId(),
+      criado_em: new Date().toISOString()
+    };
+    setProdutos(prev => [novoProduto, ...prev]);
+    mostrarNotificacaoGlobal('✅ Produto cadastrado com sucesso!');
+  };
+
+  const updateProduto = (id: string, updated: Partial<Produto>) => {
+    setProdutos(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+    mostrarNotificacaoGlobal('✅ Produto atualizado!');
+  };
+
+  const deleteProduto = (id: string) => {
+    setProdutos(prev => prev.filter(p => p.id !== id));
+    mostrarNotificacaoGlobal('✅ Produto excluído.');
+  };
+
+  const darBaixaEstoqueProduto = (produtoId: string, quantidade: number) => {
+    setProdutos(prev => prev.map(p => {
+      if (p.id === produtoId) {
+        const novoEstoque = Math.max(0, p.estoque_atual - quantidade);
+        return { ...p, estoque_atual: novoEstoque };
+      }
+      return p;
+    }));
+  };
+
+  // --- Ações de Anamnese Digital ---
+  const salvarAnamneseCliente = (clienteId: string, anamnese: Anamnese) => {
+    dbSetItem(STORES.ANAMNESES, anamnese);
+    setClientes(prev => {
+      const atualizados = prev.map(c => {
+        if (c.id === clienteId) {
+          const prefs = {
+            ...(c.preferencias || {}),
+            anamnese
+          };
+          return { ...c, anamnese, preferencias: prefs };
+        }
+        return c;
+      });
+      const clienteAtualizado = atualizados.find(c => c.id === clienteId);
+      if (clienteAtualizado) {
+        salvarClienteSupabase(clienteAtualizado);
+      }
+      try { localStorage.setItem('nail_clientes', JSON.stringify(atualizados)); } catch (e) {}
+      dbSetAll(STORES.CLIENTES, atualizados);
+      return atualizados;
+    });
+    mostrarNotificacaoGlobal('✅ Ficha de Anamnese e Assinatura salvas com sucesso!');
+  };
+
+  // --- Ações de Planos de Assinatura Recorrente ---
+  const addPlanoAssinatura = (plano: Omit<PlanoAssinatura, 'id'>) => {
+    const novoPlano: PlanoAssinatura = {
+      ...plano,
+      id: 'plano_' + gerarId()
+    };
+    setPlanosAssinatura(prev => [novoPlano, ...prev]);
+    mostrarNotificacaoGlobal(`✅ Plano "${novoPlano.nome}" cadastrado com sucesso!`);
+  };
+
+  const updatePlanoAssinatura = (id: string, updated: Partial<PlanoAssinatura>) => {
+    setPlanosAssinatura(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+    mostrarNotificacaoGlobal('✅ Plano atualizado.');
+  };
+
+  const deletePlanoAssinatura = (id: string) => {
+    setPlanosAssinatura(prev => prev.filter(p => p.id !== id));
+    mostrarNotificacaoGlobal('✅ Plano excluído.');
+  };
+
+  const vincularAssinaturaCliente = (clienteId: string, planoId: string) => {
+    const plano = planosAssinatura.find(p => p.id === planoId);
+    if (!plano) return;
+
+    const agora = new Date();
+    const renovacao = new Date(agora);
+    renovacao.setDate(renovacao.getDate() + (plano.validade_dias || 30));
+
+    const itensSaldo = (plano.itens_servicos && plano.itens_servicos.length > 0)
+      ? plano.itens_servicos.map(item => ({
+          servico_id: item.servico_id,
+          nome_servico: item.nome_servico,
+          saldo_restante: item.quantidade,
+          total_mes: item.quantidade
+        }))
+      : undefined;
+
+    const novaAssinatura: AssinaturaCliente = {
+      plano_id: plano.id,
+      nome_plano: plano.nome,
+      data_inicio: agora.toISOString(),
+      data_renovacao: renovacao.toISOString(),
+      itens_saldo: itensSaldo,
+      saldo_restante: plano.qtd_procedimentos_mes,
+      total_mes: plano.qtd_procedimentos_mes,
+      status: 'ativo'
+    };
+
+    setClientes(prev => {
+      const next = prev.map(c => {
+        if (c.id === clienteId) {
+          const prefs = {
+            ...(c.preferencias || {}),
+            assinatura: novaAssinatura
+          };
+          return { ...c, assinatura: novaAssinatura, preferencias: prefs };
+        }
+        return c;
+      });
+      const cli = next.find(c => c.id === clienteId);
+      if (cli) salvarClienteSupabase(cli);
+      try { localStorage.setItem('nail_clientes', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.CLIENTES, next);
+      return next;
+    });
+    mostrarNotificacaoGlobal(`✅ Plano "${plano.nome}" vinculado à cliente com sucesso!`);
+  };
+
+  const cancelarAssinaturaCliente = (clienteId: string) => {
+    setClientes(prev => {
+      const next = prev.map(c => {
+        if (c.id === clienteId) {
+          const prefs: any = { ...(c.preferencias || {}) };
+          delete prefs.assinatura;
+          return { ...c, assinatura: undefined, preferencias: prefs };
+        }
+        return c;
+      });
+      const cli = next.find(c => c.id === clienteId);
+      if (cli) salvarClienteSupabase(cli);
+      try { localStorage.setItem('nail_clientes', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.CLIENTES, next);
+      return next;
+    });
+    mostrarNotificacaoGlobal('✅ Assinatura cancelada.');
+  };
+
+  const abaterSaldoAssinatura = (clienteId: string, servicoId?: string): boolean => {
+    let abateu = false;
+    setClientes(prev => {
+      const next = prev.map(c => {
+        if (c.id === clienteId && c.assinatura && c.assinatura.saldo_restante > 0) {
+          let novosItens = c.assinatura.itens_saldo;
+          if (novosItens && novosItens.length > 0) {
+            // Tenta abater do serviço específico correspondente
+            let index = -1;
+            if (servicoId) {
+              index = novosItens.findIndex(item => item.servico_id === servicoId && item.saldo_restante > 0);
+            }
+            // Se não encontrou o específico, busca o primeiro com saldo
+            if (index === -1) {
+              index = novosItens.findIndex(item => item.saldo_restante > 0);
+            }
+            if (index !== -1) {
+              abateu = true;
+              novosItens = novosItens.map((item, i) => i === index ? {
+                ...item,
+                saldo_restante: Math.max(0, item.saldo_restante - 1)
+              } : item);
+            }
+          } else {
+            abateu = true;
+          }
+
+          if (abateu) {
+            const novaAssinatura: AssinaturaCliente = {
+              ...c.assinatura,
+              itens_saldo: novosItens,
+              saldo_restante: Math.max(0, c.assinatura.saldo_restante - 1)
+            };
+            const prefs = {
+              ...(c.preferencias || {}),
+              assinatura: novaAssinatura
+            };
+            return {
+              ...c,
+              assinatura: novaAssinatura,
+              preferencias: prefs
+            };
+          }
+        }
+        return c;
+      });
+      if (abateu) {
+        const cli = next.find(c => c.id === clienteId);
+        if (cli) salvarClienteSupabase(cli);
+        try { localStorage.setItem('nail_clientes', JSON.stringify(next)); } catch (e) {}
+        dbSetAll(STORES.CLIENTES, next);
+      }
+      return next;
+    });
+    return abateu;
+  };
+
+  const reservarRecorrenciaSemanalVip = (agendamentoInicialId: string): { success: boolean; criados: number; mensagem: string } => {
+    const agInicial = agendamentos.find(a => a.id === agendamentoInicialId);
+    if (!agInicial) {
+      return { success: false, criados: 0, mensagem: 'Agendamento inicial não encontrado.' };
+    }
+
+    // Se já é uma sessão posterior gerada pela recorrência, não gera efeito cascata
+    if (agInicial.observacoes?.includes('Sessão 2/') || agInicial.observacoes?.includes('Sessão 3/') || agInicial.observacoes?.includes('Sessão 4/')) {
+      return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão semanal da recorrência.' };
+    }
+
+    const cliente = clientes.find(c => c.id === agInicial.cliente_id);
+    if (!cliente || !cliente.assinatura || cliente.assinatura.status !== 'ativo') {
+      return { success: false, criados: 0, mensagem: 'Cliente não possui plano Clube VIP ativo no momento.' };
+    }
+
+    const plano = planosAssinatura.find(p => p.id === cliente.assinatura?.plano_id);
+    const totalSessoes = cliente.assinatura.total_mes || plano?.qtd_procedimentos_mes || 4;
+
+    if (totalSessoes <= 1) {
+      return { success: false, criados: 0, mensagem: 'O plano VIP possui apenas 1 sessão mensal.' };
+    }
+
+    const servicosIniciais = itensAgendamento[agendamentoInicialId] || [];
+
+    // Extrai data e horário originais como strings puras para evitar distorção de fuso horário (UTC/Local)
+    // Suporta formato "YYYY-MM-DDTHH:mm:ss" ou "YYYY-MM-DDTHH:mm:ss+00:00"
+    const partesInicio = agInicial.inicio.replace(' ', 'T').split('T');
+    const dataPart = partesInicio[0]; // "2026-09-08"
+    const horaPartCompleta = (partesInicio[1] || '10:00:00').substring(0, 8); // "10:30:00"
+    const [hStr, mStr, sStr] = horaPartCompleta.split(':');
+    const [anoStr, mesStr, diaStr] = dataPart.split('-');
+
+    // Duração do procedimento em minutos
+    let duracaoMinutos = 120;
+    if (agInicial.fim) {
+      const partesFim = agInicial.fim.replace(' ', 'T').split('T');
+      const dataFimPart = partesFim[0];
+      const horaFimPart = (partesFim[1] || '12:00:00').substring(0, 8);
+      const [hFim, mFim] = horaFimPart.split(':').map(Number);
+      const [hIni, mIni] = [Number(hStr), Number(mStr)];
+      if (dataFimPart === dataPart) {
+        const diff = (hFim * 60 + mFim) - (hIni * 60 + mIni);
+        if (diff > 0) duracaoMinutos = diff;
+      }
+    }
+
+    const novosAgendamentos: Agendamento[] = [];
+    const novosItensMap: Record<string, string[]> = {};
+
+    for (let semana = 1; semana < totalSessoes; semana++) {
+      // Avança N semanas (7 dias por semana)
+      const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
+      d.setDate(d.getDate() + semana * 7);
+
+      // Regra de Negócio: Se cair em feriado nacional ou dia que o salão não abre,
+      // avança para o próximo dia útil aberto do salão
+      const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
+      let tentativas = 0;
+      while (tentativas < 14) {
+        const diaSemana = d.getDay();
+        const expediente = configSalao.horarios_trabalho?.[diaSemana];
+        const mStrF = String(d.getMonth() + 1).padStart(2, '0');
+        const dStrF = String(d.getDate()).padStart(2, '0');
+        const mmdd = `${mStrF}-${dStrF}`;
+        const isFeriado = feriadosNacionais.includes(mmdd);
+        const isFechado = !expediente || !expediente.ativo;
+
+        if (!isFeriado && !isFechado) {
+          break;
+        }
+        d.setDate(d.getDate() + 1);
+        tentativas++;
+      }
+
+      const anoNovo = d.getFullYear();
+      const mesNovo = String(d.getMonth() + 1).padStart(2, '0');
+      const diaNovo = String(d.getDate()).padStart(2, '0');
+      const dataSemanaStr = `${anoNovo}-${mesNovo}-${diaNovo}`;
+
+      // Início exatamente no mesmo dia da semana e no mesmo horário
+      const inicioStr = `${dataSemanaStr}T${(hStr || '10').padStart(2, '0')}:${(mStr || '00').padStart(2, '0')}:${(sStr || '00').padStart(2, '0')}`;
+
+      // Fim calculado somando os minutos de duração
+      const dFim = new Date(Number(anoNovo), Number(mesNovo) - 1, Number(diaNovo), Number(hStr), Number(mStr) + duracaoMinutos);
+      const anoFim = dFim.getFullYear();
+      const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
+      const diaFim = String(dFim.getDate()).padStart(2, '0');
+      const hFimStr = String(dFim.getHours()).padStart(2, '0');
+      const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
+      const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
+
+      // Checa se já existe agendamento nessa mesma data/hora para esta cliente
+      const jaExiste = agendamentos.some(a => 
+        a.cliente_id === cliente.id && 
+        a.status !== 'cancelado' && 
+        a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
+      );
+
+      if (!jaExiste) {
+        const novoId = gerarCodigoReserva();
+        const novoAgendamento: Agendamento = {
+          id: novoId,
+          cliente_id: cliente.id,
+          profissional_id: agInicial.profissional_id,
+          inicio: inicioStr,
+          fim: fimStr,
+          status: 'confirmado',
+          valor_total: 0,
+          valor_sinal: 0,
+          pago_com_clube: true,
+          origem: 'admin',
+          observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1}/${totalSessoes} semanal reservada automaticamente`,
+          criado_em: new Date().toISOString()
+        };
+
+        novosAgendamentos.push(novoAgendamento);
+        if (servicosIniciais.length > 0) {
+          novosItensMap[novoId] = servicosIniciais;
+        }
+
+        salvarAgendamentoSupabase(novoAgendamento, servicosIniciais);
+      }
+    }
+
+    if (novosAgendamentos.length > 0) {
+      setAgendamentos(prev => [...prev, ...novosAgendamentos]);
+      if (Object.keys(novosItensMap).length > 0) {
+        setItensAgendamento(prev => ({ ...prev, ...novosItensMap }));
+      }
+      mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessões semanais do Clube VIP foram reservadas no mesmo dia e horário!`);
+      return { 
+        success: true, 
+        criados: novosAgendamentos.length, 
+        mensagem: `${novosAgendamentos.length} sessões semanais foram reservadas automaticamente!` 
+      };
+    } else {
+      return { 
+        success: false, 
+        criados: 0, 
+        mensagem: 'As sessões semanais deste ciclo já estavam reservadas.' 
+      };
+    }
+  };
+
+  // --- Ações de Fechamento de Comissões (Salão-Parceiro) ---
+  const salvarFechamentoComissao = (fechamento: Omit<FechamentoComissao, 'id'>) => {
+    const novoFechamento: FechamentoComissao = {
+      ...fechamento,
+      id: 'comissao_' + gerarId()
+    };
+    setFechamentosComissao(prev => [novoFechamento, ...prev]);
+
+    // Se já foi pago, registra despesa no fluxo de caixa vinculada ao ID do fechamento
+    if (fechamento.pago && fechamento.valor_liquido_pago > 0) {
+      addDespesa({
+        descricao: `Comissão: ${fechamento.nome_profissional} (${fechamento.periodo_inicio} a ${fechamento.periodo_fim})`,
+        categoria: 'Comissões',
+        valor: fechamento.valor_liquido_pago,
+        data: fechamento.data_pagamento || new Date().toISOString().split('T')[0],
+        fechamento_id: novoFechamento.id
+      });
+    }
+
+    mostrarNotificacaoGlobal('✅ Fechamento de comissão registrado e lançado nas despesas!');
+  };
+
+  const deleteFechamentoComissao = (fechamentoId: string) => {
+    setFechamentosComissao(prev => prev.filter(f => f.id !== fechamentoId));
+    // Remove despesa vinculada se houver
+    setDespesas(prev => {
+      const despesaVinculada = prev.find(d => 
+        d.fechamento_id === fechamentoId || 
+        (d.categoria === 'Comissões' && d.descricao.includes(fechamentoId))
+      );
+      if (despesaVinculada) {
+        deletarDespesaSupabase(despesaVinculada.id);
+      }
+      return prev.filter(d => d.fechamento_id !== fechamentoId);
+    });
+    mostrarNotificacaoGlobal('✅ Repasse de comissão cancelado e despesa estornada!');
+  };
+
+  const processarFilaSync = () => {
+    processarFilaOffline();
   };
 
   return (
@@ -2324,6 +3102,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       desconectarGoogleAgenda,
       sincronizarGoogleAgenda,
       limparAgendamentosSimuladosGoogle,
+      deduplicarClientes,
       isSyncingCloud,
       lastCloudSyncTime,
       sincronizarComNuvem,
@@ -2360,7 +3139,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       tocarAlertaSonoro,
       avisosNaoLidos,
       marcarAvisoComoLido,
-      marcarTodosAvisosComoLidos
+      marcarTodosAvisosComoLidos,
+      produtos,
+      addProduto,
+      updateProduto,
+      deleteProduto,
+      darBaixaEstoqueProduto,
+      salvarAnamneseCliente,
+      planosAssinatura,
+      addPlanoAssinatura,
+      updatePlanoAssinatura,
+      deletePlanoAssinatura,
+      vincularAssinaturaCliente,
+      cancelarAssinaturaCliente,
+      abaterSaldoAssinatura,
+      reservarRecorrenciaSemanalVip,
+      fechamentosComissao,
+      salvarFechamentoComissao,
+      deleteFechamentoComissao,
+      syncStatus,
+      processarFilaSync
     }}>
       {children}
     </AppStateContext.Provider>

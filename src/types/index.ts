@@ -1,19 +1,25 @@
 export interface Usuario {
   id: string;
+  salao_id?: string;
   nome: string;
   email: string;
   telefone: string;
   perfil: 'admin' | 'profissional';
+  especialidade?: string; // Título/especialidade exibida aos clientes (ex: Especialista Master, Designer, etc.)
   ativo: boolean;
   foto?: string;
   senha?: string;
   servicos_habilitados?: string[]; // IDs dos serviços que esta profissional realiza
   chave_pix?: string; // Chave Pix própria da profissional
   usar_pix_proprio?: boolean; // Se true, o Pix dos agendamentos dela vai para a chave própria ao invés da proprietária
+  comissao_padrao_porcentagem?: number; // Percentual de comissão padrão (ex: 50%)
+  descontar_taxa_cartao?: boolean; // Se desconta taxa do repasse
+  descontar_materiais?: boolean; // Se desconta materiais do repasse
 }
 
 export interface Cliente {
   id: string;
+  salao_id?: string;
   nome: string;
   telefone: string;
   email?: string;
@@ -26,13 +32,19 @@ export interface Cliente {
     tecnica?: string; // Gel, Fibra de Vidro, Acrílico, Esmaltação em Gel
     cores?: string;
     estilo?: string;
+    anamnese?: Anamnese;
+    assinatura?: AssinaturaCliente;
+    [key: string]: any;
   };
   consentimento_imagem: boolean;
+  anamnese?: Anamnese;
+  assinatura?: AssinaturaCliente;
   criado_em: string;
 }
 
 export interface Servico {
   id: string;
+  salao_id?: string;
   nome: string;
   categoria: string;
   duracao_minutos: number;
@@ -53,6 +65,7 @@ export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cance
 
 export interface Agendamento {
   id: string;
+  salao_id?: string;
   cliente_id: string; // "bloqueado" se for bloqueio de horário pessoal
   profissional_id: string;
   inicio: string; // ISO string UTC (ou fuso salão)
@@ -65,11 +78,14 @@ export interface Agendamento {
   motivo_cancelamento?: string;
   cancelado_por?: 'cliente' | 'admin';
   confirmado_por?: 'cliente' | 'admin';
+  produtos?: ItemComandaProduto[]; // Produtos consumidos/comprados no atendimento
+  pago_com_clube?: boolean; // Se foi baixado do saldo de assinatura recorrente
   criado_em: string;
 }
 
 export interface ItemAgendamento {
   id: string;
+  salao_id?: string;
   agendamento_id: string;
   servico_id: string;
   nome_servico: string;
@@ -82,6 +98,7 @@ export type MetodoPagamento = 'pix' | 'dinheiro' | 'cartao_credito' | 'cartao_de
 
 export interface Pagamento {
   id: string;
+  salao_id?: string;
   agendamento_id: string;
   tipo: MetodoPagamento;
   valor: number;
@@ -89,6 +106,7 @@ export interface Pagamento {
   data_pagamento: string;
   comprovante_url?: string;
   observacao?: string;
+  origem_tipo?: 'servico' | 'produto' | 'assinatura';
 }
 
 export interface FotoInspiracao {
@@ -104,6 +122,7 @@ export interface FotoInspiracao {
 
 export interface ListaEspera {
   id: string;
+  salao_id?: string;
   cliente_id: string;
   servico_id: string;
   profissional_id?: string;
@@ -126,6 +145,7 @@ export interface Notificacao {
 }
 
 export interface ConfigSalao {
+  salao_id?: string;
   nome: string;
   proprietaria: string;
   telefone: string;
@@ -160,6 +180,7 @@ export interface ConfigSalao {
     retorno_manutencao: string;
     lista_espera: string;
     contato_geral?: string;
+    clientes_sumidas?: string; // Template para reativação de clientes inativas
   };
   meta_whatsapp?: {
     phoneNumberId: string;
@@ -198,14 +219,17 @@ export interface AvisoCliente {
 
 export interface Despesa {
   id: string;
+  salao_id?: string;
   descricao: string;
   categoria: string;
   valor: number;
   data: string;
+  fechamento_id?: string;
 }
 
 export interface Material {
   id: string;
+  salao_id?: string;
   nome: string;
   marca: string;
   preco_compra: number;
@@ -224,4 +248,106 @@ export interface ModalAlertaConfig {
   onConfirm?: () => void;
   onCancel?: () => void;
   isConfirm?: boolean;
+}
+
+// --- FICHA DE ANAMNESE DIGITAL COM ASSINATURA TOUCH ---
+export interface Anamnese {
+  id: string;
+  cliente_id: string;
+  salao_id?: string;
+  data_preenchimento: string; // ISO string
+  possui_alergia: boolean;
+  detalhes_alergia?: string;
+  diabetica: boolean;
+  gestante: boolean;
+  micose_ou_fungo: boolean;
+  habito_roer: boolean;
+  problemas_circulatorios?: boolean;
+  medicamentos_uso_continuo?: string;
+  procedimentos_anteriores?: string;
+  observacoes_adicionais?: string;
+  assinatura_base64: string; // Imagem PNG da assinatura coletada no Canvas
+  termo_aceite: boolean;
+}
+
+// --- PRODUTOS E COMANDA (PDV DE BALCÃO) ---
+export interface Produto {
+  id: string;
+  salao_id?: string;
+  nome: string;
+  marca?: string;
+  categoria: string;
+  preco_custo: number;
+  preco_venda: number;
+  estoque_atual: number;
+  estoque_minimo: number;
+  ativo: boolean;
+  criado_em?: string;
+}
+
+export interface ItemComandaProduto {
+  id: string;
+  produto_id: string;
+  nome_produto: string;
+  quantidade: number;
+  preco_unitario: number;
+  subtotal: number;
+}
+
+// --- CLUBE DE ASSINATURA RECORRENTE ---
+export interface ItemServicoPlano {
+  servico_id: string;
+  nome_servico: string;
+  quantidade: number;
+}
+
+export interface ItemSaldoAssinatura {
+  servico_id: string;
+  nome_servico: string;
+  saldo_restante: number;
+  total_mes: number;
+}
+
+export interface PlanoAssinatura {
+  id: string;
+  salao_id?: string;
+  nome: string;
+  descricao?: string;
+  preco_mensal: number;
+  itens_servicos?: ItemServicoPlano[]; // Ex: [{ servico_id: 's1', nome_servico: 'Manicure', quantidade: 4 }, { servico_id: 's2', nome_servico: 'Pedicure', quantidade: 3 }]
+  qtd_procedimentos_mes: number; // soma total de procedimentos no mês
+  servicos_permitidos_ids: string[];
+  validade_dias: number;
+  ativo: boolean;
+}
+
+export interface AssinaturaCliente {
+  plano_id: string;
+  nome_plano: string;
+  data_inicio: string;
+  data_renovacao: string;
+  itens_saldo?: ItemSaldoAssinatura[]; // Saldo individual por procedimento
+  saldo_restante: number;
+  total_mes: number;
+  status: 'ativo' | 'pausado' | 'cancelado';
+}
+
+// --- COMISSÕES E REPASSES (LEI DO SALÃO-PARCEIRO) ---
+export interface FechamentoComissao {
+  id: string;
+  salao_id?: string;
+  profissional_id: string;
+  nome_profissional: string;
+  periodo_inicio: string;
+  periodo_fim: string;
+  total_faturado_bruto: number;
+  taxa_comissao_porcentagem: number;
+  valor_comissao_bruta: number;
+  desconto_taxas_cartao: number;
+  desconto_materiais: number;
+  outros_descontos: number;
+  valor_liquido_pago: number;
+  data_pagamento: string;
+  pago: boolean;
+  observacoes?: string;
 }
