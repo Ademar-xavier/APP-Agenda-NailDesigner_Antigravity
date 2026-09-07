@@ -136,6 +136,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
           const s = servicos.find(item => item.id === it.servico_id);
           return acc + (s?.duracao_minutos || 0);
         }, 0);
+        const profs = Array.from(new Set(planoVipEscolhido.itens_servicos.map(it => it.profissional_id).filter(Boolean)));
+        if (profs.length > 1 && dur > 0) {
+          return Math.max(30, Math.round(dur / profs.length));
+        }
         if (dur > 0) return dur;
       }
       if (planoVipEscolhido.servicos_permitidos_ids && planoVipEscolhido.servicos_permitidos_ids.length > 0) {

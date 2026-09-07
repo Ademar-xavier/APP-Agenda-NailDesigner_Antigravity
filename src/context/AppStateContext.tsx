@@ -19,6 +19,7 @@ import {
   Produto,
   ItemComandaProduto,
   PlanoAssinatura,
+  ItemServicoPlano,
   AssinaturaCliente,
   FechamentoComissao
 } from '../types';
@@ -201,6 +202,11 @@ interface AppStateContextType {
   categoriasServico: string[];
   addCategoriaServico: (nome: string) => void;
   deleteCategoriaServico: (nome: string) => void;
+
+  // Categorias de Produtos
+  categoriasProduto: string[];
+  addCategoriaProduto: (nome: string) => void;
+  deleteCategoriaProduto: (nome: string) => void;
 
   // Materiais
   materiais: Material[];
@@ -737,6 +743,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return saved ? JSON.parse(saved) : ['Alongamento', 'Manutenção', 'Mão Simples', 'Pé Simples', 'Decoração', 'Spa / Cuidado'];
   });
 
+  const [categoriasProduto, setCategoriasProduto] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('nail_categorias_produto');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      'Home Care & Pós-Atendimento',
+      'Óleos & Hidratação',
+      'Esmaltes & Finalizadores',
+      'Acessórios & Lixas',
+      'Cuidados com Cutículas',
+      'Geral'
+    ];
+  });
+
   const [materiais, setMateriais] = useState<Material[]>(() => {
     const sanitize = (m: any): Material => {
       const preco = Number(m.preco_compra) || 0;
@@ -838,6 +862,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.setItem('nail_produtos', JSON.stringify(produtos));
     dbSetAll(STORES.PRODUTOS, produtos);
   }, [produtos]);
+
+  useEffect(() => {
+    localStorage.setItem('nail_categorias_produto', JSON.stringify(categoriasProduto));
+  }, [categoriasProduto]);
 
   useEffect(() => {
     localStorage.setItem('nail_planos_assinatura', JSON.stringify(planosAssinatura));
@@ -1166,6 +1194,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setCategoriasDespesa(dados.configuracoes.categorias_despesa);
           try { localStorage.setItem('nail_categorias_despesa', JSON.stringify(dados.configuracoes.categorias_despesa)); } catch (e) {}
         }
+        if (dados.configuracoes.config_salao?.categorias_produto && dados.configuracoes.config_salao.categorias_produto.length > 0) {
+          setCategoriasProduto(dados.configuracoes.config_salao.categorias_produto);
+          try { localStorage.setItem('nail_categorias_produto', JSON.stringify(dados.configuracoes.config_salao.categorias_produto)); } catch (e) {}
+        }
       }
 
       const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -1221,6 +1253,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         formatos,
         categoriasServico,
         categoriasDespesa,
+        categoriasProduto,
         equipe
       });
 
@@ -1893,6 +1926,27 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCategoriasServico(prev => prev.filter(c => c !== nome));
   };
 
+  // --- Ações de Categorias de Produtos ---
+  const addCategoriaProduto = (nome: string) => {
+    const n = nome.trim();
+    if (n && !categoriasProduto.includes(n)) {
+      const next = [...categoriasProduto, n];
+      setCategoriasProduto(next);
+      try { localStorage.setItem('nail_categorias_produto', JSON.stringify(next)); } catch (e) {}
+      salvarConfiguracoesSupabase({ configSalao, categoriasProduto: next }).then();
+      mostrarNotificacaoGlobal(`✅ Categoria de produto "${n}" adicionada!`);
+    }
+  };
+
+  const deleteCategoriaProduto = (nome: string) => {
+    limparFocoAtivo();
+    const next = categoriasProduto.filter(c => c !== nome);
+    setCategoriasProduto(next);
+    try { localStorage.setItem('nail_categorias_produto', JSON.stringify(next)); } catch (e) {}
+    salvarConfiguracoesSupabase({ configSalao, categoriasProduto: next }).then();
+    mostrarNotificacaoGlobal(`🗑️ Categoria de produto "${nome}" removida.`);
+  };
+
   // --- Ações de Materiais ---
   const addMaterial = async (novo: Omit<Material, 'id' | 'custo_por_uso'>) => {
     const rend = Number(novo.rendimento) || 1;
@@ -2029,6 +2083,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
     if (duracaoTotal <= 0) {
       duracaoTotal = 60;
+    }
+
+    // Regra VIP: Se for atendimento do Clube VIP com múltiplas profissionais atribuídas,
+    // a duração total da sessão é dividida pela quantidade de profissionais que atendem em paralelo.
+    if (novoAgendamento.pago_com_clube) {
+      const cli = clientes.find(c => c.id === novoAgendamento.cliente_id);
+      const plano = planosAssinatura.find(p => p.id === cli?.assinatura?.plano_id);
+      if (plano?.itens_servicos && plano.itens_servicos.length > 0) {
+        const itensSemana0 = plano.itens_servicos.filter(it => (it.quantidade || 1) > 0);
+        const profsSemana0 = Array.from(new Set(itensSemana0.map(it => it.profissional_id || novoAgendamento.profissional_id)));
+        if (profsSemana0.length > 1) {
+          duracaoTotal = Math.round(duracaoTotal / profsSemana0.length);
+        }
+      }
     }
     
     const dataInicio = new Date(novoAgendamento.inicio);
@@ -2877,7 +2945,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Se já é uma sessão posterior gerada pela recorrência, não gera efeito cascata
-    if (agInicial.observacoes?.includes('Sessão 2/') || agInicial.observacoes?.includes('Sessão 3/') || agInicial.observacoes?.includes('Sessão 4/')) {
+    if (agInicial.observacoes?.includes('Sessão 2') || agInicial.observacoes?.includes('Sessão 3') || agInicial.observacoes?.includes('Sessão 4') || agInicial.observacoes?.includes('[Simultâneo]')) {
       return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão semanal da recorrência.' };
     }
 
@@ -2889,72 +2957,99 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const plano = planosAssinatura.find(p => p.id === cliente.assinatura?.plano_id);
     const totalSessoes = cliente.assinatura.total_mes || plano?.qtd_procedimentos_mes || 4;
 
-    if (totalSessoes <= 1) {
+    if (totalSessoes <= 1 && (!plano?.itens_servicos || plano.itens_servicos.length <= 1)) {
       return { success: false, criados: 0, mensagem: 'O plano VIP possui apenas 1 sessão mensal.' };
     }
 
-    const servicosIniciais = itensAgendamento[agendamentoInicialId] || [];
+    // Identifica os itens de serviço do plano com suas respectivas quantidades e profissionais designadas
+    const itensPlano: ItemServicoPlano[] = (plano?.itens_servicos && plano.itens_servicos.length > 0)
+      ? plano.itens_servicos
+      : (cliente.assinatura.itens_saldo && cliente.assinatura.itens_saldo.length > 0)
+        ? cliente.assinatura.itens_saldo.map(it => ({
+            servico_id: it.servico_id,
+            nome_servico: it.nome_servico,
+            quantidade: it.total_mes || it.saldo_restante,
+            profissional_id: (it as any).profissional_id || agInicial.profissional_id
+          }))
+        : [{
+            servico_id: (itensAgendamento[agendamentoInicialId] || [])[0] || 's1',
+            nome_servico: 'Sessão VIP',
+            quantidade: totalSessoes,
+            profissional_id: agInicial.profissional_id
+          }];
+
+    // O total máximo de semanas a agendar é o máximo de sessões dentre os serviços inclusos ou totalSessoes
+    const maxSemanas = Math.max(...itensPlano.map(it => it.quantidade || 1), totalSessoes);
 
     // Extrai data e horário originais como strings puras para evitar distorção de fuso horário (UTC/Local)
-    // Suporta formato "YYYY-MM-DDTHH:mm:ss" ou "YYYY-MM-DDTHH:mm:ss+00:00"
     const partesInicio = agInicial.inicio.replace(' ', 'T').split('T');
     const dataPart = partesInicio[0]; // "2026-09-08"
     const horaPartCompleta = (partesInicio[1] || '10:00:00').substring(0, 8); // "10:30:00"
     const [hStr, mStr, sStr] = horaPartCompleta.split(':');
     const [anoStr, mesStr, diaStr] = dataPart.split('-');
 
-    // Duração do procedimento em minutos
-    let duracaoMinutos = 120;
-    if (agInicial.fim) {
-      const partesFim = agInicial.fim.replace(' ', 'T').split('T');
-      const dataFimPart = partesFim[0];
-      const horaFimPart = (partesFim[1] || '12:00:00').substring(0, 8);
-      const [hFim, mFim] = horaFimPart.split(':').map(Number);
-      const [hIni, mIni] = [Number(hStr), Number(mStr)];
-      if (dataFimPart === dataPart) {
-        const diff = (hFim * 60 + mFim) - (hIni * 60 + mIni);
-        if (diff > 0) duracaoMinutos = diff;
-      }
-    }
-
     const novosAgendamentos: Agendamento[] = [];
     const novosItensMap: Record<string, string[]> = {};
 
-    for (let semana = 1; semana < totalSessoes; semana++) {
-      // Avança N semanas (7 dias por semana)
-      const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
-      d.setDate(d.getDate() + semana * 7);
+    const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
-      // Regra de Negócio: Se cair em feriado nacional ou dia que o salão não abre,
-      // avança para o próximo dia útil aberto do salão
-      const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
-      let tentativas = 0;
-      while (tentativas < 14) {
-        const diaSemana = d.getDay();
-        const expediente = configSalao.horarios_trabalho?.[diaSemana];
-        const mStrF = String(d.getMonth() + 1).padStart(2, '0');
-        const dStrF = String(d.getDate()).padStart(2, '0');
-        const mmdd = `${mStrF}-${dStrF}`;
-        const isFeriado = feriadosNacionais.includes(mmdd);
-        const isFechado = !expediente || !expediente.ativo;
+    for (let semana = 0; semana < maxSemanas; semana++) {
+      // Itens de serviços que ainda têm sessões a executar nesta semana
+      const itensSemana = itensPlano.filter(it => (it.quantidade || 1) > semana);
+      if (itensSemana.length === 0) continue;
 
-        if (!isFeriado && !isFechado) {
-          break;
+      // Profissionais ativas nesta semana
+      const profsSemana = Array.from(new Set(itensSemana.map(it => it.profissional_id || agInicial.profissional_id)));
+
+      // Soma de duração dos serviços desta semana
+      const durTotalSemana = itensSemana.reduce((acc, it) => {
+        const s = servicos.find(serv => serv.id === it.servico_id);
+        return acc + (s?.duracao_minutos || 60);
+      }, 0);
+
+      // Regra VIP: Se mais de 1 profissional atua simultaneamente, a duração é dividida
+      const durSessao = profsSemana.length > 1
+        ? Math.max(30, Math.round(durTotalSemana / profsSemana.length))
+        : (durTotalSemana > 0 ? durTotalSemana : 60);
+
+      // Calcula a data da semana
+      let dataSemanaStr = dataPart;
+      if (semana > 0) {
+        const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
+        d.setDate(d.getDate() + semana * 7);
+
+        let tentativas = 0;
+        while (tentativas < 14) {
+          const diaSemana = d.getDay();
+          const expediente = configSalao.horarios_trabalho?.[diaSemana];
+          const mStrF = String(d.getMonth() + 1).padStart(2, '0');
+          const dStrF = String(d.getDate()).padStart(2, '0');
+          const mmdd = `${mStrF}-${dStrF}`;
+          const isFeriado = feriadosNacionais.includes(mmdd);
+          const isFechado = !expediente || !expediente.ativo;
+
+          if (!isFeriado && !isFechado) {
+            break;
+          }
+          d.setDate(d.getDate() + 1);
+          tentativas++;
         }
-        d.setDate(d.getDate() + 1);
-        tentativas++;
+
+        const anoNovo = d.getFullYear();
+        const mesNovo = String(d.getMonth() + 1).padStart(2, '0');
+        const diaNovo = String(d.getDate()).padStart(2, '0');
+        dataSemanaStr = `${anoNovo}-${mesNovo}-${diaNovo}`;
       }
 
-      const anoNovo = d.getFullYear();
-      const mesNovo = String(d.getMonth() + 1).padStart(2, '0');
-      const diaNovo = String(d.getDate()).padStart(2, '0');
-      const dataSemanaStr = `${anoNovo}-${mesNovo}-${diaNovo}`;
+      const inicioStr = semana === 0
+        ? agInicial.inicio
+        : `${dataSemanaStr}T${(hStr || '10').padStart(2, '0')}:${(mStr || '00').padStart(2, '0')}:${(sStr || '00').padStart(2, '0')}`;
 
-      // Início exatamente no mesmo dia da semana e no mesmo horário
-      const inicioStr = `${dataSemanaStr}T${(hStr || '10').padStart(2, '0')}:${(mStr || '00').padStart(2, '0')}:${(sStr || '00').padStart(2, '0')}`;
-
-      // Fim calculado somando os minutos de duração
-      const dFim = new Date(Number(anoNovo), Number(mesNovo) - 1, Number(diaNovo), Number(hStr), Number(mStr) + duracaoMinutos);
+      // Calcula fim somando durSessao
+      const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
+      const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
+      const [curY, curMo, curD] = curDataPart.split('-').map(Number);
+      const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
       const anoFim = dFim.getFullYear();
       const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
       const diaFim = String(dFim.getDate()).padStart(2, '0');
@@ -2962,36 +3057,94 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
       const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
 
-      // Checa se já existe agendamento nessa mesma data/hora para esta cliente
-      const jaExiste = agendamentos.some(a => 
-        a.cliente_id === cliente.id && 
-        a.status !== 'cancelado' && 
-        a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
-      );
+      // Cria ou atualiza agendamentos para cada profissional ativa nesta semana
+      for (const profId of profsSemana) {
+        const servsProf = itensSemana.filter(it => (it.profissional_id || agInicial.profissional_id) === profId);
+        const servIdsProf = servsProf.map(it => it.servico_id);
+        const nomesServsProf = servsProf.map(it => it.nome_servico).join(' + ');
 
-      if (!jaExiste) {
-        const novoId = gerarCodigoReserva();
-        const novoAgendamento: Agendamento = {
-          id: novoId,
-          cliente_id: cliente.id,
-          profissional_id: agInicial.profissional_id,
-          inicio: inicioStr,
-          fim: fimStr,
-          status: 'confirmado',
-          valor_total: 0,
-          valor_sinal: 0,
-          pago_com_clube: true,
-          origem: 'admin',
-          observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1}/${totalSessoes} semanal reservada automaticamente`,
-          criado_em: new Date().toISOString()
-        };
+        if (semana === 0) {
+          if (profId === agInicial.profissional_id) {
+            // Ajusta o agendamento inicial para a duração dividida e atualiza no estado e Supabase
+            if (agInicial.fim !== fimStr) {
+              const atualizado: Agendamento = {
+                ...agInicial,
+                fim: fimStr,
+                observacoes: agInicial.observacoes?.includes('👑 Clube VIP') 
+                  ? agInicial.observacoes 
+                  : `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomesServsProf})`
+              };
+              salvarAgendamentoSupabase(atualizado, servIdsProf.length > 0 ? servIdsProf : (itensAgendamento[agInicial.id] || []));
+              setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
+              if (servIdsProf.length > 0) {
+                setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servIdsProf }));
+              }
+            }
+          } else {
+            // Outra profissional na semana 0 (atendimento simultâneo no mesmo horário)
+            const jaExiste = agendamentos.some(a =>
+              a.profissional_id === profId &&
+              a.inicio.substring(0, 16) === inicioStr.substring(0, 16) &&
+              a.status !== 'cancelado'
+            ) || novosAgendamentos.some(a =>
+              a.profissional_id === profId &&
+              a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
+            );
 
-        novosAgendamentos.push(novoAgendamento);
-        if (servicosIniciais.length > 0) {
-          novosItensMap[novoId] = servicosIniciais;
+            if (!jaExiste) {
+              const novoId = gerarCodigoReserva();
+              const novoAgendamento: Agendamento = {
+                id: novoId,
+                cliente_id: cliente.id,
+                profissional_id: profId,
+                inicio: inicioStr,
+                fim: fimStr,
+                status: 'confirmado',
+                valor_total: 0,
+                valor_sinal: 0,
+                pago_com_clube: true,
+                origem: 'admin',
+                observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomesServsProf}) [Simultâneo]`,
+                criado_em: new Date().toISOString()
+              };
+              novosAgendamentos.push(novoAgendamento);
+              novosItensMap[novoId] = servIdsProf;
+              salvarAgendamentoSupabase(novoAgendamento, servIdsProf);
+            }
+          }
+        } else {
+          // Semana > 0: Cria agendamento para a profissional se ela tem sessão nesta semana
+          const jaExiste = agendamentos.some(a =>
+            a.profissional_id === profId &&
+            a.cliente_id === cliente.id &&
+            a.inicio.substring(0, 16) === inicioStr.substring(0, 16) &&
+            a.status !== 'cancelado'
+          ) || novosAgendamentos.some(a =>
+            a.profissional_id === profId &&
+            a.inicio.substring(0, 16) === inicioStr.substring(0, 16)
+          );
+
+          if (!jaExiste) {
+            const novoId = gerarCodigoReserva();
+            const novoAgendamento: Agendamento = {
+              id: novoId,
+              cliente_id: cliente.id,
+              profissional_id: profId,
+              inicio: inicioStr,
+              fim: fimStr,
+              status: 'confirmado',
+              valor_total: 0,
+              valor_sinal: 0,
+              pago_com_clube: true,
+              origem: 'admin',
+              observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1} (${nomesServsProf})`,
+              criado_em: new Date().toISOString()
+            };
+            novosAgendamentos.push(novoAgendamento);
+            novosItensMap[novoId] = servIdsProf;
+            salvarAgendamentoSupabase(novoAgendamento, servIdsProf);
+          }
         }
-
-        salvarAgendamentoSupabase(novoAgendamento, servicosIniciais);
       }
     }
 
@@ -3000,17 +3153,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (Object.keys(novosItensMap).length > 0) {
         setItensAgendamento(prev => ({ ...prev, ...novosItensMap }));
       }
-      mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessões semanais do Clube VIP foram reservadas no mesmo dia e horário!`);
+      mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessão(ões) semanal(is) do Clube VIP foram reservadas e bloqueadas na agenda!`);
       return { 
         success: true, 
         criados: novosAgendamentos.length, 
-        mensagem: `${novosAgendamentos.length} sessões semanais foram reservadas automaticamente!` 
+        mensagem: `${novosAgendamentos.length} sessões semanais foram reservadas e bloqueadas na agenda!` 
       };
     } else {
       return { 
         success: false, 
         criados: 0, 
-        mensagem: 'As sessões semanais deste ciclo já estavam reservadas.' 
+        mensagem: 'As sessões deste ciclo já estavam reservadas.' 
       };
     }
   };
@@ -3123,6 +3276,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       categoriasServico,
       addCategoriaServico,
       deleteCategoriaServico,
+      categoriasProduto,
+      addCategoriaProduto,
+      deleteCategoriaProduto,
       materiais,
       addMaterial,
       updateMaterial,

@@ -20,16 +20,7 @@ import { AlicateIcon } from '../components/AlicateIcon';
 import { useAppState } from '../context/AppStateContext';
 import { Produto } from '../types';
 
-type TabCadastros = 'produtos' | 'tecnicas' | 'formatos' | 'cat_servicos' | 'cat_despesas';
-
-const CATEGORIAS_PRODUTO_PADRAO = [
-  'Home Care & Pós-Atendimento',
-  'Óleos & Hidratação',
-  'Esmaltes & Finalizadores',
-  'Acessórios & Lixas',
-  'Cuidados com Cutículas',
-  'Geral'
-];
+type TabCadastros = 'produtos' | 'cat_produtos' | 'tecnicas' | 'formatos' | 'cat_servicos' | 'cat_despesas';
 
 export const Cadastros: React.FC = () => {
   const {
@@ -45,6 +36,9 @@ export const Cadastros: React.FC = () => {
     categoriasDespesa,
     addCategoriaDespesa,
     deleteCategoriaDespesa,
+    categoriasProduto,
+    addCategoriaProduto,
+    deleteCategoriaProduto,
     confirmarAcao,
     produtos,
     addProduto,
@@ -67,6 +61,9 @@ export const Cadastros: React.FC = () => {
   const [novoDespCat, setNovoDespCat] = useState('');
   const [errorDespCat, setErrorDespCat] = useState('');
 
+  const [novoProdCat, setNovoProdCat] = useState('');
+  const [errorProdCat, setErrorProdCat] = useState('');
+
   // --- Estados de Produtos (PDV Balcão) ---
   const [buscaProduto, setBuscaProduto] = useState('');
   const [filtroCatProduto, setFiltroCatProduto] = useState('todas');
@@ -75,7 +72,7 @@ export const Cadastros: React.FC = () => {
 
   const [prodNome, setProdNome] = useState('');
   const [prodMarca, setProdMarca] = useState('');
-  const [prodCategoria, setProdCategoria] = useState(CATEGORIAS_PRODUTO_PADRAO[0]);
+  const [prodCategoria, setProdCategoria] = useState(categoriasProduto[0] || 'Geral');
   const [prodPrecoCusto, setProdPrecoCusto] = useState<number>(0);
   const [prodPrecoVenda, setProdPrecoVenda] = useState<number>(0);
   const [prodEstoqueAtual, setProdEstoqueAtual] = useState<number>(0);
@@ -137,12 +134,26 @@ export const Cadastros: React.FC = () => {
     setErrorDespCat('');
   };
 
+  // Handlers Cat Produtos
+  const handleSalvarProdCat = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = novoProdCat.trim();
+    if (!val) return;
+    if (categoriasProduto.some(c => c.toLowerCase() === val.toLowerCase())) {
+      setErrorProdCat('Esta categoria já está cadastrada.');
+      return;
+    }
+    addCategoriaProduto(val);
+    setNovoProdCat('');
+    setErrorProdCat('');
+  };
+
   // --- Handlers Produtos ---
   const abrirModalNovoProduto = () => {
     setProdutoEditando(null);
     setProdNome('');
     setProdMarca('');
-    setProdCategoria(CATEGORIAS_PRODUTO_PADRAO[0]);
+    setProdCategoria(categoriasProduto[0] || 'Geral');
     setProdPrecoCusto(0);
     setProdPrecoVenda(0);
     setProdEstoqueAtual(10);
@@ -234,6 +245,7 @@ export const Cadastros: React.FC = () => {
       <div className="flex border-b border-[#EFECE6] mb-5 overflow-x-auto gap-2">
         {[
           { id: 'produtos', label: 'Produtos & PDV (Balcão)', icon: ShoppingBag },
+          { id: 'cat_produtos', label: 'Categorias de Produtos', icon: Boxes },
           { id: 'tecnicas', label: 'Técnicas de Unha', icon: Sparkles },
           { id: 'formatos', label: 'Formatos de Unha', icon: Bookmark },
           { id: 'cat_servicos', label: 'Categorias de Serviços', icon: AlicateIcon },
@@ -268,37 +280,37 @@ export const Cadastros: React.FC = () => {
           <div className="space-y-4 animate-in fade-in duration-200">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-white border border-[#EFECE6] p-4 rounded-2xl shadow-sm">
+              <div className="bg-white border border-[#EFECE6] rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#8C7A6B] font-medium">Itens em Catálogo</span>
-                  <Package size={16} className="text-[#8C6D58]" />
+                  <span className="text-xs text-[#8C7A6B] font-medium">Catálogo de Produtos</span>
+                  <ShoppingBag size={16} className="text-[#8C6D58]" />
                 </div>
                 <div className="text-xl font-bold font-serif text-[#5A4535] mt-1">{produtos.length} produtos</div>
                 <span className="text-[10px] text-[#8C7A6B]">{totalProdutosEstoque} unidades em estoque</span>
               </div>
 
-              <div className="bg-white border border-[#EFECE6] p-4 rounded-2xl shadow-sm">
+              <div className="bg-white border border-[#EFECE6] rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#8C7A6B] font-medium">Valor do Estoque (Venda)</span>
-                  <DollarSign size={16} className="text-emerald-600" />
+                  <span className="text-xs text-[#8C7A6B] font-medium">Valor Total em Estoque</span>
+                  <TrendingUp size={16} className="text-[#8C6D58]" />
                 </div>
-                <div className="text-xl font-bold font-serif text-emerald-700 mt-1">
+                <div className="text-xl font-bold font-serif text-[#5A4535] mt-1">
                   R$ {valorTotalEstoque.toFixed(2)}
                 </div>
-                <span className="text-[10px] text-[#8C7A6B]">Potencial de receita de balcão</span>
+                <span className="text-[10px] text-[#8C7A6B]">Preço de venda projetado</span>
               </div>
 
-              <div className={`p-4 rounded-2xl shadow-sm border ${
+              <div className={`border rounded-2xl p-4 shadow-sm transition-colors ${
                 produtosEstoqueBaixo.length > 0 ? 'bg-amber-50/50 border-amber-200' : 'bg-white border-[#EFECE6]'
               }`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#8C7A6B] font-medium">Alerta de Reposição</span>
+                  <span className="text-xs text-[#8C7A6B] font-medium">Estoque Baixo / Alerta</span>
                   <AlertTriangle size={16} className={produtosEstoqueBaixo.length > 0 ? 'text-amber-600' : 'text-[#8C7A6B]'} />
                 </div>
                 <div className={`text-xl font-bold font-serif mt-1 ${produtosEstoqueBaixo.length > 0 ? 'text-amber-800' : 'text-[#5A4535]'}`}>
                   {produtosEstoqueBaixo.length} itens
                 </div>
-                <span className="text-[10px] text-[#8C7A6B]">Com estoque igual ou abaixo do mínimo</span>
+                <span className="text-[10px] text-[#8C7A6B]">Abaixo do estoque mínimo</span>
               </div>
             </div>
 
@@ -323,10 +335,19 @@ export const Cadastros: React.FC = () => {
                   className="bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-1.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                 >
                   <option value="todas">Todas as categorias</option>
-                  {CATEGORIAS_PRODUTO_PADRAO.map(cat => (
+                  {categoriasProduto.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('cat_produtos')}
+                  className="text-[11px] font-semibold text-[#8C6D58] hover:text-[#725743] hover:underline whitespace-nowrap ml-1 flex items-center gap-1"
+                  title="Gerenciar Categorias de Produtos"
+                >
+                  <Boxes size={12} />
+                  <span>Gerenciar Categorias</span>
+                </button>
               </div>
             </div>
 
@@ -719,6 +740,93 @@ export const Cadastros: React.FC = () => {
           </div>
         )}
 
+        {/* ======================================================== */}
+        {/* TAB: CATEGORIAS DE PRODUTOS */}
+        {/* ======================================================== */}
+        {activeTab === 'cat_produtos' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start animate-in fade-in duration-200">
+            <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 border-b border-[#FAF9F6] pb-2">
+                <Boxes size={16} className="text-[#8C6D58]" />
+                <h3 className="font-serif font-bold text-sm text-[#5A4535]">
+                  Cadastrar Categoria de Produto
+                </h3>
+              </div>
+              <p className="text-xs text-[#8C7A6B]">
+                Crie categorias para organizar seus itens de balcão (home care, óleos, esmaltes, etc.).
+              </p>
+              <form onSubmit={handleSalvarProdCat} className="space-y-3">
+                {errorProdCat && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-1.5">
+                    <AlertTriangle size={14} />
+                    <span>{errorProdCat}</span>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Nome da Categoria *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Ex: Cuidados Pós-Atendimento, Acessórios..."
+                    value={novoProdCat} 
+                    onChange={(e) => setNovoProdCat(e.target.value)}
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-[#8C6D58] hover:bg-[#725743] text-white py-2 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={14} />
+                  <span>Adicionar Categoria de Produto</span>
+                </button>
+              </form>
+            </div>
+
+            <div className="lg:col-span-2 bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-[#FAF9F6] pb-2">
+                <h3 className="font-serif font-bold text-sm text-[#5A4535]">
+                  Categorias de Produtos Ativas ({categoriasProduto.length})
+                </h3>
+                <span className="text-[11px] text-[#8C7A6B]">
+                  Disponíveis no PDV e Balcão
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[...categoriasProduto].sort((a, b) => a.localeCompare(b, 'pt-BR')).map((cat) => {
+                  const qtdItens = produtos.filter(p => p.categoria === cat).length;
+                  return (
+                    <div 
+                      key={cat}
+                      className="flex justify-between items-center p-3 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors"
+                    >
+                      <div>
+                        <span className="font-semibold text-[#5A4535] block">{cat}</span>
+                        <span className="text-[10px] text-[#8C7A6B]">{qtdItens} {qtdItens === 1 ? 'produto vinculado' : 'produtos vinculados'}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          confirmarAcao({
+                            titulo: 'Remover Categoria',
+                            mensagem: `Deseja remover a categoria "${cat}"? Os produtos vinculados manterão seus cadastros.`,
+                            tipo: 'erro',
+                            textoConfirmar: 'Remover',
+                            onConfirm: () => deleteCategoriaProduto(cat)
+                          });
+                        }}
+                        className="p-1.5 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                        title="Excluir Categoria"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* ======================================================== */}
@@ -773,7 +881,7 @@ export const Cadastros: React.FC = () => {
                     onChange={(e) => setProdCategoria(e.target.value)}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   >
-                    {CATEGORIAS_PRODUTO_PADRAO.map(cat => (
+                    {categoriasProduto.map(cat => (
                       <option key={cat} value={cat}>{cat}</option>
                     ))}
                   </select>
