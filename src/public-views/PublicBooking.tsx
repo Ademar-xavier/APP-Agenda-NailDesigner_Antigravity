@@ -68,15 +68,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   useEffect(() => {
     const recuarStep = (e?: Event) => {
       const cur = stepRef.current;
-      if (cur > 1 && cur !== 5) {
+      if (cur > 1) {
         if (e && e.cancelable) {
           e.preventDefault(); // Informa ao App.tsx que a ação de voltar foi consumida e NÃO deve minimizar
         }
-        if (cur === 7) setStep(1);
-        else if (cur === 6) setStep(3);
-        else if (cur === 4) setStep(3);
-        else if (cur === 3) setStep(2);
-        else if (cur === 2) setStep(1);
+        if (cur === 5 || cur === 7) setStep(1);
+        else if (cur === 6) setStep(3); // Fecha a lista de espera e retorna para o calendário (Etapa 3)
+        else if (cur === 4) setStep(3); // Retorna da confirmação para a escolha de horário
+        else if (cur === 3) setStep(2); // Retorna do horário para os serviços
+        else if (cur === 2) setStep(1); // Retorna dos serviços para os dados da cliente
         else setStep(1);
       }
     };
@@ -98,7 +98,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   }, []);
   
   // Agendamento State
-  const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([]);
+  const [servicosSelecionados, setServicosSelecionados] = useState<string[]>(() => {
+    try {
+      const fullUrl = (typeof window !== 'undefined') ? (window.location.hash + window.location.search) : '';
+      const match = fullUrl.match(/[?&]servico=([^&]+)/);
+      if (match && match[1]) {
+        return [decodeURIComponent(match[1])];
+      }
+    } catch (e) {}
+    return [];
+  });
   const [dataSelecionada, setDataSelecionada] = useState<string>(new Date().toLocaleDateString('en-CA'));
   const [horarioSelecionado, setHorarioSelecionado] = useState<string>('');
 
@@ -634,7 +643,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
             <button
               type="button"
-              onClick={() => setStep(2)}
+              onClick={() => irParaStep(2)}
               className="w-full mt-4 bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
             >
               <span>Continuar para Escolha dos Serviços</span>
@@ -779,7 +788,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                             const sIds = (p.itens_servicos || []).map(i => i.servico_id);
                             setPlanoVipEscolhidoId(p.id);
                             setServicosSelecionados(sIds.length > 0 ? sIds : (servicos.length > 0 ? [servicos[0].id] : []));
-                            setStep(3);
+                            irParaStep(3);
                           }}
                           className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
                         >
@@ -882,7 +891,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 )}
 
                 <button
-                  onClick={() => setStep(3)}
+                  onClick={() => irParaStep(3)}
                   disabled={servicosSelecionados.length === 0}
                   className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                 >
@@ -958,7 +967,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   </p>
                   <button
                     type="button"
-                    onClick={() => setStep(6)}
+                    onClick={() => irParaStep(6)}
                     className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 text-white py-3 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
                   >
                     <Users size={14} />
@@ -1061,7 +1070,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             {horariosDisponiveis.length > 0 && (
               <div className="space-y-3 mt-3">
                 <button
-                  onClick={() => setStep(4)}
+                  onClick={() => irParaStep(4)}
                   disabled={!horarioSelecionado}
                   className="w-full bg-gradient-to-r from-[#DB7093] to-[#C71585] hover:opacity-95 disabled:opacity-50 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
                 >
@@ -1071,7 +1080,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 
                 <button
                   type="button"
-                  onClick={() => setStep(6)}
+                  onClick={() => irParaStep(6)}
                   className="w-full bg-white border border-dashed border-[#DB7093] text-[#C71585] hover:bg-[#FFF0F4]/30 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                 >
                   <Users size={13} />

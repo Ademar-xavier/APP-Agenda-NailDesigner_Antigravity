@@ -52,8 +52,8 @@ export const AtivacaoLicenca: React.FC<AtivacaoLicencaProps> = ({
     const msg = encodeURIComponent(
       'Olá! Gostaria de comprar ou ativar uma Chave de Licença para o aplicativo Beauty Gestão & Agenda Pro.'
     );
-    // WhatsApp comercial para venda de licenças
-    window.open(`https://api.whatsapp.com/send?phone=5535997141856&text=${msg}`, '_blank');
+    // WhatsApp comercial para venda e suporte de licenças (Ademar - Desenvolvedor)
+    window.open(`https://api.whatsapp.com/send?phone=5511974500948&text=${msg}`, '_blank');
   };
 
   return (

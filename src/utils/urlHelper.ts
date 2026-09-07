@@ -28,6 +28,14 @@ export const getBookingUrl = (): string => {
 };
 
 /**
+ * Gera a URL da Página Pública de Catálogo de Serviços
+ */
+export const getCatalogoUrl = (): string => {
+  const base = getBaseAppUrl();
+  return `${base}/#catalogo`;
+};
+
+/**
  * Gera o link direto para adicionar o agendamento ao Google Calendar
  */
 export const gerarLinkGoogleCalendar = (params: {

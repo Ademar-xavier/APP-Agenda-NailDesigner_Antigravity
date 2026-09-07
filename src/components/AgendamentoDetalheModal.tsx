@@ -132,8 +132,18 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         onClose();
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (e.cancelable) e.preventDefault();
+      onClose();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [onClose]);
 
   if (!agendamento) return null;

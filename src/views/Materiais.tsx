@@ -39,15 +39,27 @@ export const Materiais: React.FC = () => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(isNaN(num) ? 0 : num);
   };
 
-  // Keyboard Escape listener to close modal in Materiais.tsx
+  // Intercepta Escape e Botão Voltar Nativo do Celular (Android) para fechar modal em Materiais.tsx
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && modalOpen) {
         setModalOpen(false);
       }
     };
+
+    const handleAndroidBack = (e: Event) => {
+      if (modalOpen) {
+        if (e.cancelable) e.preventDefault();
+        setModalOpen(false);
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('nail_android_back', handleAndroidBack);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('nail_android_back', handleAndroidBack);
+    };
   }, [modalOpen]);
 
   const handleOpenCriar = () => {

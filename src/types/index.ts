@@ -59,6 +59,9 @@ export interface Servico {
   servicos_pacote?: string[];
   servicos_pacote_detalhes?: { servico_id: string; quantidade: number }[];
   descricao?: string;
+  foto?: string; // Foto principal de vitrine para o catálogo online
+  fotos?: string[]; // Galeria de fotos adicionais do serviço
+  destaque_catalogo?: boolean; // Se o serviço fica em destaque na vitrine
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';
