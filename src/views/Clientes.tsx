@@ -109,11 +109,48 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [clienteEdicao, setClienteEdicao] = useState<Cliente | null>(null);
   const [clienteAnamneseModal, setClienteAnamneseModal] = useState<Cliente | null>(null);
   const [planoParaVincularId, setPlanoParaVincularId] = useState<string>('');
-  const [abaAtiva, setAbaAtiva] = useState<'todas' | 'sumidas'>('todas');
+  const [abaAtiva, setAbaAtiva] = useState<'todas' | 'sumidas' | 'duplicadas'>('todas');
   const [filtroSumidasDias, setFiltroSumidasDias] = useState<30 | 45 | 60>(30);
   const [isDeduplicating, setIsDeduplicating] = useState(false);
 
-  // Detecção inteligente de cadastros duplicados (ex: importados repetidamente da Google Agenda)
+  // Detecção inteligente e visual de cadastros duplicados
+  const mapaDuplicatas = useMemo(() => {
+    const mapaNome = new Map<string, Cliente[]>();
+    const mapaTel = new Map<string, Cliente[]>();
+    clientes.forEach(c => {
+      const nomeKey = c.nome.trim().toLowerCase();
+      if (nomeKey) {
+        if (!mapaNome.has(nomeKey)) mapaNome.set(nomeKey, []);
+        mapaNome.get(nomeKey)!.push(c);
+      }
+      const telLimpo = c.telefone ? c.telefone.replace(/\D/g, '') : '';
+      if (telLimpo.length >= 8) {
+        if (!mapaTel.has(telLimpo)) mapaTel.set(telLimpo, []);
+        mapaTel.get(telLimpo)!.push(c);
+      }
+    });
+
+    const idsComDuplicata = new Map<string, { razao: string; totalCadastros: number }>();
+    mapaNome.forEach((lista) => {
+      if (lista.length > 1) {
+        lista.forEach(c => {
+          idsComDuplicata.set(c.id, { razao: `${lista.length} cadastros com este mesmo nome`, totalCadastros: lista.length });
+        });
+      }
+    });
+    mapaTel.forEach((lista) => {
+      if (lista.length > 1) {
+        lista.forEach(c => {
+          const existing = idsComDuplicata.get(c.id);
+          if (!existing) {
+            idsComDuplicata.set(c.id, { razao: `${lista.length} cadastros com este mesmo telefone`, totalCadastros: lista.length });
+          }
+        });
+      }
+    });
+    return idsComDuplicata;
+  }, [clientes]);
+
   const duplicatasDetectadas = useMemo(() => {
     const mapa = new Map<string, number>();
     clientes.forEach(c => {
@@ -128,15 +165,21 @@ export const Clientes: React.FC<ClientesProps> = ({
   }, [clientes]);
 
   const handleDeduplicarClientes = () => {
+    const nomesDuplicados = Array.from(new Set(
+      clientes.filter(c => mapaDuplicatas.has(c.id)).map(c => c.nome.trim())
+    )).slice(0, 8);
+    const nomesStr = nomesDuplicados.join(', ') + (nomesDuplicados.length >= 8 ? '...' : '');
+
     confirmarAcao({
       titulo: 'Unificar Cadastros Duplicados',
-      mensagem: `Foram detectadas ${duplicatasDetectadas} duplicata(s) de clientes no banco. Deseja unificá-las? O sistema manterá o cadastro principal de cada cliente (com telefone, histórico e plano VIP) e excluirá as duplicatas tanto localmente quanto do Supabase na nuvem.`,
+      mensagem: `Foram detectadas ${duplicatasDetectadas} duplicata(s) (${mapaDuplicatas.size} cadastros envolvidos: ${nomesStr}). Deseja unificá-las? O sistema manterá o cadastro principal de cada cliente (com telefone, histórico e plano VIP) e excluirá as duplicatas tanto localmente quanto do Supabase na nuvem.`,
       tipo: 'sucesso',
       textoConfirmar: 'Unificar Agora',
       onConfirm: async () => {
         setIsDeduplicating(true);
         try {
           await deduplicarClientes();
+          setAbaAtiva('todas');
         } finally {
           setIsDeduplicating(false);
         }
@@ -562,11 +605,16 @@ export const Clientes: React.FC<ClientesProps> = ({
 
   // Filtrar clientes e ordenar por ordem alfabética de A a Z
   const clientesFiltrados = clientes
-    .filter(c => 
-      c.nome.toLowerCase().includes(busca.toLowerCase()) || 
-      c.telefone.includes(busca) ||
-      c.preferencias?.tecnica?.toLowerCase().includes(busca.toLowerCase())
-    )
+    .filter(c => {
+      if (abaAtiva === 'duplicadas' && !mapaDuplicatas.has(c.id)) {
+        return false;
+      }
+      return (
+        c.nome.toLowerCase().includes(busca.toLowerCase()) || 
+        c.telefone.includes(busca) ||
+        c.preferencias?.tecnica?.toLowerCase().includes(busca.toLowerCase())
+      );
+    })
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }));
 
   const clienteSelecionado = clientes.find(c => c.id === selectedClienteIdForDetails);
@@ -1157,39 +1205,55 @@ export const Clientes: React.FC<ClientesProps> = ({
             const clientesSumidas = obterClientesSumidas();
             return (
               <>
-                {/* Navegação entre Visão Geral e CRM de Resgate de Clientes Sumidas */}
+                {/* Navegação entre Visão Geral, CRM de Resgate e Clientes Duplicadas */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 border-b border-[#EFECE6] pb-4 mb-6">
-                  {/* Abas: Grid uniforme no celular (50% / 50%) e flex no desktop */}
-                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                  {/* Abas: Grid uniforme no celular e flex no desktop */}
+                  <div className={`grid ${mapaDuplicatas.size > 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-2 w-full sm:w-auto sm:flex sm:items-center`}>
                     <button
                       type="button"
                       onClick={() => setAbaAtiva('todas')}
-                      className={`h-11 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      className={`h-11 sm:h-10 px-2.5 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
                         abaAtiva === 'todas'
                           ? 'bg-[#5A4535] text-white shadow-sm'
                           : 'bg-white border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6]'
                       }`}
                     >
                       <Users size={15} className="shrink-0" />
-                      <span className="truncate">Todas as Clientes ({clientes.length})</span>
+                      <span className="truncate">Todas ({clientes.length})</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setAbaAtiva('sumidas')}
-                      className={`h-11 sm:h-10 px-3 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      className={`h-11 sm:h-10 px-2.5 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
                         abaAtiva === 'sumidas'
                           ? 'bg-rose-700 text-white shadow-sm'
                           : 'bg-white border border-rose-200 text-rose-700 hover:bg-rose-50'
                       }`}
                     >
                       <UserX size={15} className="shrink-0" />
-                      <span className="truncate">🎯 CRM Sumidas ({clientesSumidas.length})</span>
+                      <span className="truncate">CRM Sumidas ({clientesSumidas.length})</span>
                     </button>
+
+                    {mapaDuplicatas.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAbaAtiva('duplicadas')}
+                        className={`h-11 sm:h-10 px-2.5 sm:px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
+                          abaAtiva === 'duplicadas'
+                            ? 'bg-amber-600 text-white shadow-sm ring-2 ring-amber-400'
+                            : 'bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100'
+                        }`}
+                        title={`${mapaDuplicatas.size} cadastros com dados duplicados`}
+                      >
+                        <Sparkles size={15} className="shrink-0 text-amber-500" />
+                        <span className="truncate">Duplicadas ({mapaDuplicatas.size})</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Ações: Nova Cliente e Deduplicar uniforme no celular (largura total) e no desktop */}
-                  {abaAtiva === 'todas' && (
+                  {(abaAtiva === 'todas' || abaAtiva === 'duplicadas') && (
                     <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
                       {duplicatasDetectadas > 0 && (
                         <button
@@ -1382,6 +1446,36 @@ export const Clientes: React.FC<ClientesProps> = ({
                 ) : (
                   // --- LISTAGEM NORMAL DE CLIENTES ---
                   <>
+                    {/* Alerta Informativo quando filtrando duplicadas */}
+                    {abaAtiva === 'duplicadas' && (
+                      <div className="bg-gradient-to-r from-amber-50 via-amber-100/60 to-orange-50 border border-amber-300 text-amber-950 p-4 rounded-2xl mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-200/70 border border-amber-300 flex items-center justify-center text-amber-900 shrink-0 text-base">
+                            ⚠️
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-xs sm:text-sm text-amber-900">
+                              Filtrando {mapaDuplicatas.size} cadastro(s) com dados duplicados
+                            </h4>
+                            <p className="text-[11px] text-amber-800">
+                              Clientes com o mesmo nome ou mesmo telefone foram destacados abaixo com borda dourada.
+                            </p>
+                          </div>
+                        </div>
+                        {duplicatasDetectadas > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDeduplicarClientes}
+                            disabled={isDeduplicating}
+                            className="w-full sm:w-auto shrink-0 h-10 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Sparkles size={14} />
+                            <span>Unificar Tudo Agora</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Barra de Filtro */}
                     <div className="bg-white border border-[#EFECE6] rounded-2xl px-3 py-2 flex items-center gap-2 mb-6 shadow-sm max-w-md">
                       <Search size={16} className="text-[#C2B7AE]" />
@@ -1409,12 +1503,18 @@ export const Clientes: React.FC<ClientesProps> = ({
                           const fotoThumb = fotosDepois.length > 0 
                             ? fotosDepois[fotosDepois.length - 1] 
                             : (fotosDaCliente.length > 0 ? fotosDaCliente[fotosDaCliente.length - 1] : null);
+                          const infoDup = mapaDuplicatas.get(c.id);
+                          const isDuplicado = Boolean(infoDup);
 
                           return (
                             <div
                               key={c.id}
                               onClick={() => setSelectedClienteIdForDetails(c.id)}
-                              className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] cursor-pointer transition-all flex flex-col justify-between gap-4 shadow-sm"
+                              className={`p-5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-4 shadow-sm ${
+                                isDuplicado
+                                  ? 'bg-amber-50/40 border-amber-400 hover:border-amber-500 ring-2 ring-amber-300/80 shadow-amber-100'
+                                  : 'bg-white border-[#EFECE6] hover:border-[#8C6D58]'
+                              }`}
                             >
                               <div>
                                 <div className="flex items-start gap-3">
@@ -1448,6 +1548,12 @@ export const Clientes: React.FC<ClientesProps> = ({
                                 </div>
 
                                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                                  {isDuplicado && (
+                                    <span className="text-[9px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300 flex items-center gap-1 shadow-2xs">
+                                      <Sparkles size={10} className="text-amber-600 shrink-0" />
+                                      <span>⚠️ Duplicada ({infoDup?.razao})</span>
+                                    </span>
+                                  )}
                                   {c.anamnese ? (
                                     <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 flex items-center gap-1">
                                       <ShieldCheck size={10} />

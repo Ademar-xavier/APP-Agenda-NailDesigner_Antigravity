@@ -527,7 +527,7 @@ export const deletarDespesaSupabase = async (id: string) => {
   } catch (e) {}
 };
 
-// --- SALVAR / ATUALIZAR CONFIGURAÇÕES GERAIS (Técnicas, Formatos, Equipe em JSONB) ---
+// --- SALVAR / ATUALIZAR CONFIGURAÇÕES GERAIS (Técnicas, Formatos, Equipe, Planos VIP, Produtos em JSONB) ---
 export const salvarConfiguracoesSupabase = async (dados: {
   configSalao?: any;
   tecnicas?: string[];
@@ -536,34 +536,81 @@ export const salvarConfiguracoesSupabase = async (dados: {
   categoriasDespesa?: string[];
   categoriasProduto?: string[];
   equipe?: any[];
+  planosAssinatura?: any[];
+  produtos?: any[];
 }) => {
   try {
-    const configSalaoObj = { ...(dados.configSalao || {}) };
+    // Busca dados atuais na nuvem para mesclar e NUNCA sobrescrever listas não passadas com array vazio
+    let atual: any = null;
+    try {
+      const { data } = await supabase.from('configuracoes').select('*').eq('id', 'salao_principal').maybeSingle();
+      atual = data;
+    } catch (e) {}
+
+    const configSalaoObj = { 
+      ...(atual?.config_salao || {}),
+      ...(dados.configSalao || {})
+    };
+
     if (dados.equipe) {
       configSalaoObj.equipe = dados.equipe;
+    } else if (atual?.config_salao?.equipe && !configSalaoObj.equipe) {
+      configSalaoObj.equipe = atual.config_salao.equipe;
     }
+
     if (dados.categoriasProduto) {
       configSalaoObj.categorias_produto = dados.categoriasProduto;
+    } else if (atual?.config_salao?.categorias_produto && !configSalaoObj.categorias_produto) {
+      configSalaoObj.categorias_produto = atual.config_salao.categorias_produto;
+    }
+
+    if (dados.planosAssinatura) {
+      configSalaoObj.planos_assinatura = dados.planosAssinatura;
+    } else if (atual?.config_salao?.planos_assinatura && !configSalaoObj.planos_assinatura) {
+      configSalaoObj.planos_assinatura = atual.config_salao.planos_assinatura;
+    }
+
+    if (dados.produtos) {
+      configSalaoObj.produtos = dados.produtos;
+    } else if (atual?.config_salao?.produtos && !configSalaoObj.produtos) {
+      configSalaoObj.produtos = atual.config_salao.produtos;
     }
 
     // Preserva avisos_nao_lidos já salvos no banco para nunca apagar nem reverter exclusões de avisos
-    try {
-      const { data: atual } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
-      if (atual?.config_salao?.avisos_nao_lidos !== undefined && configSalaoObj.avisos_nao_lidos === undefined) {
-        configSalaoObj.avisos_nao_lidos = atual.config_salao.avisos_nao_lidos;
-      }
-      if (atual?.config_salao?.categorias_produto && !dados.categoriasProduto) {
-        configSalaoObj.categorias_produto = atual.config_salao.categorias_produto;
-      }
-    } catch (e) {}
+    if (atual?.config_salao?.avisos_nao_lidos !== undefined && configSalaoObj.avisos_nao_lidos === undefined) {
+      configSalaoObj.avisos_nao_lidos = atual.config_salao.avisos_nao_lidos;
+    }
+
+    // Obtém listas com prioridade: novos dados > dados atuais do banco > fallback
+    const tecnicasFinal = dados.tecnicas !== undefined 
+      ? dados.tecnicas 
+      : (atual?.tecnicas && atual.tecnicas.length > 0 ? atual.tecnicas : (atual?.config_salao?.tecnicas || []));
+
+    const formatosFinal = dados.formatos !== undefined 
+      ? dados.formatos 
+      : (atual?.formatos && atual.formatos.length > 0 ? atual.formatos : (atual?.config_salao?.formatos || []));
+
+    const categoriasServicoFinal = dados.categoriasServico !== undefined 
+      ? dados.categoriasServico 
+      : (atual?.categorias_servico && atual.categorias_servico.length > 0 ? atual.categorias_servico : (atual?.config_salao?.categorias_servico || []));
+
+    const categoriasDespesaFinal = dados.categoriasDespesa !== undefined 
+      ? dados.categoriasDespesa 
+      : (atual?.categorias_despesa && atual.categorias_despesa.length > 0 ? atual.categorias_despesa : (atual?.config_salao?.categorias_despesa || []));
+
+    // Salva também dentro de configSalaoObj para redundância total e durabilidade
+    configSalaoObj.tecnicas = tecnicasFinal;
+    configSalaoObj.formatos = formatosFinal;
+    configSalaoObj.categorias_servico = categoriasServicoFinal;
+    configSalaoObj.categorias_despesa = categoriasDespesaFinal;
 
     const payload: any = {
       id: 'salao_principal',
       config_salao: configSalaoObj,
-      tecnicas: dados.tecnicas || [],
-      formatos: dados.formatos || [],
-      categorias_servico: dados.categoriasServico || [],
-      categorias_despesa: dados.categoriasDespesa || [],
+      tecnicas: tecnicasFinal,
+      formatos: formatosFinal,
+      categorias_servico: categoriasServicoFinal,
+      categorias_despesa: categoriasDespesaFinal,
       atualizado_em: new Date().toISOString()
     };
 

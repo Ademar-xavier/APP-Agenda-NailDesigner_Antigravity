@@ -1149,8 +1149,8 @@ export const Servicos: React.FC = () => {
       {abaAtiva === 'catalogo' && (
         <div className="flex-1 overflow-y-auto pr-1 pb-8 space-y-6 animate-in fade-in duration-200">
           
-          {/* Top Banner Explicativo com Ações Rápidas */}
-          <div className="bg-gradient-to-r from-[#FAF6F0] via-[#F4EBE2] to-[#FAF6F0] border border-[#E8DFC8] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* Top Banner Explicativo */}
+          <div className="bg-gradient-to-r from-[#FAF6F0] via-[#F4EBE2] to-[#FAF6F0] border border-[#E8DFC8] rounded-2xl p-5 shadow-xs flex items-center justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="p-1.5 rounded-xl bg-[#8C6D58] text-white">
@@ -1163,29 +1163,6 @@ export const Servicos: React.FC = () => {
               <p className="text-xs text-[#8C7A6B] max-w-xl">
                 Altere os textos da página inicial do seu catálogo, atualize a foto de capa, edite os diferenciais de confiança e ajuste os preços dos cuidados adicionais (extras).
               </p>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <a
-                href={getCatalogoUrl()}
-                target="_blank"
-                rel="noreferrer"
-                className="flex-1 sm:flex-initial h-10 px-4 rounded-xl text-xs font-bold bg-white hover:bg-[#FAF9F6] border border-[#EFECE6] text-[#5A4535] flex items-center justify-center gap-1.5 shadow-2xs transition-all text-center"
-              >
-                <Eye size={14} />
-                <span>Ver Catálogo</span>
-              </a>
-
-              <button
-                type="button"
-                onClick={handleSalvarPersonalizacaoCatalogo}
-                className={`flex-1 sm:flex-initial h-10 px-5 rounded-xl text-xs font-bold text-white flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer ${
-                  salvoFeedback ? 'bg-emerald-600' : 'bg-[#8C6D58] hover:bg-[#725743]'
-                }`}
-              >
-                {salvoFeedback ? <CheckCircle2 size={16} /> : <Save size={16} />}
-                <span>{salvoFeedback ? 'Salvo com Sucesso!' : 'Salvar Alterações'}</span>
-              </button>
             </div>
           </div>
 
@@ -1479,9 +1456,11 @@ export const Servicos: React.FC = () => {
                             type="number"
                             min="0"
                             step="1"
-                            value={extra.preco}
+                            placeholder="0"
+                            value={extra.preco === 0 ? '' : extra.preco}
+                            onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                             onChange={(e) => {
-                              const val = Number(e.target.value);
+                              const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value));
                               setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, preco: val } : ex));
                             }}
                             className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] font-bold"
@@ -1494,11 +1473,13 @@ export const Servicos: React.FC = () => {
                           <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-0.5">Duração (min)</label>
                           <input
                             type="number"
-                            min="5"
+                            min="0"
                             step="5"
-                            value={extra.duracao}
+                            placeholder="0"
+                            value={extra.duracao === 0 ? '' : extra.duracao}
+                            onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                             onChange={(e) => {
-                              const val = Number(e.target.value);
+                              const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value));
                               setCatExtras(prev => prev.map((ex, i) => i === idx ? { ...ex, duracao: val } : ex));
                             }}
                             className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535]"
@@ -1743,8 +1724,10 @@ export const Servicos: React.FC = () => {
                     type="number" 
                     required
                     min={0}
+                    placeholder="0"
                     value={preco === 0 ? '' : preco}
-                    onChange={(e) => setPreco(Number(e.target.value))}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                    onChange={(e) => setPreco(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                     className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                   />
                 </div>
@@ -1882,8 +1865,10 @@ export const Servicos: React.FC = () => {
                         type="number" 
                         required
                         min={10}
+                        placeholder="0"
                         value={duracaoMinutos === 0 ? '' : duracaoMinutos}
-                        onChange={(e) => setDuracaoMinutos(Number(e.target.value))}
+                        onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                        onChange={(e) => setDuracaoMinutos(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none bg-[#FAF9F6]"
                       />
                     </div>
@@ -1981,8 +1966,10 @@ export const Servicos: React.FC = () => {
                         <input 
                           type="number"
                           min={0}
+                          placeholder="0"
                           value={sinalValor === 0 ? '' : sinalValor}
-                          onChange={(e) => setSinalValor(Number(e.target.value))}
+                          onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                          onChange={(e) => setSinalValor(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                           className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
                         />
                       </div>
@@ -1995,8 +1982,10 @@ export const Servicos: React.FC = () => {
                       <input 
                         type="number"
                         min={0}
+                        placeholder="0"
                         value={intervaloManutencaoDias === 0 ? '' : intervaloManutencaoDias}
-                        onChange={(e) => setIntervaloManutencaoDias(Number(e.target.value))}
+                        onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                        onChange={(e) => setIntervaloManutencaoDias(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                         className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
                       />
                       <p className="text-[9px] text-[#8C7A6B] mt-0.5">Informe "0" se este serviço não exigir manutenção recorrente.</p>
@@ -2086,6 +2075,7 @@ export const Servicos: React.FC = () => {
                     required
                     placeholder="0"
                     value={planoPrecoMensal === 0 ? '' : planoPrecoMensal}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setPlanoPrecoMensal(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -2098,6 +2088,7 @@ export const Servicos: React.FC = () => {
                     required
                     placeholder="1"
                     value={planoQtdProcedimentos === 0 ? '' : planoQtdProcedimentos}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setPlanoQtdProcedimentos(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -2110,6 +2101,7 @@ export const Servicos: React.FC = () => {
                     required
                     placeholder="30"
                     value={planoValidadeDias === 0 ? '' : planoValidadeDias}
+                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                     onChange={(e) => setPlanoValidadeDias(e.target.value === '' ? 0 : parseInt(e.target.value))}
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
@@ -2177,6 +2169,7 @@ export const Servicos: React.FC = () => {
                               min="0"
                               placeholder="0"
                               value={qtd === 0 ? '' : qtd}
+                              onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                               onChange={(e) => definirQtdDiretaServicoPlano(s.id, e.target.value === '' ? 0 : parseInt(e.target.value))}
                               className="w-10 text-center font-bold text-xs text-[#5A4535] bg-transparent focus:outline-none"
                             />

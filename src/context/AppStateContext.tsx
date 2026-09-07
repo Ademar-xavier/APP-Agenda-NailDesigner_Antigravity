@@ -1229,22 +1229,58 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (dados.configuracoes.tecnicas && dados.configuracoes.tecnicas.length > 0) {
           setTecnicas(dados.configuracoes.tecnicas);
           try { localStorage.setItem('nail_tecnicas', JSON.stringify(dados.configuracoes.tecnicas)); } catch (e) {}
+        } else if (tecnicas.length > 0) {
+          salvarConfiguracoesSupabase({ tecnicas }).catch(() => {});
         }
+
         if (dados.configuracoes.formatos && dados.configuracoes.formatos.length > 0) {
           setFormatos(dados.configuracoes.formatos);
           try { localStorage.setItem('nail_formatos', JSON.stringify(dados.configuracoes.formatos)); } catch (e) {}
+        } else if (formatos.length > 0) {
+          salvarConfiguracoesSupabase({ formatos }).catch(() => {});
         }
+
         if (dados.configuracoes.categorias_servico && dados.configuracoes.categorias_servico.length > 0) {
           setCategoriasServico(dados.configuracoes.categorias_servico);
           try { localStorage.setItem('nail_categorias_servico', JSON.stringify(dados.configuracoes.categorias_servico)); } catch (e) {}
+        } else if (categoriasServico.length > 0) {
+          salvarConfiguracoesSupabase({ categoriasServico }).catch(() => {});
         }
+
         if (dados.configuracoes.categorias_despesa && dados.configuracoes.categorias_despesa.length > 0) {
           setCategoriasDespesa(dados.configuracoes.categorias_despesa);
           try { localStorage.setItem('nail_categorias_despesa', JSON.stringify(dados.configuracoes.categorias_despesa)); } catch (e) {}
+        } else if (categoriasDespesa.length > 0) {
+          salvarConfiguracoesSupabase({ categoriasDespesa }).catch(() => {});
         }
-        if (dados.configuracoes.config_salao?.categorias_produto && dados.configuracoes.config_salao.categorias_produto.length > 0) {
-          setCategoriasProduto(dados.configuracoes.config_salao.categorias_produto);
-          try { localStorage.setItem('nail_categorias_produto', JSON.stringify(dados.configuracoes.config_salao.categorias_produto)); } catch (e) {}
+
+        const catProdNuvem = dados.configuracoes.config_salao?.categorias_produto || dados.configuracoes.categorias_produto;
+        if (catProdNuvem && catProdNuvem.length > 0) {
+          setCategoriasProduto(catProdNuvem);
+          try { localStorage.setItem('nail_categorias_produto', JSON.stringify(catProdNuvem)); } catch (e) {}
+        } else if (categoriasProduto.length > 0) {
+          salvarConfiguracoesSupabase({ categoriasProduto }).catch(() => {});
+        }
+
+        // 10. Planos de Assinatura VIP da Nuvem
+        const planosNuvem = dados.configuracoes.config_salao?.planos_assinatura || dados.configuracoes.planos_assinatura;
+        if (Array.isArray(planosNuvem) && planosNuvem.length > 0) {
+          setPlanosAssinatura(planosNuvem);
+          try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(planosNuvem)); } catch (e) {}
+          dbSetAll(STORES.PLANOS_ASSINATURA, planosNuvem);
+        } else if (planosAssinatura.length > 0) {
+          // Garante backup imediato dos planos locais para a nuvem
+          salvarConfiguracoesSupabase({ planosAssinatura }).catch(() => {});
+        }
+
+        // 11. Produtos e Balcão PDV da Nuvem
+        const produtosNuvem = dados.configuracoes.config_salao?.produtos || dados.configuracoes.produtos;
+        if (Array.isArray(produtosNuvem) && produtosNuvem.length > 0) {
+          setProdutos(produtosNuvem);
+          try { localStorage.setItem('nail_produtos', JSON.stringify(produtosNuvem)); } catch (e) {}
+          dbSetAll(STORES.PRODUTOS, produtosNuvem);
+        } else if (produtos.length > 0) {
+          salvarConfiguracoesSupabase({ produtos }).catch(() => {});
         }
       }
 
@@ -1302,7 +1338,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         categoriasServico,
         categoriasDespesa,
         categoriasProduto,
-        equipe
+        equipe,
+        planosAssinatura,
+        produtos
       });
 
       for (const u of equipe) {
@@ -1951,50 +1989,86 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const addCategoriaDespesa = (nome: string) => {
-    if (!categoriasDespesa.includes(nome)) {
-      setCategoriasDespesa(prev => [...prev, nome]);
+    const n = nome.trim();
+    if (n && !categoriasDespesa.includes(n)) {
+      const next = [...categoriasDespesa, n];
+      setCategoriasDespesa(next);
+      try { localStorage.setItem('nail_categorias_despesa', JSON.stringify(next)); } catch (e) {}
+      salvarConfiguracoesSupabase({ categoriasDespesa: next }).catch(() => {});
+      mostrarNotificacaoGlobal(`✅ Categoria de despesa "${n}" salva na nuvem!`);
     }
   };
 
   const deleteCategoriaDespesa = (nome: string) => {
     limparFocoAtivo();
-    setCategoriasDespesa(prev => prev.filter(c => c !== nome));
+    const next = categoriasDespesa.filter(c => c !== nome);
+    setCategoriasDespesa(next);
+    try { localStorage.setItem('nail_categorias_despesa', JSON.stringify(next)); } catch (e) {}
+    salvarConfiguracoesSupabase({ categoriasDespesa: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`🗑️ Categoria "${nome}" excluída da nuvem.`);
   };
 
   // --- Ações de Técnicas ---
   const addTecnica = (nome: string) => {
-    if (!tecnicas.includes(nome)) {
-      setTecnicas(prev => [...prev, nome]);
+    const n = nome.trim();
+    if (n && !tecnicas.includes(n)) {
+      const next = [...tecnicas, n];
+      setTecnicas(next);
+      try { localStorage.setItem('nail_tecnicas', JSON.stringify(next)); } catch (e) {}
+      salvarConfiguracoesSupabase({ tecnicas: next }).catch(() => {});
+      mostrarNotificacaoGlobal(`✅ Técnica "${n}" salva na nuvem!`);
     }
   };
 
   const deleteTecnica = (nome: string) => {
     limparFocoAtivo();
-    setTecnicas(prev => prev.filter(t => t !== nome));
+    const next = tecnicas.filter(t => t !== nome);
+    setTecnicas(next);
+    try { localStorage.setItem('nail_tecnicas', JSON.stringify(next)); } catch (e) {}
+    salvarConfiguracoesSupabase({ tecnicas: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`🗑️ Técnica "${nome}" excluída da nuvem.`);
   };
 
   // --- Ações de Formatos ---
   const addFormato = (nome: string) => {
-    if (!formatos.includes(nome)) {
-      setFormatos(prev => [...prev, nome]);
+    const n = nome.trim();
+    if (n && !formatos.includes(n)) {
+      const next = [...formatos, n];
+      setFormatos(next);
+      try { localStorage.setItem('nail_formatos', JSON.stringify(next)); } catch (e) {}
+      salvarConfiguracoesSupabase({ formatos: next }).catch(() => {});
+      mostrarNotificacaoGlobal(`✅ Formato "${n}" salvo na nuvem!`);
     }
   };
 
   const deleteFormato = (nome: string) => {
     limparFocoAtivo();
-    setFormatos(prev => prev.filter(f => f !== nome));
+    const next = formatos.filter(f => f !== nome);
+    setFormatos(next);
+    try { localStorage.setItem('nail_formatos', JSON.stringify(next)); } catch (e) {}
+    salvarConfiguracoesSupabase({ formatos: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`🗑️ Formato "${nome}" excluído da nuvem.`);
   };
 
   // --- Ações de Categorias de Serviços ---
   const addCategoriaServico = (nome: string) => {
-    if (!categoriasServico.includes(nome)) {
-      setCategoriasServico(prev => [...prev, nome]);
+    const n = nome.trim();
+    if (n && !categoriasServico.includes(n)) {
+      const next = [...categoriasServico, n];
+      setCategoriasServico(next);
+      try { localStorage.setItem('nail_categorias_servico', JSON.stringify(next)); } catch (e) {}
+      salvarConfiguracoesSupabase({ categoriasServico: next }).catch(() => {});
+      mostrarNotificacaoGlobal(`✅ Categoria de serviço "${n}" salva na nuvem!`);
     }
   };
 
   const deleteCategoriaServico = (nome: string) => {
     limparFocoAtivo();
-    setCategoriasServico(prev => prev.filter(c => c !== nome));
+    const next = categoriasServico.filter(c => c !== nome);
+    setCategoriasServico(next);
+    try { localStorage.setItem('nail_categorias_servico', JSON.stringify(next)); } catch (e) {}
+    salvarConfiguracoesSupabase({ categoriasServico: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`🗑️ Categoria de serviço "${nome}" excluída da nuvem.`);
   };
 
   // --- Ações de Categorias de Produtos ---
@@ -2820,28 +2894,47 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       id: 'prod_' + gerarId(),
       criado_em: new Date().toISOString()
     };
-    setProdutos(prev => [novoProduto, ...prev]);
-    mostrarNotificacaoGlobal('✅ Produto cadastrado com sucesso!');
+    const next = [novoProduto, ...produtos];
+    setProdutos(next);
+    try { localStorage.setItem('nail_produtos', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PRODUTOS, next);
+    salvarConfiguracoesSupabase({ produtos: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`✅ Produto "${novoProduto.nome}" salvo na nuvem!`);
   };
 
   const updateProduto = (id: string, updated: Partial<Produto>) => {
-    setProdutos(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
-    mostrarNotificacaoGlobal('✅ Produto atualizado!');
+    const next = produtos.map(p => p.id === id ? { ...p, ...updated } : p);
+    setProdutos(next);
+    try { localStorage.setItem('nail_produtos', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PRODUTOS, next);
+    salvarConfiguracoesSupabase({ produtos: next }).catch(() => {});
+    mostrarNotificacaoGlobal('✅ Produto atualizado na nuvem!');
   };
 
   const deleteProduto = (id: string) => {
-    setProdutos(prev => prev.filter(p => p.id !== id));
-    mostrarNotificacaoGlobal('✅ Produto excluído.');
+    limparFocoAtivo();
+    const next = produtos.filter(p => p.id !== id);
+    setProdutos(next);
+    try { localStorage.setItem('nail_produtos', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PRODUTOS, next);
+    salvarConfiguracoesSupabase({ produtos: next }).catch(() => {});
+    mostrarNotificacaoGlobal('🗑️ Produto excluído da nuvem.');
   };
 
   const darBaixaEstoqueProduto = (produtoId: string, quantidade: number) => {
-    setProdutos(prev => prev.map(p => {
-      if (p.id === produtoId) {
-        const novoEstoque = Math.max(0, p.estoque_atual - quantidade);
-        return { ...p, estoque_atual: novoEstoque };
-      }
-      return p;
-    }));
+    setProdutos(prev => {
+      const next = prev.map(p => {
+        if (p.id === produtoId) {
+          const novoEstoque = Math.max(0, p.estoque_atual - quantidade);
+          return { ...p, estoque_atual: novoEstoque };
+        }
+        return p;
+      });
+      try { localStorage.setItem('nail_produtos', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.PRODUTOS, next);
+      salvarConfiguracoesSupabase({ produtos: next }).catch(() => {});
+      return next;
+    });
   };
 
   // --- Ações de Anamnese Digital ---
@@ -2875,18 +2968,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...plano,
       id: 'plano_' + gerarId()
     };
-    setPlanosAssinatura(prev => [novoPlano, ...prev]);
-    mostrarNotificacaoGlobal(`✅ Plano "${novoPlano.nome}" cadastrado com sucesso!`);
+    const next = [novoPlano, ...planosAssinatura];
+    setPlanosAssinatura(next);
+    try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PLANOS_ASSINATURA, next);
+    salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    mostrarNotificacaoGlobal(`✅ Plano "${novoPlano.nome}" cadastrado e salvo na nuvem!`);
   };
 
   const updatePlanoAssinatura = (id: string, updated: Partial<PlanoAssinatura>) => {
-    setPlanosAssinatura(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
-    mostrarNotificacaoGlobal('✅ Plano atualizado.');
+    const next = planosAssinatura.map(p => p.id === id ? { ...p, ...updated } : p);
+    setPlanosAssinatura(next);
+    try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PLANOS_ASSINATURA, next);
+    salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    mostrarNotificacaoGlobal('✅ Plano atualizado na nuvem.');
   };
 
   const deletePlanoAssinatura = (id: string) => {
-    setPlanosAssinatura(prev => prev.filter(p => p.id !== id));
-    mostrarNotificacaoGlobal('✅ Plano excluído.');
+    limparFocoAtivo();
+    const next = planosAssinatura.filter(p => p.id !== id);
+    setPlanosAssinatura(next);
+    try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.PLANOS_ASSINATURA, next);
+    salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    mostrarNotificacaoGlobal('🗑️ Plano excluído da nuvem.');
   };
 
   const vincularAssinaturaCliente = (clienteId: string, planoId: string) => {
