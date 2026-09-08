@@ -85,6 +85,7 @@ export interface Agendamento {
   confirmado_por?: 'cliente' | 'admin';
   produtos?: ItemComandaProduto[]; // Produtos consumidos/comprados no atendimento
   pago_com_clube?: boolean; // Se foi baixado do saldo de assinatura recorrente
+  plano_id?: string; // ID interno imutável do plano VIP vinculado
   recorrencia_grupo_id?: string; // ID comum compartilhado entre agendamentos da mesma série recorrente
   recorrencia_tipo?: 'nenhuma' | 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
   recorrencia_posicao?: string; // Ex: "1 de 4", "2 de 4"

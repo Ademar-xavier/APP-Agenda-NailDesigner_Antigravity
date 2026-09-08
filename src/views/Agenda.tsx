@@ -790,8 +790,10 @@ export const Agenda: React.FC<AgendaProps> = ({
       ? 'bloqueado'
       : (isVipFinal ? 'confirmado' : (cobrarSinal ? 'pendente' : 'confirmado'));
 
+    const idPlanoEfetivo = planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id;
+    const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
     const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
-    const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}] ` : '';
+    const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
     const obsFinal = `${prefixoVip}${obsAgendamento}`.trim();
 
     const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
@@ -821,9 +823,10 @@ export const Agenda: React.FC<AgendaProps> = ({
       valor_total: totalFinal,
       valor_sinal: valorSinalFinal,
       pago_com_clube: isVipFinal,
+      plano_id: idPlanoEfetivo,
       observacoes: obsFinal,
       origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id);
+    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, idPlanoEfetivo);
 
     if (res.success) {
       // Limpar formulário
