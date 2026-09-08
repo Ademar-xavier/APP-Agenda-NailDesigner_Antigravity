@@ -157,6 +157,7 @@ interface AppStateContextType {
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
+  atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
@@ -167,7 +168,8 @@ interface AppStateContextType {
     dataProximaManutencao?: string,
     produtosVendidos?: ItemComandaProduto[],
     pagoComClube?: boolean,
-    servicoAbaterId?: string
+    servicoAbaterId?: string,
+    desconto?: { valor: number; motivo?: string }
   ) => void;
   
   // Ações de Lista de Espera
@@ -2765,6 +2767,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     marcarAvisoComoLido(agendamentoId);
   };
 
+  const atualizarServicosEProfissionalAgendamento = (
+    agendamentoId: string,
+    novosServicosIds: string[],
+    novaProfissionalId: string
+  ) => {
+    const ag = agendamentos.find(a => a.id === agendamentoId);
+    if (!ag) return;
+
+    const servicosEscolhidos = servicos.filter(s => novosServicosIds.includes(s.id));
+    const duracaoTotal = servicosEscolhidos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+
+    // Calcula novo horário de término preservando o fuso/data original de início
+    const dInicio = new Date(ag.inicio);
+    const dFim = new Date(dInicio.getTime() + duracaoTotal * 60000);
+    const fimStr = dFim.toISOString();
+
+    // Mantém isenção se for sessão recorrente VIP inclusa no plano
+    const isSessaoVipInclusa = Boolean(ag.pago_com_clube && ag.valor_total === 0);
+    const novoValorTotal = isSessaoVipInclusa 
+      ? 0 
+      : servicosEscolhidos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+
+    const atualizado: Agendamento = {
+      ...ag,
+      profissional_id: novaProfissionalId || ag.profissional_id,
+      fim: fimStr,
+      valor_total: novoValorTotal
+    };
+
+    setAgendamentos(prev => {
+      const next = prev.map(a => a.id === agendamentoId ? atualizado : a);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.AGENDAMENTOS, next);
+      return next;
+    });
+
+    setItensAgendamento(prev => {
+      const nextItens = { ...prev, [agendamentoId]: novosServicosIds };
+      try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(nextItens)); } catch (e) {}
+      return nextItens;
+    });
+
+    salvarAgendamentoSupabase(atualizado, novosServicosIds);
+    mostrarNotificacaoGlobal('✅ Procedimento e profissional atualizados com sucesso!');
+  };
+
   const concluirAtendimento = (
     agendamentoId: string, 
     valorRestante: number, 
@@ -2772,23 +2820,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     dataProximaManutencao?: string,
     produtosVendidos?: ItemComandaProduto[],
     pagoComClube?: boolean,
-    servicoAbaterId?: string
+    servicoAbaterId?: string,
+    desconto?: { valor: number; motivo?: string }
   ) => {
-    // 1. Atualizar agendamento com status concluído, produtos e clube
+    const valorDesconto = Math.max(0, Number(desconto?.valor) || 0);
+    const motivoDesconto = desconto?.motivo?.trim() || 'Desconto concedido';
+
+    // 1. Atualizar agendamento com status concluído, produtos, clube e desconto
     setAgendamentos(prev => {
       const atualizados = prev.map(a => {
         if (a.id === agendamentoId) {
           const totalAdicionalProdutos = produtosVendidos ? produtosVendidos.reduce((acc, p) => acc + p.subtotal, 0) : 0;
           const novoValorTotal = pagoComClube 
             ? totalAdicionalProdutos 
-            : (a.valor_total + totalAdicionalProdutos);
+            : Math.max(0, (a.valor_total - valorDesconto) + totalAdicionalProdutos);
 
           const atualizado: Agendamento = {
             ...a,
             status: 'concluido',
             produtos: produtosVendidos && produtosVendidos.length > 0 ? produtosVendidos : undefined,
             pago_com_clube: pagoComClube,
-            valor_total: novoValorTotal
+            valor_total: novoValorTotal,
+            desconto_valor: valorDesconto > 0 ? valorDesconto : undefined,
+            desconto_motivo: valorDesconto > 0 ? motivoDesconto : undefined
           };
           salvarAgendamentoSupabase(atualizado);
           return atualizado;
@@ -2822,7 +2876,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         tipo: metodo,
         valor: valorRestante,
         status: 'pago',
-        data_pagamento: new Date().toISOString()
+        data_pagamento: new Date().toISOString(),
+        observacao: valorDesconto > 0 ? `Desconto de R$ ${valorDesconto.toFixed(2)} (${motivoDesconto})` : undefined
       };
       setPagamentos(prev => [...prev, pagFinal]);
     }
@@ -3663,14 +3718,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const clienteIdFinal = cliente?.id || agInicial.cliente_id;
     const nomePlanoObs = plano?.nome || cliente?.assinatura?.nome_plano || 'Clube VIP';
 
+    const temDistribuicaoSessoes = Boolean(
+      (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) ||
+      (plano?.itens_servicos && plano.itens_servicos.some(it => it.sessoes && it.sessoes.length > 0))
+    );
+
     for (let semana = 0; semana < maxSemanas; semana++) {
-      // Procedimento designado para esta semana
-      const procSemana = filaProcedimentosCiclo[semana] || filaProcedimentosCiclo[0];
-      const profId = procSemana.profissional_id || agInicial.profissional_id;
-      const servId = procSemana.servico_id;
-      const nomeServ = procSemana.nome_servico;
-      const servObj = servicos.find(s => s.id === servId);
-      const durSessao = servObj?.duracao_minutos || 60;
+      const sessaoNum = semana + 1;
 
       // Calcula a data da sessão (+ semana * intervaloDias a partir da data do agendamento inicial)
       let dataSemanaStr = dataPart;
@@ -3705,78 +3759,179 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ? agInicial.inicio
         : `${dataSemanaStr}T${(hStr || '10').padStart(2, '0')}:${(mStr || '00').padStart(2, '0')}:${(sStr || '00').padStart(2, '0')}`;
 
-      // Calcula fim somando durSessao
-      const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
-      const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
-      const [curY, curMo, curD] = curDataPart.split('-').map(Number);
-      const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
-      const anoFim = dFim.getFullYear();
-      const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
-      const diaFim = String(dFim.getDate()).padStart(2, '0');
-      const hFimStr = String(dFim.getHours()).padStart(2, '0');
-      const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
-      const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
+      // Determina os procedimentos designados para esta sessão
+      let procsDestaSessao: { servico_id: string; nome_servico: string; profissional_id: string; duracao_minutos: number }[] = [];
+
+      if (temDistribuicaoSessoes) {
+        if (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+          procsDestaSessao = plano.distribuicao_sessoes
+            .filter(d => d.sessao_numero === sessaoNum)
+            .map(d => {
+              const s = servicos.find(item => item.id === d.servico_id);
+              return {
+                servico_id: d.servico_id,
+                nome_servico: d.nome_servico || s?.nome || 'Sessão VIP',
+                profissional_id: d.profissional_id || agInicial.profissional_id,
+                duracao_minutos: d.duracao_minutos || s?.duracao_minutos || 60
+              };
+            });
+        } else if (plano?.itens_servicos) {
+          plano.itens_servicos.forEach(it => {
+            if (it.sessoes && it.sessoes.includes(sessaoNum)) {
+              const s = servicos.find(item => item.id === it.servico_id);
+              procsDestaSessao.push({
+                servico_id: it.servico_id,
+                nome_servico: it.nome_servico || s?.nome || 'Sessão VIP',
+                profissional_id: it.profissional_id || agInicial.profissional_id,
+                duracao_minutos: s?.duracao_minutos || 60
+              });
+            }
+          });
+        }
+      }
+
+      // Se não houver configuração explícita para esta sessão, usa o fallback da fila sequencial
+      if (procsDestaSessao.length === 0) {
+        const procPadrao = filaProcedimentosCiclo[semana] || filaProcedimentosCiclo[0];
+        const s = servicos.find(item => item.id === procPadrao.servico_id);
+        procsDestaSessao = [{
+          servico_id: procPadrao.servico_id,
+          nome_servico: procPadrao.nome_servico,
+          profissional_id: procPadrao.profissional_id || agInicial.profissional_id,
+          duracao_minutos: s?.duracao_minutos || 60
+        }];
+      }
+
+      // Agrupa procedimentos da sessão por profissional (para suportar procedimentos simultâneos / 4 mãos)
+      const mapaPorProfissional = new Map<string, typeof procsDestaSessao>();
+      procsDestaSessao.forEach(p => {
+        const pId = p.profissional_id || agInicial.profissional_id;
+        const list = mapaPorProfissional.get(pId) || [];
+        list.push(p);
+        mapaPorProfissional.set(pId, list);
+      });
 
       const idTag = plano?.id ? ` [PLANO_ID:${plano.id}]` : '';
 
-      if (semana === 0) {
-        // Atualiza agendamento inicial com a identificação de Sessão 1, serviço e PLANO_ID
-        const baseObs = agInicial.observacoes?.includes('Sessão 1')
-          ? agInicial.observacoes
-          : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomeServ})`;
-        const novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
-        
-        const valorPlano = Number(plano?.preco_mensal) || 0;
-        const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
+      // Processa cada profissional alocado nesta sessão
+      for (const [profId, procsDoProf] of mapaPorProfissional.entries()) {
+        const servicosIds = procsDoProf.map(p => p.servico_id);
+        const nomesServicosCombinados = procsDoProf.map(p => p.nome_servico).join(' + ');
+        const durSessao = procsDoProf.reduce((acc, p) => acc + p.duracao_minutos, 0) || 60;
 
-        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id) {
-          const atualizado: Agendamento = {
-            ...agInicial,
-            fim: fimStr,
-            observacoes: novoObs,
-            valor_total: valorTotalFinal,
-            pago_com_clube: true,
-            plano_id: plano?.id || agInicial.plano_id
-          };
-          salvarAgendamentoSupabase(atualizado, [servId]);
-          setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
-          setItensAgendamento(prev => ({ ...prev, [agInicial.id]: [servId] }));
-        }
-      } else {
-        // Semana > 0: Cria a sessão semanal correspondente
-        const listaAtualAgendamentos = agendamentoInicialObj 
-          ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
-          : agendamentos;
+        // Calcula fim somando durSessao
+        const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
+        const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
+        const [curY, curMo, curD] = curDataPart.split('-').map(Number);
+        const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
+        const anoFim = dFim.getFullYear();
+        const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
+        const diaFim = String(dFim.getDate()).padStart(2, '0');
+        const hFimStr = String(dFim.getHours()).padStart(2, '0');
+        const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
+        const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
 
-        const jaExiste = listaAtualAgendamentos.some(a =>
-          a.cliente_id === clienteIdFinal &&
-          a.inicio.substring(0, 10) === dataSemanaStr &&
-          a.status !== 'cancelado'
-        ) || novosAgendamentos.some(a =>
-          a.cliente_id === clienteIdFinal &&
-          a.inicio.substring(0, 10) === dataSemanaStr
-        );
+        if (semana === 0) {
+          if (profId === agInicial.profissional_id) {
+            // Atualiza agendamento inicial do profissional principal com Sessão 1 e PLANO_ID
+            const baseObs = agInicial.observacoes?.includes('Sessão 1')
+              ? agInicial.observacoes
+              : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomesServicosCombinados})`;
+            const novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
+            
+            const valorPlano = Number(plano?.preco_mensal) || 0;
+            const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
 
-        if (!jaExiste) {
-          const novoId = gerarCodigoReserva();
-          const novoAgendamento: Agendamento = {
-            id: novoId,
-            cliente_id: clienteIdFinal,
-            profissional_id: profId,
-            inicio: inicioStr,
-            fim: fimStr,
-            status: 'confirmado',
-            valor_total: 0,
-            valor_sinal: 0,
-            pago_com_clube: true,
-            plano_id: plano?.id,
-            origem: 'admin',
-            observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${semana + 1} (${nomeServ})`,
-            criado_em: new Date().toISOString()
-          };
-          novosAgendamentos.push(novoAgendamento);
-          novosItensMap[novoId] = [servId];
-          salvarAgendamentoSupabase(novoAgendamento, [servId]);
+            if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id) {
+              const atualizado: Agendamento = {
+                ...agInicial,
+                fim: fimStr,
+                observacoes: novoObs,
+                valor_total: valorTotalFinal,
+                pago_com_clube: true,
+                plano_id: plano?.id || agInicial.plano_id
+              };
+              salvarAgendamentoSupabase(atualizado, servicosIds);
+              setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
+              setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servicosIds }));
+            }
+          } else {
+            // Se houver outra profissional na Sessão 1 (ex: Pé com Lurdinha e Mão com Sheila no dia 1)
+            const listaAtualAgendamentos = agendamentoInicialObj 
+              ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
+              : agendamentos;
+
+            const jaExisteSimultaneo = listaAtualAgendamentos.some(a =>
+              a.cliente_id === clienteIdFinal &&
+              a.profissional_id === profId &&
+              a.inicio.substring(0, 10) === dataSemanaStr &&
+              a.status !== 'cancelado'
+            ) || novosAgendamentos.some(a =>
+              a.cliente_id === clienteIdFinal &&
+              a.profissional_id === profId &&
+              a.inicio.substring(0, 10) === dataSemanaStr
+            );
+
+            if (!jaExisteSimultaneo) {
+              const novoId = gerarCodigoReserva();
+              const novoAgendamento: Agendamento = {
+                id: novoId,
+                cliente_id: clienteIdFinal,
+                profissional_id: profId,
+                inicio: inicioStr,
+                fim: fimStr,
+                status: 'confirmado',
+                valor_total: 0,
+                valor_sinal: 0,
+                pago_com_clube: true,
+                plano_id: plano?.id,
+                origem: 'admin',
+                observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão 1 (${nomesServicosCombinados}) [Simultâneo]`,
+                criado_em: new Date().toISOString()
+              };
+              novosAgendamentos.push(novoAgendamento);
+              novosItensMap[novoId] = servicosIds;
+              salvarAgendamentoSupabase(novoAgendamento, servicosIds);
+            }
+          }
+        } else {
+          // Semana > 0: Cria a sessão para cada profissional designado
+          const listaAtualAgendamentos = agendamentoInicialObj 
+            ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
+            : agendamentos;
+
+          const jaExiste = listaAtualAgendamentos.some(a =>
+            a.cliente_id === clienteIdFinal &&
+            a.profissional_id === profId &&
+            a.inicio.substring(0, 10) === dataSemanaStr &&
+            a.status !== 'cancelado'
+          ) || novosAgendamentos.some(a =>
+            a.cliente_id === clienteIdFinal &&
+            a.profissional_id === profId &&
+            a.inicio.substring(0, 10) === dataSemanaStr
+          );
+
+          if (!jaExiste) {
+            const novoId = gerarCodigoReserva();
+            const novoAgendamento: Agendamento = {
+              id: novoId,
+              cliente_id: clienteIdFinal,
+              profissional_id: profId,
+              inicio: inicioStr,
+              fim: fimStr,
+              status: 'confirmado',
+              valor_total: 0,
+              valor_sinal: 0,
+              pago_com_clube: true,
+              plano_id: plano?.id,
+              origem: 'admin',
+              observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados})`,
+              criado_em: new Date().toISOString()
+            };
+            novosAgendamentos.push(novoAgendamento);
+            novosItensMap[novoId] = servicosIds;
+            salvarAgendamentoSupabase(novoAgendamento, servicosIds);
+          }
         }
       }
     }
@@ -3879,6 +4034,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addAgendamento,
       updateAgendamentoStatus,
       atualizarValorSinalAgendamento,
+      atualizarServicosEProfissionalAgendamento,
       cancelAgendamento,
       deleteAgendamento,
       confirmarSinal,

@@ -51,9 +51,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     clientes, 
     pagamentos, 
     equipe, 
+    servicos,
     configSalao,
     updateAgendamentoStatus,
     atualizarValorSinalAgendamento,
+    atualizarServicosEProfissionalAgendamento,
     cancelAgendamento,
     confirmarSinal,
     concluirAtendimento,
@@ -76,6 +78,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const servs = agendamento ? obterServicosDeAgendamento(agendamento.id) : [];
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
+
+  // Estados de Edição de Procedimentos e Profissional
+  const [editandoServicosEProf, setEditandoServicosEProf] = useState(false);
+  const [servicosEditadosIds, setServicosEditadosIds] = useState<string[]>([]);
+  const [profissionalEditadaId, setProfissionalEditadaId] = useState<string>(agendamento?.profissional_id || '');
+
+  // Estados de Desconto na Comanda (Fechamento)
+  const [descontoValor, setDescontoValor] = useState<number>(agendamento?.desconto_valor || 0);
+  const [descontoMotivo, setDescontoMotivo] = useState<string>(agendamento?.desconto_motivo || 'Desconto acordado');
 
   // Estados de Produtos na Comanda e Clube VIP
   const [produtosComanda, setProdutosComanda] = useState<ItemComandaProduto[]>(agendamento?.produtos || []);
@@ -113,6 +124,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   useEffect(() => {
     if (agendamento) {
+      setProfissionalEditadaId(agendamento.profissional_id);
+      setDescontoValor(agendamento.desconto_valor || 0);
+      setDescontoMotivo(agendamento.desconto_motivo || 'Desconto acordado');
       if (Number(agendamento.valor_sinal) > 0) {
         setValorSinalCobrar(Number(agendamento.valor_sinal));
       } else if (servs && servs.length > 0) {
@@ -126,10 +140,17 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         }
       }
     }
-  }, [agendamento?.id, agendamento?.valor_sinal, servs.length]);
+  }, [agendamento?.id, agendamento?.valor_sinal, agendamento?.profissional_id, agendamento?.desconto_valor, servs.length]);
+
+  useEffect(() => {
+    if (servs && servs.length > 0) {
+      setServicosEditadosIds(servs.map(s => s.id));
+    }
+  }, [servs.length, agendamento?.id]);
 
   useEffect(() => {
     setAcao(null);
+    setEditandoServicosEProf(false);
     if (agendamento?.status) {
       setStatusVisual(agendamento.status);
     }
@@ -140,13 +161,16 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   useEffect(() => {
     if (agendamento) {
-      // Calcula o valor total a receber considerando sinal, clube vip e produtos de balcão
+      // Calcula o valor total a receber considerando sinal, clube vip, desconto e produtos de balcão
       const jaPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
       const totalProdutos = produtosComanda.reduce((acc, p) => acc + p.subtotal, 0);
-      const valorServico = usarSaldoClube ? 0 : Math.max(0, agendamento.valor_total - jaPago);
+      const descVal = Math.max(0, Number(descontoValor) || 0);
+      const valorBase = Math.max(0, agendamento.valor_total - jaPago);
+      const valorServicoComDesconto = Math.max(0, valorBase - descVal);
+      const valorServico = usarSaldoClube ? 0 : valorServicoComDesconto;
       setValorRecebido(valorServico + totalProdutos);
     }
-  }, [agendamento, produtosComanda, usarSaldoClube]);
+  }, [agendamento, produtosComanda, usarSaldoClube, descontoValor]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -487,6 +511,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     setProdutosComanda(prev => prev.filter(p => p.produto_id !== produtoId));
   };
 
+  const handleSalvarEdicaoServicosEProf = () => {
+    if (!agendamento) return;
+    if (servicosEditadosIds.length === 0) {
+      mostrarAlerta({
+        titulo: 'Nenhum Serviço Selecionado',
+        mensagem: 'Por favor, selecione ao menos um serviço para o atendimento.',
+        tipo: 'aviso'
+      });
+      return;
+    }
+    atualizarServicosEProfissionalAgendamento(
+      agendamento.id,
+      servicosEditadosIds,
+      profissionalEditadaId || agendamento.profissional_id
+    );
+    setEditandoServicosEProf(false);
+  };
+
   const handleConcluir = () => {
     concluirAtendimento(
       agendamento.id, 
@@ -495,7 +537,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       undefined, 
       produtosComanda.length > 0 ? produtosComanda : undefined, 
       usarSaldoClube,
-      usarSaldoClube ? servicoAbaterId : undefined
+      usarSaldoClube ? servicoAbaterId : undefined,
+      descontoValor > 0 ? { valor: Number(descontoValor), motivo: descontoMotivo } : undefined
     );
     setAcao(null);
     onClose();
@@ -606,28 +649,160 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           </div>
         </div>
 
-        {/* Services Box */}
-        <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
-          <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider mb-2">Serviços</p>
-          <div className="space-y-1.5 text-xs text-[#5A4535]">
-            {servs.map((s) => (
-              <div key={s.id} className="flex justify-between">
-                <span>{s.nome}</span>
-                <span className="font-semibold">{formatarMoeda(s.preco)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2.5 flex justify-between border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
-            <span>Total</span>
-            <span>{formatarMoeda(agendamento.valor_total)}</span>
-          </div>
-          {agendamento.valor_sinal > 0 && (
-            <div className="mt-1 flex justify-between text-[10px] text-[#8C7A6B]">
-              <span>Sinal previsto</span>
-              <span>{formatarMoeda(agendamento.valor_sinal)}</span>
+        {/* Services Box & Edição de Serviço / Profissional */}
+        {!editandoServicosEProf ? (
+          <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Serviços & Profissional</p>
+              {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServicosEditadosIds(servs.map(s => s.id));
+                    setProfissionalEditadaId(agendamento.profissional_id);
+                    setEditandoServicosEProf(true);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
+                  title="Trocar procedimentos ou alterar a profissional responsável"
+                >
+                  <Sparkles size={12} className="text-amber-500" />
+                  <span>Trocar Serviço / Profissional</span>
+                </button>
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="space-y-1.5 text-xs text-[#5A4535]">
+              {servs.map((s) => (
+                <div key={s.id} className="flex justify-between">
+                  <span>{s.nome}</span>
+                  <span className="font-semibold">{formatarMoeda(s.preco)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2.5 flex justify-between border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
+              <span>Total</span>
+              <span>{formatarMoeda(agendamento.valor_total)}</span>
+            </div>
+            {agendamento.valor_sinal > 0 && (
+              <div className="mt-1 flex justify-between text-[10px] text-[#8C7A6B]">
+                <span>Sinal previsto</span>
+                <span>{formatarMoeda(agendamento.valor_sinal)}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#8C6D58]/30 p-3.5 mb-4 bg-[#FAF6F0] space-y-3 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-[#8C6D58]/20 pb-2">
+              <div className="flex items-center gap-1.5">
+                <Sparkles size={14} className="text-amber-600" />
+                <span className="text-xs font-bold text-[#5A4535]">Alterar Serviço & Profissional</span>
+              </div>
+              <span className="text-[10px] text-[#8C7A6B]">Atualização de comanda</span>
+            </div>
+
+            {/* Seletor de Profissional */}
+            <div>
+              <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">
+                Profissional Responsável
+              </label>
+              <select
+                value={profissionalEditadaId}
+                onChange={(e) => setProfissionalEditadaId(e.target.value)}
+                className="w-full bg-white border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#5A4535] focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
+              >
+                {equipe.filter(m => m.ativo).map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.nome} ({m.especialidade || (m.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Lista de Procedimentos / Serviços Disponíveis */}
+            <div>
+              <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">
+                Selecione os Serviços Realizados
+              </label>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-[#EFECE6] rounded-lg p-2 bg-white">
+                {servicos.filter(s => s.ativo).map((s) => {
+                  const isChecked = servicosEditadosIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                        isChecked 
+                          ? 'bg-amber-50/70 border-amber-300 font-semibold text-[#5A4535]' 
+                          : 'bg-white border-stone-100 hover:border-gray-200 text-stone-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setServicosEditadosIds(prev => [...prev, s.id]);
+                            } else {
+                              setServicosEditadosIds(prev => prev.filter(id => id !== s.id));
+                            }
+                          }}
+                          className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                        />
+                        <span>{s.nome}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-[#8C7A6B] block">{s.duracao_minutos} min</span>
+                        <span className="font-bold text-[#5A4535]">{formatarMoeda(s.preco)}</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Previsão recalculada de Duração e Término */}
+            {(() => {
+              const servsNovos = servicos.filter(s => servicosEditadosIds.includes(s.id));
+              const durTotalNova = servsNovos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+              const dIni = new Date(agendamento.inicio);
+              const dFim = new Date(dIni.getTime() + durTotalNova * 60000);
+              const horaFim = `${String(dFim.getHours()).padStart(2, '0')}:${String(dFim.getMinutes()).padStart(2, '0')}`;
+              const isVipIncluso = agendamento.pago_com_clube && agendamento.valor_total === 0;
+              const novoTotalCalculado = isVipIncluso ? 0 : servsNovos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+
+              return (
+                <div className="p-2.5 bg-white rounded-lg border border-[#EFECE6] text-xs space-y-1">
+                  <div className="flex justify-between text-[#8C7A6B]">
+                    <span>Nova duração prevista:</span>
+                    <span className="font-bold text-[#5A4535]">{durTotalNova} min (até às {horaFim})</span>
+                  </div>
+                  <div className="flex justify-between text-[#8C7A6B]">
+                    <span>Novo valor total:</span>
+                    <span className="font-bold text-[#8C6D58]">{formatarMoeda(novoTotalCalculado)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Botões de Ação */}
+            <div className="flex justify-end gap-2 text-xs pt-1">
+              <button
+                type="button"
+                onClick={() => setEditandoServicosEProf(false)}
+                className="px-3 py-1.5 text-[#8C7A6B] hover:bg-white rounded-lg font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSalvarEdicaoServicosEProf}
+                className="px-4 py-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-lg font-semibold shadow-xs"
+              >
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Observações / Origem */}
         {(() => {
@@ -986,6 +1161,59 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
             </div>
 
+            {/* Campo de Desconto na Comanda (Negociação no Fechamento) */}
+            <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles size={13} className="text-emerald-600" />
+                  <label className="block text-[10px] font-bold text-[#8C6D58] uppercase">
+                    Desconto no Fechamento
+                  </label>
+                </div>
+                <span className="text-[10px] text-[#8C7A6B]">Negociação com a cliente</span>
+              </div>
+
+              {/* Botões rápidos de motivo */}
+              <div className="flex flex-wrap gap-1">
+                {['Negociado', 'Cortesia', 'Fidelidade', 'Promoção'].map(mot => (
+                  <button
+                    key={mot}
+                    type="button"
+                    onClick={() => setDescontoMotivo(mot)}
+                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${
+                      descontoMotivo === mot
+                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                        : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                    }`}
+                  >
+                    {mot}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={descontoValor === 0 ? '' : descontoValor}
+                    onChange={(e) => setDescontoValor(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="w-full pl-8 pr-2 py-1.5 border border-[#EFECE6] rounded-lg text-xs font-bold text-emerald-800 bg-[#FAF9F6] focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Motivo (ex: Amiga da casa)"
+                  value={descontoMotivo}
+                  onChange={(e) => setDescontoMotivo(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-[#EFECE6] rounded-lg text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                />
+              </div>
+            </div>
+
             {/* Resumo da Comanda */}
             <div className="bg-white/80 p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-xs">
               <div className="flex justify-between text-[#8C7A6B]">
@@ -1000,6 +1228,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   <span>R$ 0,00 (Sessão inclusa no plano)</span>
                 </div>
               )}
+              {descontoValor > 0 && !usarSaldoClube && (
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>Desconto concedido ({descontoMotivo}):</span>
+                  <span>-{formatarMoeda(descontoValor)}</span>
+                </div>
+              )}
               {agendamento.status === 'confirmado' && agendamento.valor_sinal > 0 && !usarSaldoClube && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Sinal já pago:</span>
@@ -1012,6 +1246,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   <span>+{formatarMoeda(produtosComanda.reduce((acc, p) => acc + p.subtotal, 0))}</span>
                 </div>
               )}
+              <div className="flex justify-between border-t border-[#EFECE6] pt-1.5 text-xs font-bold text-[#5A4535]">
+                <span>Total a receber:</span>
+                <span className="font-serif text-sm text-[#8C6D58]">{formatarMoeda(valorRecebido)}</span>
+              </div>
             </div>
 
             {/* Forma de Pagamento e Valor Recebido */}
