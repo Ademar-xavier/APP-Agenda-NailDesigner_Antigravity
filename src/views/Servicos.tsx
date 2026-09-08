@@ -622,7 +622,7 @@ export const Servicos: React.FC = () => {
             {abaAtiva === 'servicos' 
               ? 'Gerencie preços, durações, depósitos de sinal e insumos vinculados' 
               : abaAtiva === 'clube_vip' 
-                ? 'Gerencie clubes de assinatura recorrente com sessões semanais garantidas'
+                ? 'Gerencie clubes de assinatura recorrente com sessões recorrentes garantidas'
                 : 'Customize fotos de capa, textos de destaque, selos e extras da página pública'}
           </p>
         </div>
@@ -2336,7 +2336,7 @@ export const Servicos: React.FC = () => {
                               </select>
                             </div>
                             <span className="text-[10px] font-medium text-amber-800 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md">
-                              Bloqueia {qtd} semanas na agenda
+                              Bloqueia {qtd} sessões na agenda
                             </span>
                           </div>
                         )}

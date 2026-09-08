@@ -214,7 +214,9 @@ export const Agenda: React.FC<AgendaProps> = ({
   const hasVipAtivo = !!(assCliente && assCliente.status === 'ativo');
   const planoClienteObj = useMemo(() => {
     if (!hasVipAtivo) return null;
-    return planosAssinatura.find(p => p.id === assCliente?.plano_id) || null;
+    return planosAssinatura.find(p => p.id === assCliente?.plano_id)
+      || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === assCliente?.nome_plano?.trim().toLowerCase())
+      || null;
   }, [hasVipAtivo, planosAssinatura, assCliente]);
 
   const isVipMode = agendarComoVip || !!planoVipContratarId;
@@ -241,7 +243,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços e isenta de sinal
   useEffect(() => {
-    if (hasVipAtivo && planoClienteObj) {
+    if (hasVipAtivo) {
       setAgendarComoVip(true);
       setCobrarSinal(false);
       setValorSinalManual(0);
@@ -249,7 +251,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       if (sIds.length > 0) {
         setServicosSelecionados(sIds);
       }
-      const profDesignada = planoClienteObj.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
+      const profDesignada = planoClienteObj?.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
       if (profDesignada) {
         setProfissionalId(profDesignada);
       }
@@ -300,14 +302,24 @@ export const Agenda: React.FC<AgendaProps> = ({
     // Cálculo da data prevista de retorno
     let dataSugeridaRetorno = '';
     let dataSugeridaRetornoVip = '';
+    let intervaloVip = 7;
+    let tituloRetornoVip = 'Retorno Semanal VIP';
+    let descRetornoVip = 'Próxima semana';
 
     if (dataSelecionada) {
       if (isVip) {
-        // Regra VIP: retorno semanal (+7 dias), respeitando feriados e expediente do salão
+        // Regra VIP: retorno baseado na frequência configurada no plano VIP (7, 14, 21, 28 dias)
         const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
         const [anoStr, mesStr, diaStr] = dataSelecionada.split('-');
         const dVip = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
-        dVip.setDate(dVip.getDate() + 7);
+
+        const planoVipObj = planoAtivoModal 
+          || planosAssinatura.find(p => p.id === assCliente?.plano_id)
+          || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === assCliente?.nome_plano?.trim().toLowerCase());
+        const freqVip = planoVipObj?.frequencia_dias || assCliente?.frequencia_dias || 7;
+        intervaloVip = Math.max(7, Math.round(freqVip / 7) * 7);
+
+        dVip.setDate(dVip.getDate() + intervaloVip);
         let tentativas = 0;
         while (tentativas < 14) {
           const diaSemana = dVip.getDay();
@@ -316,7 +328,7 @@ export const Agenda: React.FC<AgendaProps> = ({
           const dStrF = String(dVip.getDate()).padStart(2, '0');
           const mmdd = `${mStrF}-${dStrF}`;
           const isFeriado = feriadosNacionais.includes(mmdd);
-          const isFechado = !expediente || !expediente.ativo;
+          const isFechado = expediente ? !expediente.ativo : (diaSemana === 0);
 
           if (!isFeriado && !isFechado) {
             break;
@@ -325,6 +337,23 @@ export const Agenda: React.FC<AgendaProps> = ({
           tentativas++;
         }
         dataSugeridaRetornoVip = dVip.toLocaleDateString('pt-BR');
+
+        if (intervaloVip === 14) {
+          tituloRetornoVip = 'Retorno Quinzenal VIP';
+          descRetornoVip = `A cada 14 dias (${dataSugeridaRetornoVip})`;
+        } else if (intervaloVip === 21) {
+          tituloRetornoVip = 'Retorno VIP (3 Semanas)';
+          descRetornoVip = `A cada 21 dias (${dataSugeridaRetornoVip})`;
+        } else if (intervaloVip === 28) {
+          tituloRetornoVip = 'Retorno Mensal VIP (4 Semanas)';
+          descRetornoVip = `A cada 28 dias (${dataSugeridaRetornoVip})`;
+        } else if (intervaloVip !== 7) {
+          tituloRetornoVip = `Retorno VIP (${intervaloVip} dias)`;
+          descRetornoVip = `A cada ${intervaloVip} dias (${dataSugeridaRetornoVip})`;
+        } else {
+          tituloRetornoVip = 'Retorno Semanal VIP';
+          descRetornoVip = `Próxima semana (${dataSugeridaRetornoVip})`;
+        }
       } else if (diasRetorno > 0) {
         const d = new Date(dataSelecionada + 'T12:00:00');
         d.setDate(d.getDate() + diasRetorno);
@@ -345,12 +374,15 @@ export const Agenda: React.FC<AgendaProps> = ({
       duracaoExtenso,
       precoTotal,
       isVip,
+      intervaloVip,
+      tituloRetornoVip,
+      descRetornoVip,
       diasRetorno,
       horaTermino,
       dataSugeridaRetorno,
       dataSugeridaRetornoVip
     };
-  }, [servicos, servicosSelecionados, horaInicio, dataSelecionada, agendarComoVip, planoVipContratarId, configSalao]);
+  }, [servicos, servicosSelecionados, horaInicio, dataSelecionada, agendarComoVip, planoVipContratarId, configSalao, planoAtivoModal, assCliente, planosAssinatura]);
 
   // Sinal sugerido dos serviços selecionados
   const sinalSugeridoServicos = useMemo(() => {
@@ -827,7 +859,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       pago_com_clube: isVipFinal,
       observacoes: obsFinal,
       origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia);
+    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, planoVipContratarId || assCliente?.plano_id || planoClienteObj?.id);
 
     if (res.success) {
       // Limpar formulário
@@ -1447,7 +1479,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                               <span className="bg-amber-200/90 px-2 py-0.5 rounded-md text-amber-950">{duracaoMinutosAtual} minutos</span>
                             </div>
                             <p className="pt-1">
-                              ✨ <strong>Regra Semanal Automática:</strong> Ao salvar este agendamento, as próximas sessões semanais deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
+                              ✨ <strong>{resumoServicosSelecionados.intervaloVip === 14 ? 'Recorrência Quinzenal Automática:' : (resumoServicosSelecionados.intervaloVip === 7 ? 'Recorrência Semanal Automática:' : 'Recorrência VIP Automática:')}</strong> Ao salvar este agendamento, as próximas sessões ({resumoServicosSelecionados.intervaloVip === 14 ? 'quinzenais a cada 14 dias' : (resumoServicosSelecionados.intervaloVip === 7 ? 'semanais' : `a cada ${resumoServicosSelecionados.intervaloVip} dias`)}) deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
                             </p>
                           </div>
                         )}
@@ -1508,11 +1540,17 @@ export const Agenda: React.FC<AgendaProps> = ({
                             </option>
                           ))}
                         </select>
-                        {planoVipContratarId && (
-                          <p className="text-[10px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-relaxed">
-                            👑 O cliente será cadastrado no Clube VIP e as próximas sessões semanais deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
-                          </p>
-                        )}
+                        {planoVipContratarId && (() => {
+                          const pl = planosAssinatura.find(p => p.id === planoVipContratarId);
+                          const f = pl?.frequencia_dias || 7;
+                          const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                          const fLabel = fNorm === 14 ? 'quinzenais (a cada 14 dias)' : fNorm === 21 ? 'a cada 3 semanas' : fNorm === 28 ? 'a cada 4 semanas' : 'semanais (a cada 7 dias)';
+                          return (
+                            <p className="text-[10px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 leading-relaxed">
+                              👑 O cliente será cadastrado no Clube VIP e as próximas sessões {fLabel} deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
+                            </p>
+                          );
+                        })()}
                       </div>
                     )}
 
@@ -1593,9 +1631,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                               <div className="flex items-center gap-1.5 bg-gradient-to-r from-amber-50 to-orange-50 p-2 rounded-lg border border-amber-300">
                                 <Crown size={13} className="text-amber-600 shrink-0" />
                                 <div>
-                                  <span className="text-amber-800 block text-[9px] uppercase font-bold">Retorno Semanal VIP</span>
+                                  <span className="text-amber-800 block text-[9px] uppercase font-bold">
+                                    {resumoServicosSelecionados.tituloRetornoVip}
+                                  </span>
                                   <strong className="text-amber-950">
-                                    Próxima semana {resumoServicosSelecionados.dataSugeridaRetornoVip ? `(${resumoServicosSelecionados.dataSugeridaRetornoVip})` : ''}
+                                    {resumoServicosSelecionados.descRetornoVip}
                                   </strong>
                                 </div>
                               </div>

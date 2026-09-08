@@ -148,7 +148,8 @@ interface AppStateContextType {
       intervaloDias: number;
       repeticoes: number;
       tipoLabel: string;
-    }
+    },
+    planoVipId?: string
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
@@ -276,7 +277,7 @@ interface AppStateContextType {
   vincularAssinaturaCliente: (clienteId: string, planoId: string) => void;
   cancelarAssinaturaCliente: (clienteId: string) => void;
   abaterSaldoAssinatura: (clienteId: string, servicoId?: string) => boolean;
-  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[]) => { success: boolean; criados: number; mensagem: string };
+  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[], planoIdOverride?: string) => { success: boolean; criados: number; mensagem: string };
 
   // Comissões (Lei do Salão-Parceiro)
   fechamentosComissao: FechamentoComissao[];
@@ -1034,13 +1035,40 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { sucesso: false, mensagem: 'Não foi possível conectar ao banco Supabase.' };
       }
 
-      // 1. Clientes da Nuvem (mescla inteligente preservando anamnese e assinatura)
+      // 1. Clientes da Nuvem (mescla inteligente preservando anamnese e assinatura sincronizada com os planos)
+      const planosNuvemRef = dados.configuracoes?.config_salao?.planos_assinatura || dados.configuracoes?.planos_assinatura || planosAssinatura;
+
       if (dados.clientes && dados.clientes.length > 0) {
         setClientes(prevClientes => {
           const clientesMesclados = dados.clientes.map((cNu: any) => {
             const cLocal = prevClientes.find(p => p.id === cNu.id);
             const anamnese = cNu.anamnese || cNu.preferencias?.anamnese || cLocal?.anamnese;
-            const assinatura = cNu.assinatura || cNu.preferencias?.assinatura || cLocal?.assinatura;
+            let assinatura = cNu.assinatura || cNu.preferencias?.assinatura || cLocal?.assinatura;
+
+            // Sincroniza a frequência e identificadores com o plano cadastrado na nuvem
+            if (assinatura && Array.isArray(planosNuvemRef)) {
+              const planoCorrespondente = planosNuvemRef.find((p: any) => p.id === assinatura.plano_id)
+                || planosNuvemRef.find((p: any) => p.nome?.trim().toLowerCase() === assinatura.nome_plano?.trim().toLowerCase());
+              if (planoCorrespondente) {
+                const f = planoCorrespondente.frequencia_dias || 7;
+                const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                const divergente = !assinatura.frequencia_dias || assinatura.frequencia_dias !== fNorm || assinatura.plano_id !== planoCorrespondente.id;
+                assinatura = {
+                  ...assinatura,
+                  plano_id: planoCorrespondente.id,
+                  nome_plano: planoCorrespondente.nome,
+                  frequencia_dias: fNorm,
+                  total_mes: planoCorrespondente.qtd_procedimentos_mes || assinatura.total_mes
+                };
+                if (divergente) {
+                  salvarClienteSupabase({
+                    ...cNu,
+                    anamnese,
+                    assinatura
+                  }).catch(() => {});
+                }
+              }
+            }
 
             return {
               ...cNu,
@@ -1554,6 +1582,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             try { localStorage.setItem('nail_config_salao', JSON.stringify(cfg)); } catch (e) {}
           }
 
+          const planosNuvem = payload.new.config_salao?.planos_assinatura || payload.new.planos_assinatura;
+          if (Array.isArray(planosNuvem) && planosNuvem.length > 0) {
+            setPlanosAssinatura(planosNuvem);
+            try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(planosNuvem)); } catch (e) {}
+            dbSetAll(STORES.PLANOS_ASSINATURA, planosNuvem);
+          }
+
+          const produtosNuvem = payload.new.config_salao?.produtos || payload.new.produtos;
+          if (Array.isArray(produtosNuvem) && produtosNuvem.length > 0) {
+            setProdutos(produtosNuvem);
+            try { localStorage.setItem('nail_produtos', JSON.stringify(produtosNuvem)); } catch (e) {}
+            dbSetAll(STORES.PRODUTOS, produtosNuvem);
+          }
+
           const avisosNuvem = payload.new.config_salao?.avisos_nao_lidos;
           if (Array.isArray(avisosNuvem)) {
             setAvisosNaoLidos(prev => {
@@ -1600,6 +1642,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         bc = new BroadcastChannel('nail_agenda_sync');
         bc.onmessage = (event) => {
+          if (event.data?.type === 'PLANOS_UPDATED' && Array.isArray(event.data.planos)) {
+            setPlanosAssinatura(event.data.planos);
+            try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(event.data.planos)); } catch (e) {}
+            dbSetAll(STORES.PLANOS_ASSINATURA, event.data.planos);
+          }
+
           if (event.data?.type === 'STATUS_UPDATED') {
             const { id, status, canceladoPor, motivo, confirmadoPor } = event.data;
             setAgendamentos(prev => prev.map(a => {
@@ -2271,13 +2319,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // --- Ações de Agendamento ---
   const addAgendamento = (
     novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
-    servicosSelecionados: string[],
+    servicosSelecionados: string[] = [],
     recorrenciaManual?: {
       tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
       intervaloDias: number;
       repeticoes: number;
       tipoLabel: string;
-    }
+    },
+    planoVipId?: string
   ) => {
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
     let duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
@@ -2289,7 +2338,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // a duração total da sessão é dividida pela quantidade de profissionais que atendem em paralelo.
     if (novoAgendamento.pago_com_clube) {
       const cli = clientes.find(c => c.id === novoAgendamento.cliente_id);
-      const plano = planosAssinatura.find(p => p.id === cli?.assinatura?.plano_id);
+      const plano = (planoVipId ? planosAssinatura.find(p => p.id === planoVipId) : null)
+        || planosAssinatura.find(p => p.id === cli?.assinatura?.plano_id)
+        || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cli?.assinatura?.nome_plano?.trim().toLowerCase());
       if (plano?.itens_servicos && plano.itens_servicos.length > 0) {
         const itensSemana0 = plano.itens_servicos.filter(it => (it.quantidade || 1) > 0);
         const profsSemana0 = Array.from(new Set(itensSemana0.map(it => it.profissional_id || novoAgendamento.profissional_id)));
@@ -2438,7 +2489,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP, agenda as sessões da assinatura
     if (!recorrenciaManual && (agendamento.status === 'confirmado' || agendamento.pago_com_clube)) {
       setTimeout(() => {
-        reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados);
+        reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados, planoVipId);
       }, 100);
     }
 
@@ -2478,9 +2529,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return prev;
       });
 
-      // Regra de Negócio: Se a cliente possui Clube VIP ativo, reserva os horários semanais no mesmo dia e horário
+      // Regra de Negócio: Se a cliente possui Clube VIP ativo, reserva os horários recorrentes conforme a frequência do plano
       setTimeout(() => {
-        reservarRecorrenciaSemanalVip(id);
+        const agConfirmado = agendamentos.find(a => a.id === id);
+        const cliConfirmado = clientes.find(c => c.id === agConfirmado?.cliente_id);
+        const plano = planosAssinatura.find(p => p.id === cliConfirmado?.assinatura?.plano_id)
+          || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliConfirmado?.assinatura?.nome_plano?.trim().toLowerCase());
+        reservarRecorrenciaSemanalVip(id, agConfirmado, undefined, plano?.id);
       }, 300);
     } else if (status === 'cancelado') {
       const agAlvo = agendamentos.find(a => a.id === id);
@@ -2497,7 +2552,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
         if (idsExcluir.length > 0) {
-          setAgendamentos(prev => prev.filter(a => !idsExcluir.includes(a.id)));
+          setAgendamentos(prev => {
+            const restantes = prev.filter(a => !idsExcluir.includes(a.id));
+            try { localStorage.setItem('nail_agendamentos', JSON.stringify(restantes)); } catch (e) {}
+            dbSetAll(STORES.AGENDAMENTOS, restantes);
+            return restantes;
+          });
           idsExcluir.forEach(aid => {
             deletarAgendamentoSupabase(aid);
             marcarAvisoComoLido(aid);
@@ -2579,7 +2639,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
       if (idsExcluir.length > 0) {
-        setAgendamentos(prev => prev.filter(a => !idsExcluir.includes(a.id)));
+        setAgendamentos(prev => {
+          const restantes = prev.filter(a => !idsExcluir.includes(a.id));
+          try { localStorage.setItem('nail_agendamentos', JSON.stringify(restantes)); } catch (e) {}
+          dbSetAll(STORES.AGENDAMENTOS, restantes);
+          return restantes;
+        });
         idsExcluir.forEach(aid => {
           deletarAgendamentoSupabase(aid);
           marcarAvisoComoLido(aid);
@@ -3168,6 +3233,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
     dbSetAll(STORES.PLANOS_ASSINATURA, next);
     salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({ type: 'PLANOS_UPDATED', planos: next });
+        bc.close();
+      }
+    } catch (e) {}
     mostrarNotificacaoGlobal(`✅ Plano "${novoPlano.nome}" cadastrado e salvo na nuvem!`);
   };
 
@@ -3177,6 +3249,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
     dbSetAll(STORES.PLANOS_ASSINATURA, next);
     salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({ type: 'PLANOS_UPDATED', planos: next });
+        bc.close();
+      }
+    } catch (e) {}
+
+    // Sincroniza imediatamente todos os clientes que possuem este plano vinculado
+    const planoAtualizado = next.find(p => p.id === id);
+    if (planoAtualizado) {
+      setClientes(prev => {
+        let mudou = false;
+        const nextClientes = prev.map(c => {
+          const pertence = c.assinatura && (c.assinatura.plano_id === id || c.assinatura.nome_plano?.trim().toLowerCase() === planoAtualizado.nome?.trim().toLowerCase());
+          if (pertence && c.assinatura) {
+            mudou = true;
+            const assAtualizada: AssinaturaCliente = {
+              ...c.assinatura,
+              plano_id: id,
+              nome_plano: planoAtualizado.nome,
+              frequencia_dias: planoAtualizado.frequencia_dias ? Math.max(7, Math.round(planoAtualizado.frequencia_dias / 7) * 7) : (c.assinatura.frequencia_dias || 7),
+              total_mes: planoAtualizado.qtd_procedimentos_mes || c.assinatura.total_mes
+            };
+            const cliAtualizado = {
+              ...c,
+              assinatura: assAtualizada,
+              preferencias: {
+                ...(c.preferencias || {}),
+                assinatura: assAtualizada
+              }
+            };
+            salvarClienteSupabase(cliAtualizado).catch(() => {});
+            return cliAtualizado;
+          }
+          return c;
+        });
+        if (mudou) {
+          try { localStorage.setItem('nail_clientes', JSON.stringify(nextClientes)); } catch (e) {}
+          dbSetAll(STORES.CLIENTES, nextClientes);
+          return nextClientes;
+        }
+        return prev;
+      });
+    }
+
     mostrarNotificacaoGlobal('✅ Plano atualizado na nuvem.');
   };
 
@@ -3187,6 +3305,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try { localStorage.setItem('nail_planos_assinatura', JSON.stringify(next)); } catch (e) {}
     dbSetAll(STORES.PLANOS_ASSINATURA, next);
     salvarConfiguracoesSupabase({ planosAssinatura: next }).catch(() => {});
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nail_agenda_sync');
+        bc.postMessage({ type: 'PLANOS_UPDATED', planos: next });
+        bc.close();
+      }
+    } catch (e) {}
     mostrarNotificacaoGlobal('🗑️ Plano excluído da nuvem.');
   };
 
@@ -3213,7 +3338,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       data_inicio: agora.toISOString(),
       data_renovacao: renovacao.toISOString(),
       itens_saldo: itensSaldo,
-      frequencia_dias: plano.frequencia_dias || 7,
+      frequencia_dias: plano.frequencia_dias ? Math.max(7, Math.round(plano.frequencia_dias / 7) * 7) : 7,
       saldo_restante: plano.qtd_procedimentos_mes,
       total_mes: plano.qtd_procedimentos_mes,
       status: 'ativo'
@@ -3318,7 +3443,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const reservarRecorrenciaSemanalVip = (
     agendamentoInicialId: string,
     agendamentoInicialObj?: Agendamento,
-    servicosIniciaisIds?: string[]
+    servicosIniciaisIds?: string[],
+    planoIdOverride?: string
   ): { success: boolean; criados: number; mensagem: string } => {
     const agInicial = agendamentoInicialObj || agendamentos.find(a => a.id === agendamentoInicialId);
     if (!agInicial) {
@@ -3331,12 +3457,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const cliente = clientes.find(c => c.id === agInicial.cliente_id);
-    if (!cliente || !cliente.assinatura || cliente.assinatura.status !== 'ativo') {
+    const temAssinatura = !!(cliente?.assinatura && cliente.assinatura.status === 'ativo');
+    const isVipAgendamento = !!(agInicial.pago_com_clube || agInicial.observacoes?.includes('Clube VIP') || planoIdOverride);
+
+    if (!temAssinatura && !isVipAgendamento) {
       return { success: false, criados: 0, mensagem: 'Cliente não possui plano Clube VIP ativo no momento.' };
     }
 
-    const plano = planosAssinatura.find(p => p.id === cliente.assinatura?.plano_id);
-    const totalSessoes = cliente.assinatura.total_mes || plano?.qtd_procedimentos_mes || 4;
+    // Localiza o plano de assinatura com prioridade: Override > ID da assinatura > Nome do plano > Observações do agendamento
+    const plano = (planoIdOverride ? planosAssinatura.find(p => p.id === planoIdOverride) : null)
+      || planosAssinatura.find(p => p.id === cliente?.assinatura?.plano_id)
+      || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliente?.assinatura?.nome_plano?.trim().toLowerCase())
+      || (agInicial.observacoes?.includes('Clube VIP') 
+          ? planosAssinatura.find(p => agInicial.observacoes?.toLowerCase().includes(p.nome?.toLowerCase())) 
+          : null);
+
+    const totalSessoes = plano?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4;
 
     if (totalSessoes <= 1 && (!plano?.itens_servicos || plano.itens_servicos.length <= 1)) {
       return { success: false, criados: 0, mensagem: 'O plano VIP possui apenas 1 sessão mensal.' };
@@ -3345,7 +3481,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Identifica os itens de serviço do plano com suas respectivas quantidades e profissionais designadas
     const itensPlano: ItemServicoPlano[] = (plano?.itens_servicos && plano.itens_servicos.length > 0)
       ? plano.itens_servicos
-      : (cliente.assinatura.itens_saldo && cliente.assinatura.itens_saldo.length > 0)
+      : (cliente?.assinatura?.itens_saldo && cliente.assinatura.itens_saldo.length > 0)
         ? cliente.assinatura.itens_saldo.map(it => ({
             servico_id: it.servico_id,
             nome_servico: it.nome_servico,
@@ -3407,9 +3543,40 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
     // Frequência de retorno configurada no plano VIP (prevalecendo sobre a assinatura antiga da cliente)
-    const freqConfigurada = plano?.frequencia_dias || cliente.assinatura.frequencia_dias || 7;
+    const freqConfigurada = plano?.frequencia_dias || cliente?.assinatura?.frequencia_dias || 7;
     // O Clube VIP SEMPRE respeita o mesmo dia da semana e horário do primeiro agendamento, portanto o intervalo é estritamente múltiplo de 7 dias (7, 14, 21, 28)
     const intervaloDias = Math.max(7, Math.round(freqConfigurada / 7) * 7);
+
+    // Se o cliente tem assinatura mas estava desatualizada ou com frequência divergente, sincroniza imediatamente
+    if (cliente && plano && (!cliente.assinatura?.frequencia_dias || cliente.assinatura.frequencia_dias !== intervaloDias || cliente.assinatura.plano_id !== plano.id)) {
+      const assAtualizada: AssinaturaCliente = {
+        ...(cliente.assinatura || {
+          plano_id: plano.id,
+          nome_plano: plano.nome,
+          data_inicio: new Date().toISOString(),
+          data_renovacao: new Date(Date.now() + (plano.validade_dias || 30) * 86400000).toISOString(),
+          saldo_restante: totalSessoes,
+          total_mes: totalSessoes,
+          status: 'ativo'
+        }),
+        plano_id: plano.id,
+        nome_plano: plano.nome,
+        frequencia_dias: intervaloDias
+      };
+      const cliAtualizado = {
+        ...cliente,
+        assinatura: assAtualizada,
+        preferencias: {
+          ...(cliente.preferencias || {}),
+          assinatura: assAtualizada
+        }
+      };
+      setClientes(prev => prev.map(c => c.id === cliente.id ? cliAtualizado : c));
+      salvarClienteSupabase(cliAtualizado).catch(() => {});
+    }
+
+    const clienteIdFinal = cliente?.id || agInicial.cliente_id;
+    const nomePlanoObs = plano?.nome || cliente?.assinatura?.nome_plano || 'Clube VIP';
 
     for (let semana = 0; semana < maxSemanas; semana++) {
       // Procedimento designado para esta semana
@@ -3434,7 +3601,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const dStrF = String(d.getDate()).padStart(2, '0');
           const mmdd = `${mStrF}-${dStrF}`;
           const isFeriado = feriadosNacionais.includes(mmdd);
-          const isFechado = !expediente || !expediente.ativo;
+          const isFechado = expediente ? !expediente.ativo : (diaSemana === 0);
 
           if (!isFeriado && !isFechado) {
             break;
@@ -3469,7 +3636,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Atualiza agendamento inicial com a identificação de Sessão 1 e serviço
         const novoObs = agInicial.observacoes?.includes('Sessão 1')
           ? agInicial.observacoes
-          : `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão 1 (${nomeServ})`;
+          : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomeServ})`;
         
         if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr) {
           const atualizado: Agendamento = {
@@ -3488,11 +3655,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           : agendamentos;
 
         const jaExiste = listaAtualAgendamentos.some(a =>
-          a.cliente_id === cliente.id &&
+          a.cliente_id === clienteIdFinal &&
           a.inicio.substring(0, 10) === dataSemanaStr &&
           a.status !== 'cancelado'
         ) || novosAgendamentos.some(a =>
-          a.cliente_id === cliente.id &&
+          a.cliente_id === clienteIdFinal &&
           a.inicio.substring(0, 10) === dataSemanaStr
         );
 
@@ -3500,7 +3667,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const novoId = gerarCodigoReserva();
           const novoAgendamento: Agendamento = {
             id: novoId,
-            cliente_id: cliente.id,
+            cliente_id: clienteIdFinal,
             profissional_id: profId,
             inicio: inicioStr,
             fim: fimStr,
@@ -3509,7 +3676,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             valor_sinal: 0,
             pago_com_clube: true,
             origem: 'admin',
-            observacoes: `👑 Clube VIP (${cliente.assinatura.nome_plano}) - Sessão ${semana + 1} (${nomeServ})`,
+            observacoes: `👑 Clube VIP (${nomePlanoObs}) - Sessão ${semana + 1} (${nomeServ})`,
             criado_em: new Date().toISOString()
           };
           novosAgendamentos.push(novoAgendamento);
@@ -3520,9 +3687,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     if (novosAgendamentos.length > 0) {
-      setAgendamentos(prev => [...prev, ...novosAgendamentos]);
+      setAgendamentos(prev => {
+        const next = [...prev, ...novosAgendamentos];
+        try { localStorage.setItem('nail_agendamentos', JSON.stringify(next)); } catch (e) {}
+        dbSetAll(STORES.AGENDAMENTOS, next);
+        return next;
+      });
       if (Object.keys(novosItensMap).length > 0) {
-        setItensAgendamento(prev => ({ ...prev, ...novosItensMap }));
+        setItensAgendamento(prev => {
+          const nextItens = { ...prev, ...novosItensMap };
+          try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(nextItens)); } catch (e) {}
+          return nextItens;
+        });
       }
       const tipoSessaoLabel = intervaloDias === 7 ? 'semanal(is)' : (intervaloDias === 14 ? 'quinzenal(is)' : `a cada ${intervaloDias} dias`);
       mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessão(ões) ${tipoSessaoLabel} do Clube VIP foram reservadas e bloqueadas na agenda!`);

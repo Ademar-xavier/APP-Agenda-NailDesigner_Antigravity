@@ -60,6 +60,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     confirmarAcao,
     mostrarAlerta,
     produtos,
+    planosAssinatura,
     reservarRecorrenciaSemanalVip
   } = useAppState();
 
@@ -671,16 +672,23 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         {/* Card Clube VIP & Recorrência Dinâmica */}
         {temAssinaturaAtiva && (() => {
-          const freqVip = cliente?.assinatura?.frequencia_dias || 7;
-          const textoFreqVip = freqVip === 7 
-            ? 'semanais (mesmo dia e horário)' 
-            : (freqVip === 14 || freqVip === 15 
-              ? 'quinzenais (a cada 15 dias no mesmo horário)' 
-              : freqVip === 20 
-                ? 'a cada 20 dias (ciclo de manutenção)' 
-                : freqVip === 30 
-                  ? 'mensais (a cada 30 dias)' 
-                  : `a cada ${freqVip} dias`);
+          const planoVipObj = planosAssinatura.find(p => p.id === cliente?.assinatura?.plano_id)
+            || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliente?.assinatura?.nome_plano?.trim().toLowerCase())
+            || (agendamento.observacoes?.includes('Clube VIP')
+                ? planosAssinatura.find(p => agendamento.observacoes?.toLowerCase().includes(p.nome?.toLowerCase()))
+                : null);
+          const freqVip = planoVipObj?.frequencia_dias || cliente?.assinatura?.frequencia_dias || 7;
+          const intervaloDias = Math.max(7, Math.round(freqVip / 7) * 7);
+
+          const textoFreqVip = intervaloDias === 7 
+            ? 'semanais (toda semana no mesmo dia e horário)' 
+            : (intervaloDias === 14 
+              ? 'quinzenais (a cada 14 dias / a cada 2 semanas no mesmo dia e horário)' 
+              : intervaloDias === 21 
+                ? 'a cada 3 semanas (21 dias no mesmo dia e horário)' 
+                : intervaloDias === 28 
+                  ? 'a cada 4 semanas (28 dias no mesmo dia e horário)' 
+                  : `a cada ${intervaloDias} dias no mesmo dia e horário`);
 
           return (
             <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
@@ -688,7 +696,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <div className="flex items-center gap-1.5">
                   <Crown size={15} className="text-amber-600" />
                   <span className="text-xs font-bold text-amber-950">
-                    Clube VIP: {cliente?.assinatura?.nome_plano}
+                    Clube VIP: {planoVipObj?.nome || cliente?.assinatura?.nome_plano}
                   </span>
                 </div>
                 <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
@@ -704,7 +712,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <button
                   type="button"
                   onClick={() => {
-                    const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento);
+                    const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento, undefined, planoVipObj?.id);
                     if (!res.success) {
                       mostrarAlerta({
                         titulo: 'Recorrência VIP',
