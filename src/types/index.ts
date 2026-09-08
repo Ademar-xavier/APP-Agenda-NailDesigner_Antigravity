@@ -86,6 +86,8 @@ export interface Agendamento {
   produtos?: ItemComandaProduto[]; // Produtos consumidos/comprados no atendimento
   pago_com_clube?: boolean; // Se foi baixado do saldo de assinatura recorrente
   plano_id?: string; // ID interno imutável do plano VIP vinculado
+  desconto_valor?: number; // Valor de desconto concedido no fechamento
+  desconto_motivo?: string; // Motivo do desconto (ex: Cortesia, Fidelidade)
   recorrencia_grupo_id?: string; // ID comum compartilhado entre agendamentos da mesma série recorrente
   recorrencia_tipo?: 'nenhuma' | 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
   recorrencia_posicao?: string; // Ex: "1 de 4", "2 de 4"
@@ -331,11 +333,20 @@ export interface ItemComandaProduto {
 }
 
 // --- CLUBE DE ASSINATURA RECORRENTE ---
+export interface ItemSessaoPlanoConfig {
+  sessao_numero: number; // 1, 2, 3, 4...
+  servico_id: string;
+  nome_servico?: string;
+  profissional_id?: string;
+  duracao_minutos?: number;
+}
+
 export interface ItemServicoPlano {
   servico_id: string;
   nome_servico: string;
   quantidade: number;
   profissional_id?: string; // Profissional designada para este serviço no plano
+  sessoes?: number[]; // Lista de sessões onde este serviço é realizado (ex: [1, 2, 3, 4] ou [3])
 }
 
 export interface ItemSaldoAssinatura {
@@ -353,6 +364,7 @@ export interface PlanoAssinatura {
   descricao?: string;
   preco_mensal: number;
   itens_servicos?: ItemServicoPlano[]; // Ex: [{ servico_id: 's1', nome_servico: 'Manicure', quantidade: 4 }, { servico_id: 's2', nome_servico: 'Pedicure', quantidade: 3 }]
+  distribuicao_sessoes?: ItemSessaoPlanoConfig[]; // Mapeamento exato de qual serviço e profissional atende cada sessão do ciclo
   qtd_procedimentos_mes: number; // soma total de procedimentos no mês
   servicos_permitidos_ids: string[];
   validade_dias: number;
@@ -367,6 +379,7 @@ export interface AssinaturaCliente {
   data_inicio: string;
   data_renovacao: string;
   itens_saldo?: ItemSaldoAssinatura[]; // Saldo individual por procedimento
+  distribuicao_sessoes?: ItemSessaoPlanoConfig[]; // Distribuição herdada do plano
   frequencia_dias?: number; // Periodicidade de retorno contratada (ex: 7, 15, 20, 30 dias)
   saldo_restante: number;
   total_mes: number;

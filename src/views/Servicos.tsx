@@ -31,7 +31,7 @@ import {
   Upload
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Servico, PlanoAssinatura, ItemServicoPlano, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
+import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
 
@@ -117,6 +117,7 @@ export const Servicos: React.FC = () => {
   const [planoServicosIds, setPlanoServicosIds] = useState<string[]>([]);
   const [planoQuantidadesServicos, setPlanoQuantidadesServicos] = useState<{ [servicoId: string]: number }>({});
   const [planoProfissionaisServicos, setPlanoProfissionaisServicos] = useState<{ [servicoId: string]: string }>({});
+  const [planoSessoesServicos, setPlanoSessoesServicos] = useState<{ [servicoId: string]: number[] }>({});
   const [planoFrequenciaDias, setPlanoFrequenciaDias] = useState<number>(7);
   const [planoDestaqueCatalogo, setPlanoDestaqueCatalogo] = useState(false);
 
@@ -421,6 +422,7 @@ export const Servicos: React.FC = () => {
     setPlanoServicosIds([]);
     setPlanoQuantidadesServicos({});
     setPlanoProfissionaisServicos({});
+    setPlanoSessoesServicos({});
     setPlanoFrequenciaDias(7);
     setPlanoDestaqueCatalogo(false);
     setModalPlanoAberto(true);
@@ -438,12 +440,24 @@ export const Servicos: React.FC = () => {
 
     const qtds: { [servicoId: string]: number } = {};
     const profsMap: { [servicoId: string]: string } = {};
+    const sessoesMap: { [servicoId: string]: number[] } = {};
+
     if (plano.itens_servicos && plano.itens_servicos.length > 0) {
       plano.itens_servicos.forEach(item => {
         // CORREÇÃO: Limpa serviços deletados que ainda estavam no plano
         if (servicos.some(s => s.id === item.servico_id && s.ativo)) {
           qtds[item.servico_id] = item.quantidade;
           profsMap[item.servico_id] = item.profissional_id || '';
+          if (item.sessoes && item.sessoes.length > 0) {
+            sessoesMap[item.servico_id] = [...item.sessoes];
+          } else if (plano.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+            const sList = plano.distribuicao_sessoes
+              .filter(d => d.servico_id === item.servico_id)
+              .map(d => d.sessao_numero);
+            if (sList.length > 0) {
+              sessoesMap[item.servico_id] = sList;
+            }
+          }
         }
       });
     } else {
@@ -454,10 +468,34 @@ export const Servicos: React.FC = () => {
         }
       });
     }
+
+    // Se para algum serviço não houver sessões mapeadas, preenche com as sessões até a quantidade do serviço
+    Object.keys(qtds).forEach(sid => {
+      if (!sessoesMap[sid] || sessoesMap[sid].length === 0) {
+        const qtd = qtds[sid] || 1;
+        const total = plano.qtd_procedimentos_mes || 4;
+        sessoesMap[sid] = Array.from({ length: Math.min(qtd, total) }, (_, i) => i + 1);
+      }
+    });
+
     setPlanoQuantidadesServicos(qtds);
     setPlanoProfissionaisServicos(profsMap);
+    setPlanoSessoesServicos(sessoesMap);
     setPlanoDestaqueCatalogo(Boolean(plano.destaque_catalogo));
     setModalPlanoAberto(true);
+  };
+
+  const toggleSessaoServicoPlano = (servicoId: string, sessaoNum: number) => {
+    setPlanoSessoesServicos(prev => {
+      const atuais = prev[servicoId] || [];
+      let proximas: number[];
+      if (atuais.includes(sessaoNum)) {
+        proximas = atuais.filter(s => s !== sessaoNum);
+      } else {
+        proximas = [...atuais, sessaoNum].sort((a, b) => a - b);
+      }
+      return { ...prev, [servicoId]: proximas };
+    });
   };
 
   const alterarQtdServicoPlano = (servicoId: string, delta: number) => {
@@ -467,8 +505,21 @@ export const Servicos: React.FC = () => {
       const updated = { ...prev };
       if (novaQtd === 0) {
         delete updated[servicoId];
+        setPlanoSessoesServicos(sPrev => {
+          const sNext = { ...sPrev };
+          delete sNext[servicoId];
+          return sNext;
+        });
       } else {
         updated[servicoId] = novaQtd;
+        setPlanoSessoesServicos(sPrev => {
+          const existentes = sPrev[servicoId] || [];
+          if (existentes.length === 0) {
+            const tot = Number(planoQtdProcedimentos) || 4;
+            return { ...sPrev, [servicoId]: Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1) };
+          }
+          return sPrev;
+        });
       }
 
       const total = Object.values(updated).reduce((acc, q) => acc + q, 0);
@@ -484,8 +535,21 @@ export const Servicos: React.FC = () => {
       const updated = { ...prev };
       if (novaQtd === 0) {
         delete updated[servicoId];
+        setPlanoSessoesServicos(sPrev => {
+          const sNext = { ...sPrev };
+          delete sNext[servicoId];
+          return sNext;
+        });
       } else {
         updated[servicoId] = novaQtd;
+        setPlanoSessoesServicos(sPrev => {
+          const existentes = sPrev[servicoId] || [];
+          if (existentes.length === 0) {
+            const tot = Number(planoQtdProcedimentos) || 4;
+            return { ...sPrev, [servicoId]: Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1) };
+          }
+          return sPrev;
+        });
       }
 
       const total = Object.values(updated).reduce((acc, q) => acc + q, 0);
@@ -499,24 +563,43 @@ export const Servicos: React.FC = () => {
     e.preventDefault();
     if (!planoNome.trim()) return;
 
+    // CORREÇÃO: Respeita fielmente a quantidade total de sessões editada
+    const totalProcedimentos = Number(planoQtdProcedimentos) || (
+      Object.values(planoQuantidadesServicos).reduce((acc, q) => acc + q, 0) || 1
+    );
+
     const itens_servicos: ItemServicoPlano[] = Object.entries(planoQuantidadesServicos)
       .filter(([servicoId, qtd]) => qtd > 0 && servicos.some(s => s.id === servicoId && s.ativo))
       .map(([servicoId, quantidade]) => {
         const serv = servicos.find(s => s.id === servicoId);
+        const sessoesConfiguradas = planoSessoesServicos[servicoId] && planoSessoesServicos[servicoId].length > 0
+          ? planoSessoesServicos[servicoId]
+          : Array.from({ length: Math.min(quantidade, totalProcedimentos) }, (_, i) => i + 1);
+
         return {
           servico_id: servicoId,
           nome_servico: serv?.nome || 'Serviço',
           quantidade,
-          profissional_id: planoProfissionaisServicos[servicoId] || undefined
+          profissional_id: planoProfissionaisServicos[servicoId] || undefined,
+          sessoes: sessoesConfiguradas
         };
       });
 
-    // CORREÇÃO: Respeita fielmente a quantidade total de sessões editada
-    const totalProcedimentos = Number(planoQtdProcedimentos) || (
-      itens_servicos.length > 0
-        ? itens_servicos.reduce((acc, item) => acc + item.quantidade, 0)
-        : 1
-    );
+    // Constrói a lista detalhada de distribuição por sessão
+    const distribuicao_sessoes: ItemSessaoPlanoConfig[] = [];
+    itens_servicos.forEach(it => {
+      const s = servicos.find(item => item.id === it.servico_id);
+      (it.sessoes || []).forEach(sessaoNum => {
+        distribuicao_sessoes.push({
+          sessao_numero: sessaoNum,
+          servico_id: it.servico_id,
+          nome_servico: it.nome_servico,
+          profissional_id: it.profissional_id,
+          duracao_minutos: s?.duracao_minutos || 60
+        });
+      });
+    });
+    distribuicao_sessoes.sort((a, b) => a.sessao_numero - b.sessao_numero);
 
     const servicosPermitidosIds = itens_servicos.length > 0
       ? itens_servicos.map(i => i.servico_id)
@@ -534,6 +617,7 @@ export const Servicos: React.FC = () => {
         frequencia_dias: freqDias,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
+        distribuicao_sessoes: distribuicao_sessoes.length > 0 ? distribuicao_sessoes : undefined,
         destaque_catalogo: planoDestaqueCatalogo
       });
     } else {
@@ -546,6 +630,7 @@ export const Servicos: React.FC = () => {
         frequencia_dias: freqDias,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
+        distribuicao_sessoes: distribuicao_sessoes.length > 0 ? distribuicao_sessoes : undefined,
         ativo: true,
         destaque_catalogo: planoDestaqueCatalogo
       });
@@ -2311,33 +2396,69 @@ export const Servicos: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Configuração da Profissional Responsável e Bloqueio */}
+                        {/* Configuração da Profissional Responsável e Sessões */}
                         {isAtivoNoPlano && (
-                          <div className="mt-2.5 pt-2 border-t border-amber-200/60 flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 text-[11px] text-[#5A4535]">
-                              <span className="font-semibold text-[#8C7A6B]">Profissional:</span>
-                              <select
-                                value={planoProfissionaisServicos[s.id] || ''}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setPlanoProfissionaisServicos(prev => ({
-                                    ...prev,
-                                    [s.id]: val
-                                  }));
-                                }}
-                                className="bg-white border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] font-medium focus:ring-1 focus:ring-[#8C6D58] outline-none"
-                              >
-                                <option value="">Qualquer profissional</option>
-                                {equipe.filter(m => m.ativo).map(m => (
-                                  <option key={m.id} value={m.id}>
-                                    {m.nome} ({m.especialidade || (m.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
-                                  </option>
-                                ))}
-                              </select>
+                          <div className="mt-2.5 pt-2 border-t border-amber-200/60 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5 text-[11px] text-[#5A4535]">
+                                <span className="font-semibold text-[#8C7A6B]">Profissional:</span>
+                                <select
+                                  value={planoProfissionaisServicos[s.id] || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setPlanoProfissionaisServicos(prev => ({
+                                      ...prev,
+                                      [s.id]: val
+                                    }));
+                                  }}
+                                  className="bg-white border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] font-medium focus:ring-1 focus:ring-[#8C6D58] outline-none"
+                                >
+                                  <option value="">Qualquer profissional</option>
+                                  {equipe.filter(m => m.ativo).map(m => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.nome} ({m.especialidade || (m.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <span className="text-[10px] font-medium text-amber-800 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md">
+                                {qtd} {qtd === 1 ? 'procedimento' : 'procedimentos'} no ciclo
+                              </span>
                             </div>
-                            <span className="text-[10px] font-medium text-amber-800 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md">
-                              Bloqueia {qtd} sessões na agenda
-                            </span>
+
+                            {/* Seletor de Sessões Específicas onde este procedimento ocorre */}
+                            <div className="pt-1 bg-white/70 p-2 rounded-lg border border-amber-200/60">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase">
+                                  Em qual(is) sessão(ões) este procedimento será feito?
+                                </span>
+                                <span className="text-[10px] text-amber-900 font-semibold">
+                                  {(planoSessoesServicos[s.id] || []).length} selecionada(s)
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {Array.from({ length: Math.max(1, Number(planoQtdProcedimentos) || 4) }, (_, idx) => {
+                                  const sessaoNum = idx + 1;
+                                  const sessoesAtuais = planoSessoesServicos[s.id] || [];
+                                  const isSessaoAtiva = sessoesAtuais.includes(sessaoNum);
+                                  return (
+                                    <button
+                                      key={sessaoNum}
+                                      type="button"
+                                      onClick={() => toggleSessaoServicoPlano(s.id, sessaoNum)}
+                                      className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                        isSessaoAtiva
+                                          ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                                          : 'bg-white text-[#8C7A6B] border-[#EFECE6] hover:bg-amber-50 hover:border-amber-300'
+                                      }`}
+                                      title={`Marcar para realizar na ${sessaoNum}ª Sessão`}
+                                    >
+                                      {sessaoNum}ª Sessão
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
