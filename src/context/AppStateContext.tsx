@@ -50,8 +50,12 @@ import {
 } from '../services/supabase';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus, inicializarCanalNotificacoes } from '../services/notificacoesMobile';
 import { App as CapApp } from '@capacitor/app';
+import { encontrarPlanoVip, calcularIntervaloVip } from '../utils/planoVipHelper';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
+
+// Lock/debounce em memória para evitar duplicação de sessões VIP disparadas em lote
+const sessoesVipProcessadas = new Map<string, number>();
 
 // Emite sinal sonoro suave e elegante (dois tons em acorde harmônico) usando a Web Audio API nativa
 const emitirTonsHarmonicos = (ctx: AudioContext) => {
@@ -2533,21 +2537,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setTimeout(() => {
         const agConfirmado = agendamentos.find(a => a.id === id);
         const cliConfirmado = clientes.find(c => c.id === agConfirmado?.cliente_id);
-        const plano = planosAssinatura.find(p => p.id === cliConfirmado?.assinatura?.plano_id)
-          || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliConfirmado?.assinatura?.nome_plano?.trim().toLowerCase());
+        const plano = encontrarPlanoVip(
+          cliConfirmado?.assinatura?.plano_id,
+          cliConfirmado?.assinatura,
+          agConfirmado?.observacoes,
+          planosAssinatura
+        );
         reservarRecorrenciaSemanalVip(id, agConfirmado, undefined, plano?.id);
       }, 300);
     } else if (status === 'cancelado') {
       const agAlvo = agendamentos.find(a => a.id === id);
-      const isVip = agAlvo?.pago_com_clube || agAlvo?.observacoes?.includes('Clube VIP');
       const clienteId = agAlvo?.cliente_id;
+      const cliAlvo = clientes.find(c => c.id === clienteId);
+      const isVip = !!(
+        agAlvo?.pago_com_clube ||
+        agAlvo?.observacoes?.includes('Clube VIP') ||
+        agAlvo?.observacoes?.includes('👑') ||
+        (cliAlvo?.assinatura && cliAlvo.assinatura.status === 'ativo')
+      );
 
       // Regra de Negócio: Ao cancelar um agendamento VIP, excluir automaticamente todas as sessões em aberto da agenda referente àquela cliente
       if (isVip && clienteId) {
         const sessoesVipParaExcluir = agendamentos.filter(a =>
           a.cliente_id === clienteId &&
           (a.status === 'pendente' || a.status === 'confirmado') &&
-          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.id === id)
+          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑') || a.id === id)
         );
 
         const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
@@ -3446,6 +3460,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     servicosIniciaisIds?: string[],
     planoIdOverride?: string
   ): { success: boolean; criados: number; mensagem: string } => {
+    // Evita concorrência e geração duplicada da mesma sessão
+    const agoraTs = Date.now();
+    const ultimaExec = sessoesVipProcessadas.get(agendamentoInicialId);
+    if (ultimaExec && (agoraTs - ultimaExec < 30000)) {
+      return { success: true, criados: 0, mensagem: 'Recorrência VIP já gerada recentemente.' };
+    }
+    sessoesVipProcessadas.set(agendamentoInicialId, agoraTs);
+
     const agInicial = agendamentoInicialObj || agendamentos.find(a => a.id === agendamentoInicialId);
     if (!agInicial) {
       return { success: false, criados: 0, mensagem: 'Agendamento inicial não encontrado.' };
@@ -3458,19 +3480,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const cliente = clientes.find(c => c.id === agInicial.cliente_id);
     const temAssinatura = !!(cliente?.assinatura && cliente.assinatura.status === 'ativo');
-    const isVipAgendamento = !!(agInicial.pago_com_clube || agInicial.observacoes?.includes('Clube VIP') || planoIdOverride);
+    const isVipAgendamento = !!(agInicial.pago_com_clube || agInicial.observacoes?.includes('Clube VIP') || agInicial.observacoes?.includes('👑') || planoIdOverride);
 
     if (!temAssinatura && !isVipAgendamento) {
       return { success: false, criados: 0, mensagem: 'Cliente não possui plano Clube VIP ativo no momento.' };
     }
 
-    // Localiza o plano de assinatura com prioridade: Override > ID da assinatura > Nome do plano > Observações do agendamento
-    const plano = (planoIdOverride ? planosAssinatura.find(p => p.id === planoIdOverride) : null)
-      || planosAssinatura.find(p => p.id === cliente?.assinatura?.plano_id)
-      || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliente?.assinatura?.nome_plano?.trim().toLowerCase())
-      || (agInicial.observacoes?.includes('Clube VIP') 
-          ? planosAssinatura.find(p => agInicial.observacoes?.toLowerCase().includes(p.nome?.toLowerCase())) 
-          : null);
+    // Localiza o plano de assinatura com flexibilidade e inteligência
+    const plano = encontrarPlanoVip(
+      planoIdOverride || cliente?.assinatura?.plano_id,
+      cliente?.assinatura,
+      agInicial.observacoes,
+      planosAssinatura
+    );
 
     const totalSessoes = plano?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4;
 
@@ -3543,9 +3565,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
     // Frequência de retorno configurada no plano VIP (prevalecendo sobre a assinatura antiga da cliente)
-    const freqConfigurada = plano?.frequencia_dias || cliente?.assinatura?.frequencia_dias || 7;
-    // O Clube VIP SEMPRE respeita o mesmo dia da semana e horário do primeiro agendamento, portanto o intervalo é estritamente múltiplo de 7 dias (7, 14, 21, 28)
-    const intervaloDias = Math.max(7, Math.round(freqConfigurada / 7) * 7);
+    const intervaloDias = calcularIntervaloVip(plano, cliente?.assinatura);
 
     // Se o cliente tem assinatura mas estava desatualizada ou com frequência divergente, sincroniza imediatamente
     if (cliente && plano && (!cliente.assinatura?.frequencia_dias || cliente.assinatura.frequencia_dias !== intervaloDias || cliente.assinatura.plano_id !== plano.id)) {

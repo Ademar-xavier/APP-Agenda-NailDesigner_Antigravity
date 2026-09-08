@@ -799,11 +799,11 @@ export const PublicCatalogo: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex flex-wrap justify-center gap-4 max-w-5xl mx-auto">
             {extrasList.map(extra => (
               <div 
                 key={extra.id}
-                className="bg-white rounded-2xl p-4 sm:p-5 border border-[#EEDDE1] shadow-xs flex flex-col justify-between space-y-3 hover:border-[#B85C78]/40 transition-colors"
+                className="w-full sm:w-[calc(50%-0.75rem)] lg:w-[calc(33.333%-0.75rem)] max-w-sm bg-white rounded-2xl p-4 sm:p-5 border border-[#EEDDE1] shadow-xs flex flex-col justify-between space-y-3 hover:border-[#B85C78]/40 transition-colors"
               >
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
