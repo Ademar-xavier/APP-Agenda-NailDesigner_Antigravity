@@ -883,9 +883,21 @@ export const Clientes: React.FC<ClientesProps> = ({
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="text-xs font-bold text-amber-950 block">{clienteSelecionado.assinatura.nome_plano}</span>
-                          <span className="text-[10px] text-amber-800">
+                          <span className="text-[10px] text-amber-800 block">
                             Iniciado em {new Date(clienteSelecionado.assinatura.data_inicio).toLocaleDateString('pt-BR')}
                           </span>
+                          {(() => {
+                            const pl = planosAssinatura.find(p => p.id === clienteSelecionado.assinatura?.plano_id)
+                              || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === clienteSelecionado.assinatura?.nome_plano?.trim().toLowerCase());
+                            const freq = pl?.frequencia_dias || clienteSelecionado.assinatura?.frequencia_dias || 7;
+                            const fNorm = Math.max(7, Math.round(freq / 7) * 7);
+                            const fLabel = fNorm === 14 ? 'Quinzenal (a cada 14 dias)' : fNorm === 21 ? 'A cada 3 semanas (21 dias)' : fNorm === 28 ? 'Mensal (a cada 28 dias)' : 'Semanal (a cada 7 dias)';
+                            return (
+                              <span className="text-[10px] font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-2 py-0.5 rounded-md inline-block mt-1">
+                                {fLabel}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <span className="text-xs font-extrabold text-amber-950 bg-amber-200/80 px-2 py-0.5 rounded-full">
                           {clienteSelecionado.assinatura.saldo_restante} {clienteSelecionado.assinatura.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}

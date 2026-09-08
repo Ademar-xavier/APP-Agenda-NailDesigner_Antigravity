@@ -451,16 +451,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       pago_com_clube: isContratandoVip,
       observacoes: obsComProf,
       origem: 'cliente'
-    }, servicosSelecionados);
+    }, servicosSelecionados, undefined, planoVipEscolhidoId || undefined);
 
     if (res.success && res.agendamento) {
       // Garante persistência no Supabase com integridade referencial antes de mudar de etapa
       await salvarAgendamentoSupabase(res.agendamento, servicosSelecionados, clienteParaSalvar);
 
-      // Somente se for contratação/agendamento de Plano VIP reserva as sessões semanais restantes
+      // Somente se for contratação/agendamento de Plano VIP reserva as sessões recorrentes restantes
       if (isContratandoVip) {
         setTimeout(() => {
-          reservarRecorrenciaSemanalVip(res.agendamento!.id);
+          reservarRecorrenciaSemanalVip(res.agendamento!.id, res.agendamento, servicosSelecionados, planoVipEscolhidoId);
         }, 400);
       }
 
@@ -862,7 +862,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     <span>Como funcionam os Planos VIP?</span>
                   </div>
                   <p className="text-[11px] text-amber-800 leading-relaxed">
-                    Ao assinar um plano VIP, você garante atendimento semanal com horário reservado automaticamente no mesmo dia e horário toda semana, com isenção total de taxa de sinal online.
+                    Ao assinar um plano VIP, você garante atendimento com horários reservados automaticamente no mesmo dia da semana e horário conforme a frequência do plano, com isenção total de taxa de sinal online.
                   </p>
                 </div>
 
@@ -893,7 +893,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                             </div>
                             <div className="flex flex-wrap items-center gap-2 mt-1">
                               <span className="text-[11px] text-amber-800 font-medium">
-                                {p.qtd_procedimentos_mes} sessões no mês · 1 por semana
+                                {p.qtd_procedimentos_mes} sessões no mês · {(() => {
+                                  const f = p.frequencia_dias || 7;
+                                  const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                                  if (fNorm === 14) return 'a cada 14 dias (quinzenal)';
+                                  if (fNorm === 21) return 'a cada 3 semanas';
+                                  if (fNorm === 28) return 'a cada 4 semanas (mensal)';
+                                  return '1 por semana (semanal)';
+                                })()}
                               </span>
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
                                 <Clock size={11} /> {(() => {
@@ -1184,9 +1191,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 p-2.5 rounded-xl border border-amber-300">
                       <Crown size={15} className="text-amber-600 shrink-0" />
                       <div>
-                        <span className="text-amber-800 block text-[9px] uppercase font-bold">Retorno Semanal VIP</span>
+                        <span className="text-amber-800 block text-[9px] uppercase font-bold">
+                          {(() => {
+                            const f = planoVipEscolhido.frequencia_dias || 7;
+                            const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                            if (fNorm === 14) return 'Retorno Quinzenal VIP';
+                            if (fNorm === 21) return 'Retorno VIP (a cada 3 semanas)';
+                            if (fNorm === 28) return 'Retorno Mensal VIP';
+                            return 'Retorno Semanal VIP';
+                          })()}
+                        </span>
                         <strong className="text-xs text-amber-950">
-                          Sessões garantidas toda semana no mesmo dia e horário
+                          {(() => {
+                            const f = planoVipEscolhido.frequencia_dias || 7;
+                            const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                            if (fNorm === 14) return 'Sessões garantidas a cada 14 dias no mesmo dia e horário';
+                            if (fNorm === 21) return 'Sessões garantidas a cada 3 semanas no mesmo dia e horário';
+                            if (fNorm === 28) return 'Sessões garantidas a cada 4 semanas no mesmo dia e horário';
+                            return 'Sessões garantidas toda semana no mesmo dia e horário';
+                          })()}
                         </strong>
                       </div>
                     </div>
@@ -1289,7 +1312,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                       👑 Adesão ao Clube VIP: {planoVipEscolhido.nome}
                     </span>
                     <p className="text-[11px] text-amber-900 mt-0.5 leading-snug">
-                      Plano mensal de <strong>{formatarMoeda(planoVipEscolhido.preco_mensal)}</strong> com <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões semanais</strong> garantidas no mesmo horário. Agendamento isento de sinal online!
+                      Plano mensal de <strong>{formatarMoeda(planoVipEscolhido.preco_mensal)}</strong> com <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões {(() => {
+                        const f = planoVipEscolhido.frequencia_dias || 7;
+                        const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                        if (fNorm === 14) return 'quinzenais (a cada 14 dias)';
+                        if (fNorm === 21) return 'a cada 3 semanas';
+                        if (fNorm === 28) return 'a cada 4 semanas';
+                        return 'semanais';
+                      })()}</strong> garantidas no mesmo horário. Agendamento isento de sinal online!
                     </p>
                   </div>
                 </div>
@@ -1362,10 +1392,17 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl text-xs text-amber-950 space-y-1.5 text-left animate-in fade-in duration-200">
                 <div className="flex items-center gap-1.5 font-bold text-amber-950">
                   <Crown size={16} className="text-amber-600" />
-                  <span>Vaga VIP Semanal Garantida!</span>
+                  <span>Vaga VIP Garantida!</span>
                 </div>
                 <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Você agora é assinante do <strong>{planoVipEscolhido.nome}</strong>! Suas <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões semanais</strong> foram reservadas no mesmo dia e horário até o fim do ciclo mensal.
+                  Você agora é assinante do <strong>{planoVipEscolhido.nome}</strong>! Suas <strong>{planoVipEscolhido.qtd_procedimentos_mes} sessões {(() => {
+                    const f = planoVipEscolhido.frequencia_dias || 7;
+                    const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                    if (fNorm === 14) return 'quinzenais (a cada 14 dias)';
+                    if (fNorm === 21) return 'a cada 3 semanas';
+                    if (fNorm === 28) return 'a cada 4 semanas';
+                    return 'semanais';
+                  })()}</strong> foram reservadas no mesmo dia da semana e horário até o fim do ciclo mensal.
                 </p>
               </div>
             )}
@@ -1400,7 +1437,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     <Crown size={12} className="text-amber-600" />
                     Frequência VIP:
                   </span>
-                  <span className="font-bold">Sessões semanais garantidas</span>
+                  <span className="font-bold">
+                    {(() => {
+                      const f = planoVipEscolhido.frequencia_dias || 7;
+                      const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                      if (fNorm === 14) return 'Sessões quinzenais garantidas (a cada 14 dias)';
+                      if (fNorm === 21) return 'Sessões a cada 3 semanas garantidas';
+                      if (fNorm === 28) return 'Sessões a cada 4 semanas garantidas';
+                      return 'Sessões semanais garantidas';
+                    })()}
+                  </span>
                 </div>
               ) : (() => {
                 const diasRetornoArr = servicos
