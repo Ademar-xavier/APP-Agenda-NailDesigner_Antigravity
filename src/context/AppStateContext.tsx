@@ -1090,8 +1090,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Agendamentos da Nuvem
       if (dados.agendamentos && dados.agendamentos.length > 0) {
-        setAgendamentos(dados.agendamentos);
-        try { localStorage.setItem('nail_agendamentos', JSON.stringify(dados.agendamentos)); } catch (e) {}
+        // Hidrata pago_com_clube e reconcilia o valor do plano VIP na Sessão 1 se estiver zerado
+        const agsFormatados = dados.agendamentos.map((a: any) => {
+          const isVip = !!(a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑'));
+          const isSessao1Vip = isVip && (a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:')) && !a.observacoes?.includes('Sessão 2') && !a.observacoes?.includes('Sessão 3') && !a.observacoes?.includes('Sessão 4');
+
+          let valorEfetivo = Number(a.valor_total) || 0;
+          if (isSessao1Vip && valorEfetivo === 0 && Array.isArray(planosNuvemRef)) {
+            const planoEncontrado = encontrarPlanoVip(undefined, undefined, a.observacoes, planosNuvemRef);
+            if (planoEncontrado && planoEncontrado.preco_mensal > 0) {
+              valorEfetivo = planoEncontrado.preco_mensal;
+              salvarAgendamentoSupabase({ ...a, valor_total: valorEfetivo, pago_com_clube: true }).catch(() => {});
+            }
+          }
+
+          return {
+            ...a,
+            valor_total: valorEfetivo,
+            pago_com_clube: isVip
+          };
+        });
+
+        setAgendamentos(agsFormatados);
+        try { localStorage.setItem('nail_agendamentos', JSON.stringify(agsFormatados)); } catch (e) {}
 
         // Hidrata itensAgendamento a partir de itens_servicos de cada agendamento
         const novosItensAgendamento: { [key: string]: string[] } = {};
@@ -2491,7 +2512,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP, agenda as sessões da assinatura
-    if (!recorrenciaManual && (agendamento.status === 'confirmado' || agendamento.pago_com_clube)) {
+    const isVipParaRecorrencia = Boolean(
+      agendamento.pago_com_clube ||
+      planoVipId ||
+      agendamento.observacoes?.includes('Clube VIP') ||
+      agendamento.observacoes?.includes('👑')
+    );
+    if (!recorrenciaManual && (agendamento.status === 'confirmado' || isVipParaRecorrencia)) {
       setTimeout(() => {
         reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados, planoVipId);
       }, 100);
@@ -3658,11 +3685,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ? agInicial.observacoes
           : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomeServ})`;
         
-        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr) {
+        const valorPlano = Number(plano?.preco_mensal) || 0;
+        const valorTotalFinal = (agInicial.valor_total && agInicial.valor_total > 0)
+          ? agInicial.valor_total
+          : (valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0));
+
+        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube) {
           const atualizado: Agendamento = {
             ...agInicial,
             fim: fimStr,
-            observacoes: novoObs
+            observacoes: novoObs,
+            valor_total: valorTotalFinal,
+            pago_com_clube: true
           };
           salvarAgendamentoSupabase(atualizado, [servId]);
           setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));

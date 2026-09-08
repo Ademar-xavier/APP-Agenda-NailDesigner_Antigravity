@@ -777,7 +777,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     }
 
     const isVipFinal = (agendarComoVip || !!planoVipContratarId) && !isBloqueio;
-    const totalFinal = isVipFinal ? 0 : total;
+    const planoVipAlvo = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+    const precoPlanoVip = Number(planoVipAlvo?.preco_mensal) || 0;
+    const totalFinal = isBloqueio ? 0 : (isVipFinal ? (precoPlanoVip > 0 ? precoPlanoVip : total) : total);
 
     // Sinal e Status: se for VIP, isenta sinal e confirma direto
     const valorSinalFinal = (isBloqueio || !cobrarSinal || isVipFinal)
@@ -1106,11 +1108,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                           <>
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <h4 className="font-bold text-sm">{client?.nome}</h4>
-                              {a.pago_com_clube && (
-                                <span className="text-[9px] font-bold bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                                  <Crown size={10} /> VIP
-                                </span>
-                              )}
+                              {(() => {
+                                const isVipAgendamento = !!(
+                                  a.pago_com_clube ||
+                                  a.observacoes?.includes('Clube VIP') ||
+                                  a.observacoes?.includes('👑') ||
+                                  (client?.assinatura && client.assinatura.status === 'ativo')
+                                );
+                                if (!isVipAgendamento) return null;
+                                return (
+                                  <span className="text-[9px] font-bold bg-amber-200/90 text-amber-950 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 shadow-2xs">
+                                    <Crown size={10} /> VIP
+                                  </span>
+                                );
+                              })()}
                               {(a.recorrencia_posicao || a.recorrencia_grupo_id || a.observacoes?.includes('Recorrência')) && (
                                 <span className="text-[9px] font-bold bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6] px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
                                   <Repeat size={10} /> {a.recorrencia_posicao || 'Recorrente'}

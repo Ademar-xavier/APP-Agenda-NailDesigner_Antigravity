@@ -440,12 +440,15 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       : (isAssinanteVip ? `[👑 Assinante VIP: ${nomePlanoVip} (Serviço Avulso)] ` : '');
     const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
+    const precoPlanoVip = Number(planoVipEscolhido?.preco_mensal) || 0;
+    const valorTotalParaSalvar = isContratandoVip ? (precoPlanoVip > 0 ? precoPlanoVip : precoTotal) : precoTotal;
+
     const res = addAgendamento({
       cliente_id: cId,
       profissional_id: profFinalId,
       inicio: dataInicioStr,
       status: statusFinal,
-      valor_total: isContratandoVip ? 0 : precoTotal,
+      valor_total: valorTotalParaSalvar,
       valor_sinal: valorSinalFinal,
       pago_com_clube: isContratandoVip,
       observacoes: obsComProf,
@@ -458,7 +461,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
       setCodigoReserva(res.agendamento.id);
       setValorSinal(valorSinalFinal);
-      setValorTotal(precoTotal);
+      setValorTotal(valorTotalParaSalvar);
       setProfissionalConfirmadaId(profFinalId);
       setStep(5);
 

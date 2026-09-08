@@ -81,7 +81,16 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [produtosComanda, setProdutosComanda] = useState<ItemComandaProduto[]>(agendamento?.produtos || []);
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('');
   const [produtoQtd, setProdutoQtd] = useState(1);
-  const temAssinaturaAtiva = Boolean(cliente?.assinatura && cliente.assinatura.status === 'ativo' && cliente.assinatura.saldo_restante > 0);
+  const isVipAgendamento = Boolean(
+    agendamento?.pago_com_clube ||
+    agendamento?.observacoes?.includes('Clube VIP') ||
+    agendamento?.observacoes?.includes('👑') ||
+    (cliente?.assinatura && cliente.assinatura.status === 'ativo')
+  );
+  const temAssinaturaAtiva = Boolean(
+    (cliente?.assinatura && cliente.assinatura.status === 'ativo') ||
+    isVipAgendamento
+  );
   const [usarSaldoClube, setUsarSaldoClube] = useState(false);
   const servicoCorrespondente = servs.find(s => 
     cliente?.assinatura?.itens_saldo?.some(item => item.servico_id === s.id && item.saldo_restante > 0)
@@ -688,11 +697,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <div className="flex items-center gap-1.5">
                   <Crown size={15} className="text-amber-600" />
                   <span className="text-xs font-bold text-amber-950">
-                    Clube VIP: {planoVipObj?.nome || cliente?.assinatura?.nome_plano}
+                    Clube VIP: {planoVipObj?.nome || cliente?.assinatura?.nome_plano || 'Assinatura VIP'}
                   </span>
                 </div>
                 <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
-                  {cliente?.assinatura?.saldo_restante} {cliente?.assinatura?.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}
+                  {cliente?.assinatura?.saldo_restante !== undefined ? `${cliente.assinatura.saldo_restante} ${cliente.assinatura.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}` : 'VIP'}
                 </span>
               </div>
 
@@ -981,14 +990,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             <div className="bg-white/80 p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-xs">
               <div className="flex justify-between text-[#8C7A6B]">
                 <span>Serviço realizado:</span>
-                <span className={usarSaldoClube ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
+                <span className={(usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento)) ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
                   {formatarMoeda(agendamento.valor_total)}
                 </span>
               </div>
-              {usarSaldoClube && (
+              {(usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento)) && (
                 <div className="flex justify-between text-amber-800 font-medium">
                   <span>Plano Clube VIP:</span>
-                  <span>R$ 0,00 (1 sessão debitada)</span>
+                  <span>R$ 0,00 (Sessão inclusa no plano)</span>
                 </div>
               )}
               {agendamento.status === 'confirmado' && agendamento.valor_sinal > 0 && !usarSaldoClube && (
