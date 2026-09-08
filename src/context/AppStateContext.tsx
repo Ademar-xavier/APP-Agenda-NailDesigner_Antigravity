@@ -2483,6 +2483,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         reservarRecorrenciaSemanalVip(id);
       }, 300);
     } else if (status === 'cancelado') {
+      const agAlvo = agendamentos.find(a => a.id === id);
+      const isVip = agAlvo?.pago_com_clube || agAlvo?.observacoes?.includes('Clube VIP');
+      const clienteId = agAlvo?.cliente_id;
+
+      // Regra de Negócio: Ao cancelar um agendamento VIP, excluir automaticamente todas as sessões em aberto da agenda referente àquela cliente
+      if (isVip && clienteId) {
+        const sessoesVipParaExcluir = agendamentos.filter(a =>
+          a.cliente_id === clienteId &&
+          (a.status === 'pendente' || a.status === 'confirmado') &&
+          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.id === id)
+        );
+
+        const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
+        if (idsExcluir.length > 0) {
+          setAgendamentos(prev => prev.filter(a => !idsExcluir.includes(a.id)));
+          idsExcluir.forEach(aid => {
+            deletarAgendamentoSupabase(aid);
+            marcarAvisoComoLido(aid);
+          });
+          setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
+          mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
+          return;
+        }
+      }
+
       setPagamentos(prev => prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
         ? { ...p, status: 'estornado' }
         : p
@@ -2540,6 +2565,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const cancelAgendamento = (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => {
+    const agAlvo = agendamentos.find(a => a.id === id);
+    const isVip = agAlvo?.pago_com_clube || agAlvo?.observacoes?.includes('Clube VIP');
+    const clienteId = agAlvo?.cliente_id;
+
+    // Regra de Negócio: Ao cancelar um agendamento VIP, excluir automaticamente todas as sessões em aberto da agenda referente àquela cliente
+    if (isVip && clienteId) {
+      const sessoesVipParaExcluir = agendamentos.filter(a =>
+        a.cliente_id === clienteId &&
+        (a.status === 'pendente' || a.status === 'confirmado') &&
+        (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.id === id)
+      );
+
+      const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
+      if (idsExcluir.length > 0) {
+        setAgendamentos(prev => prev.filter(a => !idsExcluir.includes(a.id)));
+        idsExcluir.forEach(aid => {
+          deletarAgendamentoSupabase(aid);
+          marcarAvisoComoLido(aid);
+        });
+        setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
+        mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
+        return;
+      }
+    }
+
     setAgendamentos(prev => prev.map(a => {
       if (a.id === id) {
         return { 
@@ -3356,6 +3406,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
 
+    // Frequência de retorno configurada no plano VIP (prevalecendo sobre a assinatura antiga da cliente)
+    const freqConfigurada = plano?.frequencia_dias || cliente.assinatura.frequencia_dias || 7;
+    // O Clube VIP SEMPRE respeita o mesmo dia da semana e horário do primeiro agendamento, portanto o intervalo é estritamente múltiplo de 7 dias (7, 14, 21, 28)
+    const intervaloDias = Math.max(7, Math.round(freqConfigurada / 7) * 7);
+
     for (let semana = 0; semana < maxSemanas; semana++) {
       // Procedimento designado para esta semana
       const procSemana = filaProcedimentosCiclo[semana] || filaProcedimentosCiclo[0];
@@ -3367,7 +3422,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Calcula a data da sessão (+ semana * intervaloDias a partir da data do agendamento inicial)
       let dataSemanaStr = dataPart;
-      const intervaloDias = cliente.assinatura.frequencia_dias || plano?.frequencia_dias || 7;
       if (semana > 0) {
         const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
         d.setDate(d.getDate() + semana * intervaloDias);
@@ -3470,7 +3524,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (Object.keys(novosItensMap).length > 0) {
         setItensAgendamento(prev => ({ ...prev, ...novosItensMap }));
       }
-      const tipoSessaoLabel = intervaloDias === 7 ? 'semanal(is)' : (intervaloDias === 14 || intervaloDias === 15 ? 'quinzenal(is)' : `a cada ${intervaloDias} dias`);
+      const tipoSessaoLabel = intervaloDias === 7 ? 'semanal(is)' : (intervaloDias === 14 ? 'quinzenal(is)' : `a cada ${intervaloDias} dias`);
       mostrarNotificacaoGlobal(`👑 ${novosAgendamentos.length} sessão(ões) ${tipoSessaoLabel} do Clube VIP foram reservadas e bloqueadas na agenda!`);
       return { 
         success: true, 

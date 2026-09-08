@@ -433,7 +433,7 @@ export const Servicos: React.FC = () => {
     setPlanoPrecoMensal(plano.preco_mensal);
     setPlanoQtdProcedimentos(plano.qtd_procedimentos_mes);
     setPlanoValidadeDias(plano.validade_dias || 30);
-    setPlanoFrequenciaDias(plano.frequencia_dias || 7);
+    setPlanoFrequenciaDias(plano.frequencia_dias ? Math.max(7, Math.round(plano.frequencia_dias / 7) * 7) : 7);
     setPlanoServicosIds(plano.servicos_permitidos_ids || []);
 
     const qtds: { [servicoId: string]: number } = {};
@@ -443,21 +443,20 @@ export const Servicos: React.FC = () => {
         // CORREÇÃO: Limpa serviços deletados que ainda estavam no plano
         if (servicos.some(s => s.id === item.servico_id && s.ativo)) {
           qtds[item.servico_id] = item.quantidade;
-          if (item.profissional_id) {
-            profsMap[item.servico_id] = item.profissional_id;
-          }
+          profsMap[item.servico_id] = item.profissional_id || '';
         }
       });
-    } else if (plano.servicos_permitidos_ids && plano.servicos_permitidos_ids.length > 0) {
-      plano.servicos_permitidos_ids.forEach(sid => {
+    } else {
+      (plano.servicos_permitidos_ids || []).forEach(sid => {
         if (servicos.some(s => s.id === sid && s.ativo)) {
-          qtds[sid] = Math.max(1, Math.floor(plano.qtd_procedimentos_mes / plano.servicos_permitidos_ids!.length) || 1);
+          qtds[sid] = 1;
+          profsMap[sid] = '';
         }
       });
     }
     setPlanoQuantidadesServicos(qtds);
     setPlanoProfissionaisServicos(profsMap);
-    setPlanoDestaqueCatalogo(!!plano.destaque_catalogo);
+    setPlanoDestaqueCatalogo(Boolean(plano.destaque_catalogo));
     setModalPlanoAberto(true);
   };
 
@@ -523,6 +522,8 @@ export const Servicos: React.FC = () => {
       ? itens_servicos.map(i => i.servico_id)
       : planoServicosIds.filter(sid => servicos.some(s => s.id === sid && s.ativo));
 
+    const freqDias = Math.max(7, Math.round((Number(planoFrequenciaDias) || 7) / 7) * 7);
+
     if (planoEditando) {
       updatePlanoAssinatura(planoEditando.id, {
         nome: planoNome.trim(),
@@ -530,7 +531,7 @@ export const Servicos: React.FC = () => {
         preco_mensal: Number(planoPrecoMensal),
         qtd_procedimentos_mes: totalProcedimentos,
         validade_dias: Number(planoValidadeDias),
-        frequencia_dias: Number(planoFrequenciaDias) || 7,
+        frequencia_dias: freqDias,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
         destaque_catalogo: planoDestaqueCatalogo
@@ -542,7 +543,7 @@ export const Servicos: React.FC = () => {
         preco_mensal: Number(planoPrecoMensal),
         qtd_procedimentos_mes: totalProcedimentos,
         validade_dias: Number(planoValidadeDias),
-        frequencia_dias: Number(planoFrequenciaDias) || 7,
+        frequencia_dias: freqDias,
         servicos_permitidos_ids: servicosPermitidosIds,
         itens_servicos: itens_servicos,
         ativo: true,
@@ -1082,7 +1083,8 @@ export const Servicos: React.FC = () => {
                           <span className="font-bold text-[#8C6D58]">
                             {(() => {
                               const f = plano.frequencia_dias || 7;
-                              const fLabel = f === 14 || f === 15 ? 'quinzenais' : f === 20 ? 'a cada 20 dias' : f === 30 ? 'mensais' : f === 7 ? 'semanais' : `a cada ${f} dias`;
+                              const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                              const fLabel = fNorm === 14 ? 'quinzenais' : fNorm === 21 ? 'a cada 3 semanas' : fNorm === 28 ? 'mensais' : 'semanais';
                               return `${plano.qtd_procedimentos_mes} sessões ${fLabel}`;
                             })()}
                           </span>
@@ -1092,12 +1094,11 @@ export const Servicos: React.FC = () => {
                           <span className="font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded-md text-[10px]">
                             {(() => {
                               const f = plano.frequencia_dias || 7;
-                              if (f === 15) return 'Quinzenal (a cada 15 dias)';
-                              if (f === 14) return 'Quinzenal (a cada 14 dias)';
-                              if (f === 20) return 'Manutenção (a cada 20 dias)';
-                              if (f === 30) return 'Mensal (a cada 30 dias)';
-                              if (f === 7) return 'Semanal (a cada 7 dias)';
-                              return `A cada ${f} dias`;
+                              const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                              if (fNorm === 14) return 'Quinzenal (a cada 14 dias)';
+                              if (fNorm === 21) return 'A cada 3 semanas (21 dias)';
+                              if (fNorm === 28) return 'A cada 4 semanas (28 dias)';
+                              return 'Semanal (a cada 7 dias)';
                             })()}
                           </span>
                         </div>
@@ -2162,7 +2163,8 @@ export const Servicos: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Linha 1: Preço Mensal e Validade do Ciclo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Valor Mensal (R$) *</label>
                   <input
@@ -2178,55 +2180,7 @@ export const Servicos: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Total Sessões / Mês *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    placeholder="1"
-                    value={planoQtdProcedimentos === 0 ? '' : planoQtdProcedimentos}
-                    onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
-                    onChange={(e) => setPlanoQtdProcedimentos(e.target.value === '' ? 0 : parseInt(e.target.value))}
-                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Frequência Retorno *</label>
-                  <select
-                    value={[7, 14, 15, 20, 21, 30].includes(planoFrequenciaDias) ? planoFrequenciaDias : 'custom'}
-                    onChange={(e) => {
-                      if (e.target.value === 'custom') {
-                        setPlanoFrequenciaDias(10);
-                      } else {
-                        setPlanoFrequenciaDias(Number(e.target.value));
-                      }
-                    }}
-                    className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-2 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
-                  >
-                    <option value={7}>Semanal (7 dias)</option>
-                    <option value={15}>Quinzenal (15 dias)</option>
-                    <option value={14}>Quinzenal (14 dias)</option>
-                    <option value={20}>A cada 20 dias</option>
-                    <option value={21}>A cada 21 dias</option>
-                    <option value={30}>Mensal (30 dias)</option>
-                    <option value="custom">Personalizado...</option>
-                  </select>
-                  {![7, 14, 15, 20, 21, 30].includes(planoFrequenciaDias) && (
-                    <div className="mt-1 flex items-center gap-1">
-                      <input
-                        type="number"
-                        min={1}
-                        max={120}
-                        value={planoFrequenciaDias}
-                        onChange={(e) => setPlanoFrequenciaDias(Math.max(1, Number(e.target.value) || 1))}
-                        className="w-16 bg-white border border-[#EFECE6] rounded-lg px-2 py-0.5 text-xs text-[#5A4535]"
-                      />
-                      <span className="text-[10px] text-[#8C7A6B]">dias</span>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Validade (Dias)</label>
+                  <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Validade do Ciclo (Dias) *</label>
                   <input
                     type="number"
                     min="1"
@@ -2238,6 +2192,46 @@ export const Servicos: React.FC = () => {
                     className="w-full bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                   />
                 </div>
+              </div>
+
+              {/* Linha 2 (Destaque VIP): Total de Sessões e Frequência de Retorno no Mesmo Dia da Semana */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-950 uppercase mb-1">
+                      Total Sessões / Mês *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      placeholder="4"
+                      value={planoQtdProcedimentos === 0 ? '' : planoQtdProcedimentos}
+                      onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                      onChange={(e) => setPlanoQtdProcedimentos(e.target.value === '' ? 0 : parseInt(e.target.value))}
+                      className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-amber-950 uppercase mb-1">
+                      Frequência de Retorno (Mesmo Dia da Semana) *
+                    </label>
+                    <select
+                      value={[7, 14, 21, 28].includes(planoFrequenciaDias) ? planoFrequenciaDias : 7}
+                      onChange={(e) => setPlanoFrequenciaDias(Number(e.target.value))}
+                      className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:border-amber-400 cursor-pointer"
+                    >
+                      <option value={7}>Semanal (a cada 7 dias / toda semana)</option>
+                      <option value={14}>Quinzenal (a cada 14 dias / a cada 2 semanas)</option>
+                      <option value={21}>A cada 3 semanas (21 dias)</option>
+                      <option value={28}>A cada 4 semanas (28 dias / mensal)</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="text-[11px] text-amber-800 flex items-center gap-1.5 leading-snug pt-0.5">
+                  <span>✨</span>
+                  <span><strong>Garantia do Clube VIP:</strong> As sessões reservadas na agenda sempre manterão exatamente o mesmo dia da semana e horário da 1ª sessão.</span>
+                </p>
               </div>
 
               {/* Seleção de Serviços Inclusos e Quantidades Específicas */}
