@@ -1090,24 +1090,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Agendamentos da Nuvem
       if (dados.agendamentos && dados.agendamentos.length > 0) {
-        // Hidrata pago_com_clube e reconcilia o valor do plano VIP na Sessão 1 se estiver zerado
+        // Hidrata pago_com_clube, plano_id e reconcilia o valor do plano VIP na Sessão 1 se estiver zerado ou divergente
         const agsFormatados = dados.agendamentos.map((a: any) => {
           const isVip = !!(a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑'));
           const isSessao1Vip = isVip && (a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:')) && !a.observacoes?.includes('Sessão 2') && !a.observacoes?.includes('Sessão 3') && !a.observacoes?.includes('Sessão 4');
 
+          const cliCorrespondente = dados.clientes?.find((c: any) => c.id === a.cliente_id);
+          const planoIdTag = a.observacoes?.match(/\[PLANO_ID:([a-zA-Z0-9_\-]+)\]/i)?.[1];
+          const planoIdEfetivo = a.plano_id || planoIdTag || cliCorrespondente?.assinatura?.plano_id;
+
           let valorEfetivo = Number(a.valor_total) || 0;
-          if (isSessao1Vip && valorEfetivo === 0 && Array.isArray(planosNuvemRef)) {
-            const planoEncontrado = encontrarPlanoVip(undefined, undefined, a.observacoes, planosNuvemRef);
+          let planoIdFinal = planoIdEfetivo;
+
+          if (isSessao1Vip && Array.isArray(planosNuvemRef)) {
+            const planoEncontrado = encontrarPlanoVip(planoIdEfetivo, cliCorrespondente?.assinatura, a.observacoes, planosNuvemRef);
             if (planoEncontrado && planoEncontrado.preco_mensal > 0) {
-              valorEfetivo = planoEncontrado.preco_mensal;
-              salvarAgendamentoSupabase({ ...a, valor_total: valorEfetivo, pago_com_clube: true }).catch(() => {});
+              planoIdFinal = planoEncontrado.id;
+              if (valorEfetivo === 0 || valorEfetivo !== planoEncontrado.preco_mensal) {
+                valorEfetivo = planoEncontrado.preco_mensal;
+                salvarAgendamentoSupabase({ ...a, valor_total: valorEfetivo, pago_com_clube: true }).catch(() => {});
+              }
             }
           }
 
           return {
             ...a,
             valor_total: valorEfetivo,
-            pago_com_clube: isVip
+            pago_com_clube: isVip,
+            plano_id: planoIdFinal
           };
         });
 
@@ -3334,6 +3344,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return prev;
       });
+
+      // Sincroniza agendamentos em aberto vinculados a este plano
+      setAgendamentos(prev => {
+        let mudouAgs = false;
+        const nextAgs = prev.map(a => {
+          const pertenceAoPlano = a.plano_id === id || a.observacoes?.includes(`[PLANO_ID:${id}]`);
+          if (pertenceAoPlano) {
+            const isSessao1 = a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:');
+            const novoValor = (isSessao1 && a.status !== 'concluido') ? planoAtualizado.preco_mensal : a.valor_total;
+            if (novoValor !== a.valor_total || a.plano_id !== id) {
+              mudouAgs = true;
+              const agAtualizado = {
+                ...a,
+                plano_id: id,
+                valor_total: novoValor
+              };
+              salvarAgendamentoSupabase(agAtualizado).catch(() => {});
+              return agAtualizado;
+            }
+          }
+          return a;
+        });
+        if (mudouAgs) {
+          try { localStorage.setItem('nail_agendamentos', JSON.stringify(nextAgs)); } catch (e) {}
+          return nextAgs;
+        }
+        return prev;
+      });
     }
 
     mostrarNotificacaoGlobal('✅ Plano atualizado na nuvem.');
@@ -3679,24 +3717,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
       const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
 
+      const idTag = plano?.id ? ` [PLANO_ID:${plano.id}]` : '';
+
       if (semana === 0) {
-        // Atualiza agendamento inicial com a identificação de Sessão 1 e serviço
-        const novoObs = agInicial.observacoes?.includes('Sessão 1')
+        // Atualiza agendamento inicial com a identificação de Sessão 1, serviço e PLANO_ID
+        const baseObs = agInicial.observacoes?.includes('Sessão 1')
           ? agInicial.observacoes
           : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomeServ})`;
+        const novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
         
         const valorPlano = Number(plano?.preco_mensal) || 0;
-        const valorTotalFinal = (agInicial.valor_total && agInicial.valor_total > 0)
-          ? agInicial.valor_total
-          : (valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0));
+        const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
 
-        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube) {
+        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id) {
           const atualizado: Agendamento = {
             ...agInicial,
             fim: fimStr,
             observacoes: novoObs,
             valor_total: valorTotalFinal,
-            pago_com_clube: true
+            pago_com_clube: true,
+            plano_id: plano?.id || agInicial.plano_id
           };
           salvarAgendamentoSupabase(atualizado, [servId]);
           setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
@@ -3729,8 +3769,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             valor_total: 0,
             valor_sinal: 0,
             pago_com_clube: true,
+            plano_id: plano?.id,
             origem: 'admin',
-            observacoes: `👑 Clube VIP (${nomePlanoObs}) - Sessão ${semana + 1} (${nomeServ})`,
+            observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${semana + 1} (${nomeServ})`,
             criado_em: new Date().toISOString()
           };
           novosAgendamentos.push(novoAgendamento);

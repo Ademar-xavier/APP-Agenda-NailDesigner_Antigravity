@@ -18,6 +18,10 @@ export const normalizarTextoVip = (str?: string | null): string => {
  * Encontra o plano de assinatura correspondente com tolerância a variações de nomenclatura,
  * sinônimos (ex: pés vs pedicure) e fallbacks inteligentes para clientes VIP.
  */
+/**
+ * Encontra o plano de assinatura correspondente com tolerância a variações de nomenclatura,
+ * sinônimos (ex: pés vs pedicure), extração de ID imutável e resolução de ambiguidades.
+ */
 export const encontrarPlanoVip = (
   planoIdOrNome?: string | null,
   assinatura?: AssinaturaCliente | null,
@@ -26,60 +30,115 @@ export const encontrarPlanoVip = (
 ): PlanoAssinatura | null => {
   if (!planos || planos.length === 0) return null;
 
-  // 1. Busca por ID direto
+  // 1. Busca por ID direto do plano ou da assinatura
   const targetId = planoIdOrNome || assinatura?.plano_id;
   if (targetId) {
     const pById = planos.find(p => p.id === targetId);
     if (pById) return pById;
   }
 
-  // 2. Extrai candidatos de texto para correspondência
+  // 1.1 Extração de tag de código/ID embutida nas observações: [PLANO_ID:xxx]
+  if (observacoes) {
+    const matchIdTag = observacoes.match(/\[PLANO_ID:([a-zA-Z0-9_\-]+)\]/i);
+    if (matchIdTag && matchIdTag[1]) {
+      const pByTag = planos.find(p => p.id === matchIdTag[1]);
+      if (pByTag) return pByTag;
+    }
+  }
+
+  // 2. Extração de candidatos textuais específicos e limpos
   const candidatos: string[] = [];
-  if (planoIdOrNome) candidatos.push(planoIdOrNome);
-  if (assinatura?.nome_plano) candidatos.push(assinatura.nome_plano);
-  if (observacoes) candidatos.push(observacoes);
+
+  // Se houver texto entre parênteses em observações (ex: "👑 Clube VIP (Clube Vip 4 Mãos + 1 Pé) - Sessão 1")
+  if (observacoes) {
+    const matchParenteses = observacoes.match(/\(([^)]+)\)/);
+    if (matchParenteses && matchParenteses[1]) {
+      candidatos.push(matchParenteses[1].trim());
+    }
+    const matchAdesao = observacoes.match(/\[👑\s*Adesão Clube VIP:\s*([^\]]+)\]/i);
+    if (matchAdesao && matchAdesao[1]) {
+      candidatos.push(matchAdesao[1].trim());
+    }
+  }
+
+  if (assinatura?.nome_plano) candidatos.push(assinatura.nome_plano.trim());
+  if (planoIdOrNome) candidatos.push(planoIdOrNome.trim());
+  if (observacoes) candidatos.push(observacoes.trim());
+
+  // 3. FASE 1: Match 100% EXATO normalizado (prioridade máxima absoluta)
+  for (const cand of candidatos) {
+    const normCand = normalizarTextoVip(cand);
+    if (!normCand) continue;
+
+    const pExato = planos.find(p => normalizarTextoVip(p.nome) === normCand);
+    if (pExato) return pExato;
+  }
+
+  // 4. FASE 2: Match por inclusão ordenado do mais longo/específico para o mais curto
+  // Isso impede categoricamente que um plano curto como "4 Mãos" engula um mais longo como "4 Mãos + 1 Pé"
+  const planosOrdenadosPorTamanho = [...planos].sort((a, b) => {
+    return normalizarTextoVip(b.nome).length - normalizarTextoVip(a.nome).length;
+  });
 
   for (const cand of candidatos) {
     const normCand = normalizarTextoVip(cand);
     if (!normCand) continue;
 
-    // 2.1 Match exato normalizado
-    const pExato = planos.find(p => normalizarTextoVip(p.nome) === normCand);
-    if (pExato) return pExato;
-
-    // 2.2 Match por substring direta
-    const pInclusao = planos.find(p => {
+    for (const p of planosOrdenadosPorTamanho) {
       const normP = normalizarTextoVip(p.nome);
-      return normP && (normCand.includes(normP) || normP.includes(normCand));
-    });
-    if (pInclusao) return pInclusao;
+      if (!normP) continue;
 
-    // 2.3 Match por pontuação de palavras-chave e sinônimos
-    const stopWords = ['clube', 'club', 'plano', 'vip', 'com', 'para', 'das', 'dos', 'de', 'do', 'da', 'e', 'em', 'sessoes', 'sessao'];
+      // Se a descrição do plano está contida exatamente no candidato ou vice-versa
+      if (normCand === normP || normCand.includes(normP)) {
+        // Verifica se não há discrepância de palavras-chave críticas (ex: "pe" vs "sem pe")
+        const candTemPe = normCand.includes('pe') || normCand.includes('pes') || normCand.includes('pedicure');
+        const planoTemPe = normP.includes('pe') || normP.includes('pes') || normP.includes('pedicure');
+        if (candTemPe === planoTemPe) {
+          return p;
+        }
+      }
+    }
+  }
+
+  // 5. FASE 3: Match por pontuação de palavras-chave e sinônimos
+  const stopWords = ['clube', 'club', 'plano', 'vip', 'com', 'para', 'das', 'dos', 'de', 'do', 'da', 'e', 'em', 'sessoes', 'sessao'];
+
+  for (const cand of candidatos) {
+    const normCand = normalizarTextoVip(cand);
+    if (!normCand) continue;
+
     const tokensCand = normCand.split(' ').filter(t => t.length >= 2 && !stopWords.includes(t));
+    if (tokensCand.length === 0) continue;
 
     let melhorPlano: PlanoAssinatura | null = null;
     let maiorScore = 0;
 
-    for (const p of planos) {
+    for (const p of planosOrdenadosPorTamanho) {
       const normP = normalizarTextoVip(p.nome);
       const tokensP = normP.split(' ').filter(t => t.length >= 2 && !stopWords.includes(t));
 
       let score = 0;
       for (const tc of tokensCand) {
         if (tokensP.includes(tc)) {
-          score += 2;
+          score += 3;
         } else if ((tc === 'pes' || tc === 'pe') && (tokensP.includes('pedicure') || normP.includes('pedicure'))) {
-          score += 2;
+          score += 3;
         } else if (tc === 'pedicure' && (tokensP.includes('pes') || tokensP.includes('pe') || normP.includes('pes'))) {
-          score += 2;
+          score += 3;
         } else if ((tc === 'maos' || tc === 'mao') && (tokensP.includes('manicure') || normP.includes('manicure'))) {
-          score += 2;
+          score += 3;
         } else if (tc === 'manicure' && (tokensP.includes('maos') || tokensP.includes('mao') || normP.includes('mao'))) {
-          score += 2;
+          score += 3;
         } else if (tokensP.some(tp => tp.includes(tc) || tc.includes(tp))) {
           score += 1;
         }
+      }
+
+      // Penaliza planos que omitem componentes explícitos do candidato
+      const candTemPe = tokensCand.some(t => t === 'pe' || t === 'pes' || t === 'pedicure');
+      const planoTemPe = tokensP.some(t => t === 'pe' || t === 'pes' || t === 'pedicure');
+      if (candTemPe !== planoTemPe) {
+        score -= 5;
       }
 
       if (score > maiorScore) {
@@ -88,19 +147,23 @@ export const encontrarPlanoVip = (
       }
     }
 
-    if (melhorPlano && maiorScore >= 2) {
+    if (melhorPlano && maiorScore >= 3) {
       return melhorPlano;
     }
   }
 
-  // 3. Fallback inteligente: se houver apenas 1 plano ativo no salão e estamos lidando com cliente VIP
+  // 6. Fallback inteligente: se houver apenas 1 plano ativo no salão e estamos lidando com cliente VIP
   const planosAtivos = planos.filter(p => p.ativo !== false);
   if (planosAtivos.length === 1 && (assinatura?.status === 'ativo' || observacoes?.includes('VIP') || observacoes?.includes('Clube'))) {
     return planosAtivos[0];
   }
 
-  // 4. Se a cliente tem assinatura ativa mas o nome mudou, associa ao primeiro plano ativo
+  // 7. Se a cliente tem assinatura ativa mas o nome mudou, associa ao plano ativo de mesmo ID ou primeiro plano ativo
   if (assinatura?.status === 'ativo' && planosAtivos.length > 0) {
+    if (assinatura.plano_id) {
+      const p = planosAtivos.find(x => x.id === assinatura.plano_id);
+      if (p) return p;
+    }
     return planosAtivos[0];
   }
 

@@ -683,7 +683,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         {/* Card Clube VIP & Recorrência Dinâmica */}
         {temAssinaturaAtiva && (() => {
           const planoVipObj = encontrarPlanoVip(
-            cliente?.assinatura?.plano_id,
+            agendamento.plano_id || cliente?.assinatura?.plano_id,
             cliente?.assinatura,
             agendamento.observacoes,
             planosAssinatura

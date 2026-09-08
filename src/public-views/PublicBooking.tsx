@@ -434,10 +434,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
 
     const profNome = profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
+    const idPlanoEfetivo = planoVipEscolhido?.id || cliExistente?.assinatura?.plano_id;
+    const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
     const nomePlanoVip = planoVipEscolhido?.nome || cliExistente?.assinatura?.nome_plano || 'Clube VIP';
     const obsVip = isContratandoVip 
-      ? `[👑 Adesão Clube VIP: ${nomePlanoVip}] ` 
-      : (isAssinanteVip ? `[👑 Assinante VIP: ${nomePlanoVip} (Serviço Avulso)] ` : '');
+      ? `[👑 Adesão Clube VIP: ${nomePlanoVip}${tagPlanoId}] ` 
+      : (isAssinanteVip ? `[👑 Assinante VIP: ${nomePlanoVip}${tagPlanoId} (Serviço Avulso)] ` : '');
     const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
     const precoPlanoVip = Number(planoVipEscolhido?.preco_mensal) || 0;
@@ -451,6 +453,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       valor_total: valorTotalParaSalvar,
       valor_sinal: valorSinalFinal,
       pago_com_clube: isContratandoVip,
+      plano_id: idPlanoEfetivo,
       observacoes: obsComProf,
       origem: 'cliente'
     }, servicosSelecionados, undefined, planoVipEscolhidoId || undefined);
