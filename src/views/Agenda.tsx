@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
+import { PlanoAssinatura, AssinaturaCliente } from '../types';
 
 interface AgendaProps {
   currentView: string;
@@ -159,19 +160,32 @@ export const Agenda: React.FC<AgendaProps> = ({
     else if (tipo === 'personalizado') setRecorrenciaIntervaloDias(recorrenciaCustomDias || 15);
   };
 
-  // Serviços habilitados da profissional selecionada
-  const profSelecionada = equipe.find(u => u.id === profissionalId);
-  const servicosHabilitadosProf = useMemo(() => {
-    return servicos.filter(s => {
-      if (!s.ativo) return false;
-      if (!profSelecionada) return true;
-      if (profSelecionada.perfil === 'admin') return true;
-      if (!profSelecionada.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
-        return true;
-      }
-      return profSelecionada.servicos_habilitados.includes(s.id);
-    });
-  }, [servicos, profSelecionada]);
+  // Helper para extrair todos os IDs de serviços de um plano ou assinatura
+  const extrairServicosPlano = (pl: PlanoAssinatura | null | undefined, ass?: AssinaturaCliente | null): string[] => {
+    const ids: string[] = [];
+    if (pl?.itens_servicos && pl.itens_servicos.length > 0) {
+      pl.itens_servicos.forEach(it => {
+        if (it.servico_id && !ids.includes(it.servico_id)) {
+          ids.push(it.servico_id);
+        }
+      });
+    }
+    if (ass?.itens_saldo && ass.itens_saldo.length > 0) {
+      ass.itens_saldo.forEach(it => {
+        if (it.servico_id && !ids.includes(it.servico_id)) {
+          ids.push(it.servico_id);
+        }
+      });
+    }
+    if (ids.length === 0 && pl?.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
+      pl.servicos_permitidos_ids.forEach(sid => {
+        if (sid && !ids.includes(sid)) {
+          ids.push(sid);
+        }
+      });
+    }
+    return ids;
+  };
 
   // Filtro de Clientes com busca por digitação rápida
   const clientesFiltradasModal = useMemo(() => {
@@ -196,31 +210,66 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [agendarComoVip, setAgendarComoVip] = useState<boolean>(false);
   const [planoVipContratarId, setPlanoVipContratarId] = useState<string>('');
 
-  const hasVipAtivo = !!(clienteSelecionadoObj?.assinatura && clienteSelecionadoObj.assinatura.status === 'ativo');
+  const assCliente = clienteSelecionadoObj?.assinatura || (clienteSelecionadoObj?.preferencias as any)?.assinatura;
+  const hasVipAtivo = !!(assCliente && assCliente.status === 'ativo');
   const planoClienteObj = useMemo(() => {
     if (!hasVipAtivo) return null;
-    return planosAssinatura.find(p => p.id === clienteSelecionadoObj?.assinatura?.plano_id) || null;
-  }, [hasVipAtivo, planosAssinatura, clienteSelecionadoObj]);
+    return planosAssinatura.find(p => p.id === assCliente?.plano_id) || null;
+  }, [hasVipAtivo, planosAssinatura, assCliente]);
 
-  // Quando seleciona um cliente VIP, pré-ativa o modo VIP e isenta de sinal
+  const isVipMode = agendarComoVip || !!planoVipContratarId;
+  const planoAtivoModal = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+  const servicosVipIds = useMemo(() => {
+    return extrairServicosPlano(planoAtivoModal, assCliente);
+  }, [planoAtivoModal, assCliente]);
+
+  // Serviços habilitados da profissional selecionada
+  const profSelecionada = equipe.find(u => u.id === profissionalId);
+  const servicosHabilitadosProf = useMemo(() => {
+    return servicos.filter(s => {
+      if (!s.ativo) return false;
+      // Se for modo VIP e o serviço estiver no plano VIP, garante que ele SEMPRE seja exibido
+      if (isVipMode && servicosVipIds.includes(s.id)) return true;
+      if (!profSelecionada) return true;
+      if (profSelecionada.perfil === 'admin') return true;
+      if (!profSelecionada.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
+        return true;
+      }
+      return profSelecionada.servicos_habilitados.includes(s.id);
+    });
+  }, [servicos, profSelecionada, isVipMode, servicosVipIds]);
+
+  // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços e isenta de sinal
   useEffect(() => {
-    if (clienteSelecionadoObj?.assinatura && clienteSelecionadoObj.assinatura.status === 'ativo') {
+    if (hasVipAtivo && planoClienteObj) {
       setAgendarComoVip(true);
       setCobrarSinal(false);
       setValorSinalManual(0);
-      const pl = planosAssinatura.find(p => p.id === clienteSelecionadoObj.assinatura?.plano_id);
-      if (pl) {
-        const sIds = (pl.itens_servicos && pl.itens_servicos.length > 0)
-          ? pl.itens_servicos.map(it => it.servico_id)
-          : (pl.servicos_permitidos_ids || []);
-        if (sIds.length > 0) {
-          setServicosSelecionados(sIds);
-        }
+      const sIds = extrairServicosPlano(planoClienteObj, assCliente);
+      if (sIds.length > 0) {
+        setServicosSelecionados(sIds);
+      }
+      const profDesignada = planoClienteObj.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
+      if (profDesignada) {
+        setProfissionalId(profDesignada);
+      }
+    } else if (planoVipContratarId) {
+      setAgendarComoVip(true);
+      setCobrarSinal(false);
+      setValorSinalManual(0);
+      const pl = planosAssinatura.find(p => p.id === planoVipContratarId);
+      const sIds = extrairServicosPlano(pl);
+      if (sIds.length > 0) {
+        setServicosSelecionados(sIds);
+      }
+      const profDesignada = pl?.itens_servicos?.[0]?.profissional_id;
+      if (profDesignada) {
+        setProfissionalId(profDesignada);
       }
     } else {
       setAgendarComoVip(false);
     }
-  }, [clienteId, clienteSelecionadoObj, planosAssinatura]);
+  }, [clienteId, hasVipAtivo, planoClienteObj, assCliente, planoVipContratarId, planosAssinatura]);
 
   // Resumo Inteligente de Tempo Total e Retorno de Manutenção
   const resumoServicosSelecionados = useMemo(() => {
@@ -1275,6 +1324,24 @@ export const Agenda: React.FC<AgendaProps> = ({
                                           setClienteId(c.id);
                                           setBuscaClienteModal('');
                                           setDropdownClienteAberto(false);
+
+                                          const ass = c.assinatura || (c.preferencias as any)?.assinatura;
+                                          if (ass && ass.status === 'ativo') {
+                                            setAgendarComoVip(true);
+                                            setCobrarSinal(false);
+                                            setValorSinalManual(0);
+                                            const pl = planosAssinatura.find(p => p.id === ass.plano_id);
+                                            const sIds = extrairServicosPlano(pl, ass);
+                                            if (sIds.length > 0) {
+                                              setServicosSelecionados(sIds);
+                                            }
+                                            const profDesignada = pl?.itens_servicos?.[0]?.profissional_id || ass.itens_saldo?.[0]?.profissional_id;
+                                            if (profDesignada) {
+                                              setProfissionalId(profDesignada);
+                                            }
+                                          } else {
+                                            setAgendarComoVip(false);
+                                          }
                                         }}
                                         className="w-full text-left p-2.5 hover:bg-[#FAF9F6] flex items-center justify-between transition-colors group cursor-pointer"
                                       >
@@ -1354,12 +1421,15 @@ export const Agenda: React.FC<AgendaProps> = ({
                               if (checked) {
                                 setCobrarSinal(false);
                                 setValorSinalManual(0);
-                                if (planoClienteObj) {
-                                  const sIds = (planoClienteObj.itens_servicos && planoClienteObj.itens_servicos.length > 0)
-                                    ? planoClienteObj.itens_servicos.map(it => it.servico_id)
-                                    : (planoClienteObj.servicos_permitidos_ids || []);
+                                const pl = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+                                if (pl) {
+                                  const sIds = extrairServicosPlano(pl, assCliente);
                                   if (sIds.length > 0) {
                                     setServicosSelecionados(sIds);
+                                  }
+                                  const profDesignada = pl.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
+                                  if (profDesignada) {
+                                    setProfissionalId(profDesignada);
                                   }
                                 }
                               }
@@ -1416,11 +1486,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                               setValorSinalManual(0);
                               const pl = planosAssinatura.find(p => p.id === pId);
                               if (pl) {
-                                const sIds = (pl.itens_servicos && pl.itens_servicos.length > 0)
-                                  ? pl.itens_servicos.map(it => it.servico_id)
-                                  : (pl.servicos_permitidos_ids || []);
+                                const sIds = extrairServicosPlano(pl);
                                 if (sIds.length > 0) {
                                   setServicosSelecionados(sIds);
+                                }
+                                const profDesignada = pl.itens_servicos?.[0]?.profissional_id;
+                                if (profDesignada) {
+                                  setProfissionalId(profDesignada);
                                 }
                               }
                             } else {

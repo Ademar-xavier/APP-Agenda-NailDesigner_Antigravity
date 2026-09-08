@@ -27,13 +27,23 @@ import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplate
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
   onClose: () => void;
+  onOpenComanda?: () => void;
 }
 
 type Acao = null | 'cancelar' | 'concluir' | 'falta';
 
+const MOTIVO_CANCELAMENTO_PADRAO = 'Imprevisto operacional no salão / necessidade de reagendamento';
+const SUGESTOES_MOTIVOS = [
+  'Imprevisto operacional no salão / necessidade de reagendamento',
+  'A pedido da própria cliente',
+  'Problema de saúde / emergência pessoal',
+  'Horário indisponível na agenda'
+];
+
 export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = ({ 
   agendamentoId, 
-  onClose 
+  onClose,
+  onOpenComanda
 }) => {
   const { 
     agendamentos, 
@@ -54,7 +64,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   } = useAppState();
 
   const [acao, setAcao] = useState<Acao>(null);
-  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [motivoCancelamento, setMotivoCancelamento] = useState(MOTIVO_CANCELAMENTO_PADRAO);
   const [metodoPgto, setMetodoPgto] = useState<MetodoPagamento>('pix');
   const [valorRecebido, setValorRecebido] = useState(0);
 
@@ -409,14 +419,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   const handleCancelar = () => {
-    if (!motivoCancelamento.trim()) return;
-    cancelAgendamento(agendamento.id, motivoCancelamento, 'admin');
+    const motivoFinal = motivoCancelamento.trim() || MOTIVO_CANCELAMENTO_PADRAO;
+    cancelAgendamento(agendamento.id, motivoFinal, 'admin');
 
     if (cliente?.telefone) {
       const fone = cliente.telefone.replace(/\D/g, '');
       const dataStr = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
       const horaStr = agendamento.inicio.split('T')[1].substring(0, 5);
-      const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoCancelamento}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕\n\n📅 Escolha um novo horário online:\n${getBookingUrl()}`;
+      const msg = `Olá, ${cliente.nome}! Informamos que o seu agendamento para ${dataStr} às ${horaStr} precisou ser cancelado. Motivo: ${motivoFinal}. Caso queira reagendar para outro dia ou horário, estamos à sua inteira disposição! 💕\n\n📅 Escolha um novo horário online:\n${getBookingUrl()}`;
       const url = gerarLinkWhatsApp(cliente.telefone, msg);
       if (url) window.open(url, '_blank');
     }
@@ -782,16 +792,51 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         
         {/* Cancelar inline */}
         {acao === 'cancelar' && (
-          <div className="p-3 border border-red-200 bg-red-50 rounded-xl space-y-3 mb-4">
+          <div className="p-3 border border-red-200 bg-red-50 rounded-xl space-y-3 mb-4 animate-in fade-in duration-150">
+            {/* Aviso especial se for Clube VIP */}
+            {temAssinaturaAtiva && (
+              <div className="p-2.5 bg-amber-100/90 border border-amber-300 rounded-lg text-xs text-amber-950 flex items-start gap-2">
+                <Crown size={15} className="text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-[11px] uppercase tracking-wider">Atenção - Assinatura Clube VIP</p>
+                  <p className="text-[11px] text-amber-900 leading-snug">
+                    Ao confirmar o cancelamento, todas as sessões em aberto deste ciclo na agenda serão excluídas automaticamente para liberar os horários.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-[10px] font-bold text-red-700 uppercase mb-1">Motivo do cancelamento</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-red-700 uppercase">Motivo do cancelamento</label>
+                <span className="text-[10px] text-red-600 italic">Texto pronto para edição rápida</span>
+              </div>
+
+              {/* Botões rápidos de sugestão */}
+              <div className="flex flex-wrap gap-1 mb-2">
+                {SUGESTOES_MOTIVOS.map((sug, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setMotivoCancelamento(sug)}
+                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${
+                      motivoCancelamento === sug
+                        ? 'bg-red-600 text-white border-red-600 font-bold shadow-xs'
+                        : 'bg-white text-red-800 border-red-200 hover:bg-red-100/80'
+                    }`}
+                  >
+                    {idx === 0 ? '⚡ Imprevisto no salão' : idx === 1 ? '👤 Pedido da cliente' : idx === 2 ? '🩺 Saúde/Emergência' : '📅 Horário indisponível'}
+                  </button>
+                ))}
+              </div>
+
               <textarea
                 rows={2}
                 required
                 value={motivoCancelamento}
                 onChange={(e) => setMotivoCancelamento(e.target.value)}
-                placeholder="Ex: pedido da cliente, imprevisto pessoal..."
-                className="w-full border border-red-200 rounded-lg px-2 py-1 text-xs text-red-900 bg-white focus:outline-none focus:border-red-400"
+                placeholder="Digite ou edite o motivo..."
+                className="w-full border border-red-200 rounded-lg p-2 text-xs text-red-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-400 font-medium"
               />
             </div>
             <div className="flex justify-end gap-2 text-xs">
