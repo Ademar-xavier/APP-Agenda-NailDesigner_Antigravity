@@ -23,6 +23,7 @@ import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
+import { encontrarPlanoVip, calcularIntervaloVip, obterTextoFrequenciaVip } from '../utils/planoVipHelper';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -665,30 +666,21 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
             </div>
             <p className="text-[11px] text-[#8C7A6B] leading-snug">
-              Este atendimento faz parte de uma sequência periódica agendada no salão (estilo Google Agenda).
+              Este atendimento faz parte de uma sequência periódica agendada no salão.
             </p>
           </div>
         )}
 
         {/* Card Clube VIP & Recorrência Dinâmica */}
         {temAssinaturaAtiva && (() => {
-          const planoVipObj = planosAssinatura.find(p => p.id === cliente?.assinatura?.plano_id)
-            || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cliente?.assinatura?.nome_plano?.trim().toLowerCase())
-            || (agendamento.observacoes?.includes('Clube VIP')
-                ? planosAssinatura.find(p => agendamento.observacoes?.toLowerCase().includes(p.nome?.toLowerCase()))
-                : null);
-          const freqVip = planoVipObj?.frequencia_dias || cliente?.assinatura?.frequencia_dias || 7;
-          const intervaloDias = Math.max(7, Math.round(freqVip / 7) * 7);
-
-          const textoFreqVip = intervaloDias === 7 
-            ? 'semanais (toda semana no mesmo dia e horário)' 
-            : (intervaloDias === 14 
-              ? 'quinzenais (a cada 14 dias / a cada 2 semanas no mesmo dia e horário)' 
-              : intervaloDias === 21 
-                ? 'a cada 3 semanas (21 dias no mesmo dia e horário)' 
-                : intervaloDias === 28 
-                  ? 'a cada 4 semanas (28 dias no mesmo dia e horário)' 
-                  : `a cada ${intervaloDias} dias no mesmo dia e horário`);
+          const planoVipObj = encontrarPlanoVip(
+            cliente?.assinatura?.plano_id,
+            cliente?.assinatura,
+            agendamento.observacoes,
+            planosAssinatura
+          );
+          const intervaloDias = calcularIntervaloVip(planoVipObj, cliente?.assinatura);
+          const { descricaoCompleta } = obterTextoFrequenciaVip(intervaloDias);
 
           return (
             <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
@@ -705,28 +697,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
 
               <p className="text-[11px] text-amber-900 leading-snug">
-                Os atendimentos deste plano são {textoFreqVip}.
+                Os atendimentos deste plano são {descricaoCompleta}.
               </p>
-
-              {agendamento.status !== 'cancelado' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento, undefined, planoVipObj?.id);
-                    if (!res.success) {
-                      mostrarAlerta({
-                        titulo: 'Recorrência VIP',
-                        mensagem: res.mensagem,
-                        tipo: 'info'
-                      });
-                    }
-                  }}
-                  className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5"
-                >
-                  <Crown size={14} />
-                  <span>Reservar Próximas Sessões do Plano</span>
-                </button>
-              )}
             </div>
           );
         })()}

@@ -18,6 +18,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 import { PlanoAssinatura, AssinaturaCliente } from '../types';
+import { encontrarPlanoVip, calcularIntervaloVip, obterTextoFrequenciaVip, extrairServicosPlanoHelper } from '../utils/planoVipHelper';
 
 interface AgendaProps {
   currentView: string;
@@ -162,29 +163,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Helper para extrair todos os IDs de serviços de um plano ou assinatura
   const extrairServicosPlano = (pl: PlanoAssinatura | null | undefined, ass?: AssinaturaCliente | null): string[] => {
-    const ids: string[] = [];
-    if (pl?.itens_servicos && pl.itens_servicos.length > 0) {
-      pl.itens_servicos.forEach(it => {
-        if (it.servico_id && !ids.includes(it.servico_id)) {
-          ids.push(it.servico_id);
-        }
-      });
-    }
-    if (ass?.itens_saldo && ass.itens_saldo.length > 0) {
-      ass.itens_saldo.forEach(it => {
-        if (it.servico_id && !ids.includes(it.servico_id)) {
-          ids.push(it.servico_id);
-        }
-      });
-    }
-    if (ids.length === 0 && pl?.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
-      pl.servicos_permitidos_ids.forEach(sid => {
-        if (sid && !ids.includes(sid)) {
-          ids.push(sid);
-        }
-      });
-    }
-    return ids;
+    return extrairServicosPlanoHelper(pl, ass, servicos);
   };
 
   // Filtro de Clientes com busca por digitação rápida
@@ -214,9 +193,7 @@ export const Agenda: React.FC<AgendaProps> = ({
   const hasVipAtivo = !!(assCliente && assCliente.status === 'ativo');
   const planoClienteObj = useMemo(() => {
     if (!hasVipAtivo) return null;
-    return planosAssinatura.find(p => p.id === assCliente?.plano_id)
-      || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === assCliente?.nome_plano?.trim().toLowerCase())
-      || null;
+    return encontrarPlanoVip(assCliente?.plano_id, assCliente, null, planosAssinatura);
   }, [hasVipAtivo, planosAssinatura, assCliente]);
 
   const isVipMode = agendarComoVip || !!planoVipContratarId;
@@ -314,10 +291,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         const dVip = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
 
         const planoVipObj = planoAtivoModal 
-          || planosAssinatura.find(p => p.id === assCliente?.plano_id)
-          || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === assCliente?.nome_plano?.trim().toLowerCase());
-        const freqVip = planoVipObj?.frequencia_dias || assCliente?.frequencia_dias || 7;
-        intervaloVip = Math.max(7, Math.round(freqVip / 7) * 7);
+          || encontrarPlanoVip(assCliente?.plano_id, assCliente, null, planosAssinatura);
+        intervaloVip = calcularIntervaloVip(planoVipObj, assCliente);
 
         dVip.setDate(dVip.getDate() + intervaloVip);
         let tentativas = 0;
@@ -338,22 +313,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         }
         dataSugeridaRetornoVip = dVip.toLocaleDateString('pt-BR');
 
-        if (intervaloVip === 14) {
-          tituloRetornoVip = 'Retorno Quinzenal VIP';
-          descRetornoVip = `A cada 14 dias (${dataSugeridaRetornoVip})`;
-        } else if (intervaloVip === 21) {
-          tituloRetornoVip = 'Retorno VIP (3 Semanas)';
-          descRetornoVip = `A cada 21 dias (${dataSugeridaRetornoVip})`;
-        } else if (intervaloVip === 28) {
-          tituloRetornoVip = 'Retorno Mensal VIP (4 Semanas)';
-          descRetornoVip = `A cada 28 dias (${dataSugeridaRetornoVip})`;
-        } else if (intervaloVip !== 7) {
-          tituloRetornoVip = `Retorno VIP (${intervaloVip} dias)`;
-          descRetornoVip = `A cada ${intervaloVip} dias (${dataSugeridaRetornoVip})`;
-        } else {
-          tituloRetornoVip = 'Retorno Semanal VIP';
-          descRetornoVip = `Próxima semana (${dataSugeridaRetornoVip})`;
-        }
+        const infoFreq = obterTextoFrequenciaVip(intervaloVip);
+        tituloRetornoVip = infoFreq.titulo;
+        descRetornoVip = `${infoFreq.descricaoCurta} (${dataSugeridaRetornoVip})`;
       } else if (diasRetorno > 0) {
         const d = new Date(dataSelecionada + 'T12:00:00');
         d.setDate(d.getDate() + diasRetorno);
@@ -859,7 +821,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       pago_com_clube: isVipFinal,
       observacoes: obsFinal,
       origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, planoVipContratarId || assCliente?.plano_id || planoClienteObj?.id);
+    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id);
 
     if (res.success) {
       // Limpar formulário
@@ -1362,7 +1324,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             setAgendarComoVip(true);
                                             setCobrarSinal(false);
                                             setValorSinalManual(0);
-                                            const pl = planosAssinatura.find(p => p.id === ass.plano_id);
+                                            const pl = encontrarPlanoVip(ass.plano_id, ass, null, planosAssinatura);
                                             const sIds = extrairServicosPlano(pl, ass);
                                             if (sIds.length > 0) {
                                               setServicosSelecionados(sIds);
@@ -1839,7 +1801,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                   </div>
                 )}
 
-                {/* Seção de Recorrência (estilo Google Agenda) */}
+                {/* Seção de Recorrência Automática */}
                 {!isBloqueio && !agendarComoVip && !planoVipContratarId && (
                   <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3.5 space-y-3">
                     <div className="flex items-center justify-between">
@@ -1852,7 +1814,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                             Repetir Agendamento (Recorrência)
                           </span>
                           <span className="text-[10px] text-[#8C7A6B]">
-                            Preenche a agenda automaticamente no período escolhido (Google Agenda)
+                            Preenche a agenda automaticamente no período escolhido
                           </span>
                         </div>
                       </div>

@@ -46,8 +46,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     equipe,
     logout,
     planosAssinatura,
-    vincularAssinaturaCliente,
-    reservarRecorrenciaSemanalVip
+    vincularAssinaturaCliente
   } = useAppState();
 
   const [step, setStep] = useState<number>(1);
@@ -456,13 +455,6 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     if (res.success && res.agendamento) {
       // Garante persistência no Supabase com integridade referencial antes de mudar de etapa
       await salvarAgendamentoSupabase(res.agendamento, servicosSelecionados, clienteParaSalvar);
-
-      // Somente se for contratação/agendamento de Plano VIP reserva as sessões recorrentes restantes
-      if (isContratandoVip) {
-        setTimeout(() => {
-          reservarRecorrenciaSemanalVip(res.agendamento!.id, res.agendamento, servicosSelecionados, planoVipEscolhidoId);
-        }, 400);
-      }
 
       setCodigoReserva(res.agendamento.id);
       setValorSinal(valorSinalFinal);
