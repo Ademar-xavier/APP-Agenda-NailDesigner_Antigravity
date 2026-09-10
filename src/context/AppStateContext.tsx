@@ -1172,6 +1172,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 materiais_utilizados: extra.materiais_utilizados || s.materiais_utilizados || local?.materiais_utilizados || [],
                 servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || [],
                 foto: extra.foto || s.foto || local?.foto || '',
+                foto_thumb: extra.foto_thumb || s.foto_thumb || local?.foto_thumb || '',
                 fotos: extra.fotos || s.fotos || local?.fotos || [],
                 destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (s.destaque_catalogo !== undefined ? s.destaque_catalogo : (local?.destaque_catalogo ?? false)),
                 itens_inclusos: extra.itens_inclusos || local?.itens_inclusos || undefined,
@@ -1184,7 +1185,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
 
-      // 5. Usuários / Equipe da Nuvem (com serviços habilitados preservados de config_salao e usuarios)
+      // 5. Equipe / Profissionais da Nuvem
       const equipeConfigSalao = dados.configuracoes?.config_salao?.equipe;
       const listaEquipeNuvem = (equipeConfigSalao && equipeConfigSalao.length > 0)
         ? equipeConfigSalao
@@ -1210,22 +1211,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
       }
 
-      // 6. Fotos de Clientes da Nuvem
-      if (dados.fotos && dados.fotos.length > 0) {
-        const mapaFotos: { [clienteId: string]: any[] } = {};
-        dados.fotos.forEach((f: any) => {
-          if (!mapaFotos[f.cliente_id]) mapaFotos[f.cliente_id] = [];
-          mapaFotos[f.cliente_id].push({
-            id: f.id,
-            url: f.url,
-            tipo: f.tipo,
-            criado_em: f.criado_em
-          });
-        });
-        try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(mapaFotos)); } catch (e) {}
-      }
-
-      // 7. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
+      // 6. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
       if (dados.materiais && dados.materiais.length > 0) {
         const matsFormatados = dados.materiais.map((m: any) => {
           const preco = Number(m.preco_compra) || 0;
@@ -1598,6 +1584,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               materiais_utilizados: extra.materiais_utilizados || raw.materiais_utilizados || existing?.materiais_utilizados || [],
               servicos_pacote_detalhes: extra.servicos_pacote_detalhes || raw.servicos_pacote_detalhes || existing?.servicos_pacote_detalhes || [],
               foto: extra.foto || raw.foto || existing?.foto || '',
+              foto_thumb: extra.foto_thumb || raw.foto_thumb || existing?.foto_thumb || '',
               fotos: extra.fotos || raw.fotos || existing?.fotos || [],
               destaque_catalogo: extra.destaque_catalogo !== undefined ? extra.destaque_catalogo : (raw.destaque_catalogo !== undefined ? raw.destaque_catalogo : (existing?.destaque_catalogo ?? false)),
               itens_inclusos: extra.itens_inclusos || existing?.itens_inclusos || undefined,
@@ -1790,10 +1777,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       });
 
-    // 5. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
+    // 5. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco com cooldown inteligente de 2 minutos)
+    let lastFocusSyncTime = Date.now();
+    const isRotaPublicaVisitante = (): boolean => {
+      if (typeof window === 'undefined') return false;
+      const hash = window.location.hash.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      const isPublicRoute = hash.includes('catalogo') || search.includes('catalogo') || pathname.includes('catalogo') ||
+                            hash.includes('agendar') || search.includes('agendar') || pathname.includes('agendar') ||
+                            hash.includes('confirmar') || search.includes('confirmar') || pathname.includes('confirmar') ||
+                            hash.includes('instalar') || search.includes('instalar') || pathname.includes('instalar');
+      const isExplicitAdmin = hash.includes('admin') || search.includes('app=1') ||
+                              window.location.protocol === 'file:' ||
+                              navigator.userAgent.includes('Electron') ||
+                              !!(window as any).Capacitor?.isNativePlatform?.();
+      return isPublicRoute && !isExplicitAdmin;
+    };
+
     const handleReSync = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        sincronizarComNuvem(false);
+        const now = Date.now();
+        if (now - lastFocusSyncTime > 2 * 60 * 1000) {
+          lastFocusSyncTime = now;
+          sincronizarComNuvem(false);
+        }
       }
     };
     window.addEventListener('focus', handleReSync);
@@ -1804,17 +1812,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       CapApp.addListener('appStateChange', (state) => {
         if (state.isActive) {
-          sincronizarComNuvem(false);
+          const now = Date.now();
+          if (now - lastFocusSyncTime > 2 * 60 * 1000) {
+            lastFocusSyncTime = now;
+            sincronizarComNuvem(false);
+          }
         }
       }).then(handle => {
         capAppListener = handle;
       }).catch(() => {});
     } catch (e) {}
 
-    // 7. Polling contínuo leve a cada 15 segundos para garantir paridade total
+    // 7. Polling de contingência conservador (a cada 5 minutos - APENAS no painel administrativo, NUNCA em páginas públicas)
     const pollInterval = setInterval(() => {
-      sincronizarComNuvem(false);
-    }, 15000);
+      if (!isRotaPublicaVisitante()) {
+        sincronizarComNuvem(false);
+      }
+    }, 5 * 60 * 1000);
 
     return () => {
       supabase.removeChannel(channel);

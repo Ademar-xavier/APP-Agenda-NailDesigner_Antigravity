@@ -33,48 +33,16 @@ import { Cliente } from '../types';
 import { 
   supabase, 
   salvarFotoClienteSupabase, 
-  deletarFotoClienteSupabase 
+  deletarFotoClienteSupabase,
+  carregarFotosClienteSupabase
 } from '../services/supabase';
 import { getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 import { ModalAnamnese } from '../components/ModalAnamnese';
+import { otimizarImagemWebP } from '../utils/imageOptimizer';
 
-// Compressão e redimensionamento automático de imagens (garante salvamento imediato e evita estouro de cota)
-const comprimirImagem = (file: File, maxDim = 1200, qualidade = 0.75): Promise<string> => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', qualidade));
-        } else {
-          resolve((e.target?.result as string) || '');
-        }
-      };
-      img.onerror = () => resolve((e.target?.result as string) || '');
-      img.src = (e.target?.result as string) || '';
-    };
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
+// Compressão ultra-eficiente em WebP (garante fotos leves ~40KB e economia máxima de banda)
+const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.75): Promise<string> => {
+  return otimizarImagemWebP(file, maxDim, qualidade);
 };
 
 interface ClientesProps {
@@ -297,32 +265,33 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [targetTipoUpload, setTargetTipoUpload] = useState<'antes' | 'depois' | null>(null);
   const targetTipoUploadRef = useRef<'antes' | 'depois' | null>(null);
 
-  // Carrega fotos salvas do Supabase na inicialização
+  // OTIMIZAÇÃO CRÍTICA DE BANDA: Carrega fotos exclusivamente sob demanda para a cliente aberta no modal
   useEffect(() => {
-    try {
-      supabase.from('fotos_clientes').select('*').then(({ data, error }) => {
-        if (!error && data && data.length > 0) {
-          setFotosClientes(prev => {
-            const next = { ...prev };
-            data.forEach((f: any) => {
-              const list = next[f.cliente_id] || [];
-              if (!list.some(existing => existing.id === f.id)) {
-                next[f.cliente_id] = [...list, {
-                  id: f.id,
-                  url: f.url,
-                  tipo: (f.tipo as 'antes' | 'depois') || 'depois',
-                  criado_em: f.criado_em
-                }];
-              }
-            });
-            return next;
-          });
-        }
-      });
-    } catch (e) {
-      console.error('Erro ao buscar fotos do Supabase:', e);
-    }
-  }, []);
+    if (!selectedClienteIdForDetails) return;
+    const cid = selectedClienteIdForDetails;
+
+    // Se já temos fotos carregadas para esta cliente, não refaz a requisição na rede
+    if (fotosClientes[cid] && fotosClientes[cid].length > 0) return;
+
+    carregarFotosClienteSupabase(cid).then((fotos) => {
+      if (fotos && fotos.length > 0) {
+        setFotosClientes(prev => {
+          const next = { ...prev };
+          const list = next[cid] || [];
+          const novas = fotos.map((f: any) => ({
+            id: f.id,
+            url: f.url,
+            tipo: (f.tipo as 'antes' | 'depois') || 'depois',
+            criado_em: f.criado_em
+          }));
+          next[cid] = [...list, ...novas.filter(n => !list.some(e => e.id === n.id))];
+          return next;
+        });
+      }
+    }).catch(e => {
+      console.error('Erro ao buscar fotos sob demanda da cliente:', e);
+    });
+  }, [selectedClienteIdForDetails]);
 
   useEffect(() => {
     try {
@@ -1176,6 +1145,8 @@ export const Clientes: React.FC<ClientesProps> = ({
                               src={foto.url} 
                               alt={`Foto unhas ${foto.tipo}`} 
                               className="w-full h-full object-cover" 
+                              loading="lazy"
+                              decoding="async"
                             />
                             
                             {/* Botão de Excluir */}
@@ -1536,6 +1507,8 @@ export const Clientes: React.FC<ClientesProps> = ({
                                         src={fotoThumb.url} 
                                         alt={`Unhas de ${c.nome}`} 
                                         className="w-full h-full object-cover" 
+                                        loading="lazy"
+                                        decoding="async"
                                       />
                                     </div>
                                   ) : (

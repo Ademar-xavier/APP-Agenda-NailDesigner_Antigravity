@@ -368,25 +368,30 @@ export const PublicConfirmacao: React.FC = () => {
       }
     } catch (err) {}
 
-    // 3. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco na nuvem)
+    // 3. Ouvinte de retorno do usuário para a aba (re-sincroniza do banco com cooldown de 30s)
+    let lastReSync = Date.now();
     const handleReSync = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        supabase
-          .from('agendamentos')
-          .select('*')
-          .eq('id', agendamentoId)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (data && isMounted) {
-              setAgendamento(prev => prev ? { ...prev, ...data } : data);
-            }
-          });
+        const now = Date.now();
+        if (now - lastReSync > 30000) {
+          lastReSync = now;
+          supabase
+            .from('agendamentos')
+            .select('*')
+            .eq('id', agendamentoId)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data && isMounted) {
+                setAgendamento(prev => prev ? { ...prev, ...data } : data);
+              }
+            });
+        }
       }
     };
     window.addEventListener('focus', handleReSync);
     document.addEventListener('visibilitychange', handleReSync);
 
-    // 4. Polling contínuo leve a cada 10 segundos enquanto aguarda
+    // 4. Polling de contingência seguro a cada 60 segundos (o Realtime já atualiza instantaneamente via WebSocket)
     const pollInterval = setInterval(() => {
       supabase
         .from('agendamentos')
@@ -398,7 +403,7 @@ export const PublicConfirmacao: React.FC = () => {
             setAgendamento(prev => prev ? { ...prev, ...data } : data);
           }
         });
-    }, 10000);
+    }, 60000);
 
     return () => {
       isMounted = false;

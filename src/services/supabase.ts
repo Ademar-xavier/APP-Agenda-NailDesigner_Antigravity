@@ -55,6 +55,7 @@ export const encodeServicoDescricao = (
     materiais_utilizados?: any[]; 
     servicos_pacote_detalhes?: any[];
     foto?: string;
+    foto_thumb?: string;
     fotos?: string[];
     destaque_catalogo?: boolean;
     itens_inclusos?: string[];
@@ -67,6 +68,7 @@ export const encodeServicoDescricao = (
                    (extra.materiais_utilizados && extra.materiais_utilizados.length > 0) ||
                    (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0) ||
                    !!extra.foto ||
+                   !!extra.foto_thumb ||
                    (extra.fotos && extra.fotos.length > 0) ||
                    extra.destaque_catalogo !== undefined ||
                    (extra.itens_inclusos && extra.itens_inclusos.length > 0) ||
@@ -101,6 +103,7 @@ export const salvarServicoSupabase = async (servico: any) => {
       materiais_utilizados: servico.materiais_utilizados,
       servicos_pacote_detalhes: servico.servicos_pacote_detalhes,
       foto: servico.foto,
+      foto_thumb: servico.foto_thumb,
       fotos: servico.fotos,
       destaque_catalogo: servico.destaque_catalogo,
       itens_inclusos: servico.itens_inclusos,
@@ -413,6 +416,25 @@ export const deletarFotoClienteSupabase = async (id: string) => {
   }
 };
 
+// --- BUSCAR FOTOS DO CLIENTE SOB DEMANDA (Poupe banda: baixa apenas da cliente selecionada) ---
+export const carregarFotosClienteSupabase = async (clienteId: string): Promise<any[]> => {
+  if (!clienteId) return [];
+  try {
+    const { data, error } = await supabase
+      .from('fotos_clientes')
+      .select('id, cliente_id, url, tipo, criado_em')
+      .eq('cliente_id', clienteId);
+    if (error) {
+      console.error(`Erro ao carregar fotos do cliente ${clienteId} no Supabase:`, error);
+      return [];
+    }
+    return data || [];
+  } catch (e) {
+    console.error(`Falha na requisição carregarFotosClienteSupabase (${clienteId}):`, e);
+    return [];
+  }
+};
+
 // --- SALVAR / ATUALIZAR MATERIAL ---
 export const salvarMaterialSupabase = async (material: any) => {
   try {
@@ -626,15 +648,16 @@ export const salvarConfiguracoesSupabase = async (dados: {
 };
 
 // --- BUSCAR DADOS DA NUVEM (SINCRONIZAÇÃO INICIAL) ---
+// OTIMIZAÇÃO: Fotos de clientes são pesadas (Base64) e NÃO são baixadas em massa aqui.
+// Elas são carregadas sob demanda apenas na abertura da ficha da cliente em Clientes.tsx.
 export const carregarDadosNuvemSupabase = async () => {
   try {
-    const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, fotosRes, matRes, despRes, configRes] = await Promise.all([
+    const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, matRes, despRes, configRes] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('agendamentos').select('*'),
       supabase.from('lista_espera').select('*'),
       supabase.from('servicos').select('*'),
       supabase.from('usuarios').select('*'),
-      supabase.from('fotos_clientes').select('*'),
       supabase.from('materiais').select('*'),
       supabase.from('despesas').select('*'),
       supabase.from('configuracoes').select('*')
@@ -646,7 +669,7 @@ export const carregarDadosNuvemSupabase = async () => {
       listaEspera: listaRes.data || [],
       servicos: servicosRes.data || [],
       usuarios: usuariosRes.data || [],
-      fotos: fotosRes.data || [],
+      fotos: [],
       materiais: matRes.data || [],
       despesas: despRes.data || [],
       configuracoes: configRes.data?.[0] || null

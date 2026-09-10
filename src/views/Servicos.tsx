@@ -34,44 +34,11 @@ import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
+import { otimizarImagemWebP, gerarThumbnailWebP } from '../utils/imageOptimizer';
 
-// Compressão automática de imagem para exibição rápida e economia de banda
-const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.8): Promise<string> => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', qualidade));
-        } else {
-          resolve((e.target?.result as string) || '');
-        }
-      };
-      img.onerror = () => resolve((e.target?.result as string) || '');
-      img.src = (e.target?.result as string) || '';
-    };
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
+// Compressão automática em WebP ultra-leve para exibição rápida e economia de banda
+const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.75): Promise<string> => {
+  return otimizarImagemWebP(file, maxDim, qualidade);
 };
 
 export const Servicos: React.FC = () => {
@@ -137,6 +104,7 @@ export const Servicos: React.FC = () => {
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
   const [descricao, setDescricao] = useState('');
   const [fotoServico, setFotoServico] = useState('');
+  const [fotoThumbServico, setFotoThumbServico] = useState('');
   const [destaqueCatalogo, setDestaqueCatalogo] = useState(false);
   const [itensInclusosTexto, setItensInclusosTexto] = useState('');
   const [orientacoesAgendamento, setOrientacoesAgendamento] = useState('');
@@ -201,10 +169,14 @@ export const Servicos: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const base64 = await comprimirImagem(file, 800, 0.8);
-      setFotoServico(base64);
+      const [full, thumb] = await Promise.all([
+        otimizarImagemWebP(file, 800, 0.75),
+        gerarThumbnailWebP(file, 320, 0.65)
+      ]);
+      setFotoServico(full);
+      setFotoThumbServico(thumb);
     } catch (err) {
-      console.error('Erro ao comprimir imagem de serviço:', err);
+      console.error('Erro ao comprimir imagem de serviço para WebP:', err);
     }
   };
 
@@ -292,6 +264,7 @@ export const Servicos: React.FC = () => {
     setIsPacote(false);
     setServicosPacoteDetalhes([]);
     setFotoServico('');
+    setFotoThumbServico('');
     setDestaqueCatalogo(false);
     setItensInclusosTexto('');
     setOrientacoesAgendamento('');
@@ -328,6 +301,7 @@ export const Servicos: React.FC = () => {
     setIsPacote(serv.is_pacote || false);
     setServicosPacoteDetalhes(serv.servicos_pacote_detalhes || (serv.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })));
     setFotoServico(serv.foto || '');
+    setFotoThumbServico(serv.foto_thumb || '');
     setDestaqueCatalogo(!!serv.destaque_catalogo);
     setItensInclusosTexto((serv.itens_inclusos || []).join('\n'));
     setOrientacoesAgendamento(serv.orientacoes_agendamento || '');
@@ -386,6 +360,7 @@ export const Servicos: React.FC = () => {
       servicos_pacote_detalhes: isPacote ? servicosPacoteDetalhes : [],
       descricao: limparTextoDescricao(descricao),
       foto: fotoServico,
+      foto_thumb: fotoThumbServico || undefined,
       destaque_catalogo: destaqueCatalogo,
       itens_inclusos: itensInclusosList.length > 0 ? itensInclusosList : undefined,
       orientacoes_agendamento: orientacoesAgendamento.trim() || undefined
@@ -644,7 +619,7 @@ export const Servicos: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const base64 = await comprimirImagem(file, 1200, 0.85);
+      const base64 = await otimizarImagemWebP(file, 900, 0.75);
       setCatHeroFotoUrl(base64);
     } catch (err) {
       console.error('Erro ao comprimir imagem de capa do catálogo:', err);
@@ -1723,7 +1698,7 @@ export const Servicos: React.FC = () => {
                     {fotoServico && (
                       <button
                         type="button"
-                        onClick={() => setFotoServico('')}
+                        onClick={() => { setFotoServico(''); setFotoThumbServico(''); }}
                         className="text-[10px] text-red-600 hover:underline font-semibold"
                       >
                         Remover Foto
@@ -1746,7 +1721,13 @@ export const Servicos: React.FC = () => {
                         className="w-20 h-20 rounded-xl overflow-hidden border-2 border-[#8C6D58] shrink-0 bg-white cursor-pointer relative group shadow-2xs"
                         title="Clique para trocar a foto"
                       >
-                        <img src={fotoServico} alt="Prévia do serviço" className="w-full h-full object-cover" />
+                        <img 
+                          src={fotoThumbServico || fotoServico} 
+                          alt="Prévia do serviço" 
+                          className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
+                        />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
                           <Camera size={16} />
                         </div>
