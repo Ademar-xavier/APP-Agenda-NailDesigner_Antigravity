@@ -215,14 +215,32 @@ export const Servicos: React.FC = () => {
 
   // Pacotes/Combos
   const [isPacote, setIsPacote] = useState(false);
-  const [servicosPacoteDetalhes, setServicosPacoteDetalhes] = useState<{ servico_id: string; quantidade: number }[]>([]);
+  const [servicosPacoteDetalhes, setServicosPacoteDetalhes] = useState<{ servico_id: string; quantidade: number; profissional_id?: string }[]>([]);
 
-  // Duração somada dos sub-serviços do pacote considerando as quantidades
+  // Duração calculada do combo: se houver profissionais distintos alocados, eles podem atuar em paralelo (max duração), ou soma sequencial se mesma profissional ou sem definição
   const duracaoPacoteSomada = useMemo(() => {
-    return servicosPacoteDetalhes.reduce((acc, item) => {
+    if (!servicosPacoteDetalhes || servicosPacoteDetalhes.length === 0) return 0;
+    
+    // Agrupa por profissional_id (usando 'sem_definir' para procedimentos não amarrados a uma profissional específica)
+    const porProf: Record<string, number> = {};
+    let duracaoSemProf = 0;
+
+    servicosPacoteDetalhes.forEach(item => {
       const s = servicos.find(sub => sub.id === item.servico_id);
-      return acc + ((s?.duracao_minutos || 0) * item.quantidade);
-    }, 0);
+      const durItem = ((s?.duracao_minutos || 0) * (item.quantidade || 1));
+      if (item.profissional_id) {
+        porProf[item.profissional_id] = (porProf[item.profissional_id] || 0) + durItem;
+      } else {
+        duracaoSemProf += durItem;
+      }
+    });
+
+    const profValues = Object.values(porProf);
+    if (profValues.length > 0) {
+      const maxProf = Math.max(...profValues);
+      return Math.max(maxProf, duracaoSemProf);
+    }
+    return duracaoSemProf;
   }, [servicosPacoteDetalhes, servicos]);
 
   // Preço sugerido (soma) dos sub-serviços do pacote considerando as quantidades
@@ -298,8 +316,20 @@ export const Servicos: React.FC = () => {
     setIntervaloManutencaoDias(serv.intervalo_manutencao_dias);
     setDescricao(limparTextoDescricao(serv.descricao));
     setMateriaisSelecionados(serv.materiais_utilizados || []);
-    setIsPacote(serv.is_pacote || false);
-    setServicosPacoteDetalhes(serv.servicos_pacote_detalhes || (serv.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })));
+    setIsPacote(Boolean(serv.is_pacote));
+
+    // Recupera a lista de IDs incluídos no pacote com suporte completo a todos os formatos
+    const comboIds = (serv.servicos_pacote && serv.servicos_pacote.length > 0)
+      ? serv.servicos_pacote
+      : ((serv as any).itens_combo && (serv as any).itens_combo.length > 0)
+        ? (serv as any).itens_combo
+        : [];
+
+    const detalhesExistentes = (serv.servicos_pacote_detalhes && serv.servicos_pacote_detalhes.length > 0)
+      ? serv.servicos_pacote_detalhes
+      : comboIds.map((id: string) => ({ servico_id: id, quantidade: 1, profissional_id: undefined }));
+
+    setServicosPacoteDetalhes(detalhesExistentes);
     setFotoServico(serv.foto || '');
     setFotoThumbServico(serv.foto_thumb || '');
     setDestaqueCatalogo(!!serv.destaque_catalogo);
@@ -329,18 +359,24 @@ export const Servicos: React.FC = () => {
     if (!nome) return;
 
     let catFinal = categoria;
-    if (customCategoria.trim()) {
+    if (showCustomCategoria && customCategoria.trim()) {
       const nomeNova = customCategoria.trim();
       addCategoriaServico(nomeNova);
       catFinal = nomeNova;
       setCategoria(nomeNova);
+      setShowCustomCategoria(false);
+      setCustomCategoria('');
     } else if (categoria === 'nova') {
       mostrarAlerta({
         titulo: 'Campo Obrigatório',
-        mensagem: 'Por favor, digite o nome da categoria customizada.',
+        mensagem: 'Por favor, digite o nome da categoria customizada ou selecione uma existente.',
         tipo: 'aviso'
       });
       return;
+    }
+
+    if (catFinal && !categoriasServico.includes(catFinal)) {
+      addCategoriaServico(catFinal);
     }
 
     const itensInclusosList = itensInclusosTexto.split('\n').map(l => l.trim()).filter(Boolean);
@@ -348,7 +384,7 @@ export const Servicos: React.FC = () => {
     const dados = {
       nome,
       categoria: catFinal,
-      duracao_minutos: isPacote ? duracaoPacoteSomada : duracaoMinutos,
+      duracao_minutos: isPacote ? (duracaoPacoteSomada || duracaoMinutos) : duracaoMinutos,
       preco,
       sinal_tipo: sinalTipo,
       sinal_valor: sinalTipo === 'nenhum' ? 0 : sinalValor,
@@ -870,9 +906,15 @@ export const Servicos: React.FC = () => {
                       <div>
                         <div className="flex justify-between items-start gap-2">
                           <div className="flex items-start gap-2.5">
-                            {s.foto ? (
+                            {s.foto || s.foto_thumb ? (
                               <div className="w-12 h-12 rounded-xl overflow-hidden border border-[#EFECE6] shrink-0 bg-[#FAF9F6] shadow-2xs">
-                                <img src={s.foto} alt={s.nome} className="w-full h-full object-cover" />
+                                <img 
+                                  src={s.foto_thumb || s.foto} 
+                                  alt={s.nome} 
+                                  className="w-full h-full object-cover" 
+                                  loading="lazy"
+                                  decoding="async"
+                                />
                               </div>
                             ) : (
                               <div className="p-2.5 bg-[#F6ECE8] text-[#8C6D58] rounded-xl h-fit">
@@ -1963,31 +2005,57 @@ export const Servicos: React.FC = () => {
                                 <span className="font-bold text-[#8C6D58]">{formatarMoeda(s.preco)}</span>
                               </div>
                               
-                              {/* Se selecionado, permite escolher quantidade */}
+                              {/* Se selecionado, permite escolher quantidade e profissional */}
                               {checked && (
-                                <div className="flex items-center justify-between pt-1.5 border-t border-[#FAF9F6] text-[10px]">
-                                  <span className="text-[#8C7A6B] font-semibold">Quantidade no pacote:</span>
-                                  <div className="flex items-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      disabled={qtd <= 1}
-                                      onClick={() => {
-                                        setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade - 1 } : d));
+                                <div className="space-y-2 pt-2 border-t border-[#FAF9F6] text-[10px]">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[#8C7A6B] font-semibold">Quantidade no pacote:</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        disabled={qtd <= 1}
+                                        onClick={() => {
+                                          setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade - 1 } : d));
+                                        }}
+                                        className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535] disabled:opacity-50"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="font-bold w-4 text-center text-xs text-[#5A4535]">{qtd}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade + 1 } : d));
+                                        }}
+                                        className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535]"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pt-1 border-t border-stone-100">
+                                    <span className="text-[#8C7A6B] font-semibold flex items-center gap-1">
+                                      <span>Profissional:</span>
+                                      <span className="text-[9px] text-[#A6998E]">(para este procedimento)</span>
+                                    </span>
+                                    <select
+                                      value={itemDetalhe?.profissional_id || ''}
+                                      onChange={(e) => {
+                                        const pId = e.target.value || undefined;
+                                        setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, profissional_id: pId } : d));
                                       }}
-                                      className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535] disabled:opacity-50"
+                                      className="bg-white border border-[#EFECE6] rounded-lg px-2 py-1 text-[11px] text-[#5A4535] font-medium outline-none focus:ring-1 focus:ring-[#8C6D58]"
                                     >
-                                      -
-                                    </button>
-                                    <span className="font-bold w-4 text-center text-xs text-[#5A4535]">{qtd}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setServicosPacoteDetalhes(prev => prev.map(d => d.servico_id === s.id ? { ...d, quantidade: d.quantidade + 1 } : d));
-                                      }}
-                                      className="w-5 h-5 rounded bg-[#EFECE6] hover:bg-[#E2DCD5] flex items-center justify-center font-bold text-xs text-[#5A4535]"
-                                    >
-                                      +
-                                    </button>
+                                      <option value="">Qualquer profissional (padrão)</option>
+                                      {equipe
+                                        .filter(m => m.ativo && (!m.servicos_habilitados || m.servicos_habilitados.length === 0 || m.servicos_habilitados.includes(s.id)))
+                                        .map(m => (
+                                          <option key={m.id} value={m.id}>
+                                            {m.nome} ({m.especialidade || (m.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                                          </option>
+                                        ))}
+                                    </select>
                                   </div>
                                 </div>
                               )}

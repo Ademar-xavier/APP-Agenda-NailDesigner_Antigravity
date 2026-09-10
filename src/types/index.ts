@@ -57,7 +57,7 @@ export interface Servico {
   materiais_utilizados?: { material_id: string; quantidade: number }[];
   is_pacote?: boolean;
   servicos_pacote?: string[];
-  servicos_pacote_detalhes?: { servico_id: string; quantidade: number }[];
+  servicos_pacote_detalhes?: { servico_id: string; quantidade: number; profissional_id?: string }[];
   descricao?: string;
   foto?: string; // Foto principal de vitrine para o catálogo online
   foto_thumb?: string; // Miniatura ultra-leve (WebP ~15KB) para exibição nos cards do catálogo
