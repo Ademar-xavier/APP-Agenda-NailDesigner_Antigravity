@@ -113,7 +113,8 @@ export const PublicCatalogo: React.FC = () => {
     return texto.replace(/<!--[\s\S]*?-->/g, '').trim();
   };
 
-  const obterFotoServico = (s: Servico) => {
+  const obterFotoServico = (s: Servico, apenasThumb = false) => {
+    if (apenasThumb && s.foto_thumb && s.foto_thumb.trim() !== '') return s.foto_thumb;
     if (s.foto && s.foto.trim() !== '') return s.foto;
     const cat = (s.categoria || '').toLowerCase();
     const nome = (s.nome || '').toLowerCase();
@@ -459,7 +460,8 @@ export const PublicCatalogo: React.FC = () => {
                   src={heroFotoUrl} 
                   alt={`Unhas impecáveis ${configSalao.nome || 'Sheila Santos'}`} 
                   className="w-full h-80 sm:h-96 object-cover object-center transform hover:scale-102 transition-transform duration-500"
-                  loading="eager"
+                  loading="lazy"
+                  decoding="async"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
                   }}
@@ -582,7 +584,7 @@ export const PublicCatalogo: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {servicosFiltrados.map((s, index) => {
-              const foto = obterFotoServico(s);
+              const foto = obterFotoServico(s, true);
               const isMaisEscolhido = index === 0 || s.destaque_catalogo;
               const isPrimeiraVez = s.nome.toLowerCase().includes('papel') || s.nome.toLowerCase().includes('fibra');
 
@@ -599,6 +601,7 @@ export const PublicCatalogo: React.FC = () => {
                       alt={s.nome} 
                       className="w-full h-full object-cover object-center group-hover:scale-104 transition-transform duration-500"
                       loading="lazy"
+                      decoding="async"
                     />
                     
                     {/* Tags Flutuantes */}
@@ -951,9 +954,11 @@ export const PublicCatalogo: React.FC = () => {
             {/* Header da Imagem */}
             <div className="relative aspect-[16/9] w-full bg-[#F7E6EA] shrink-0">
               <img 
-                src={obterFotoServico(servicoDetalhe)} 
+                src={obterFotoServico(servicoDetalhe, false)} 
                 alt={servicoDetalhe.nome} 
                 className="w-full h-full object-cover"
+                loading="lazy"
+                decoding="async"
               />
               <button
                 onClick={() => setServicoDetalhe(null)}

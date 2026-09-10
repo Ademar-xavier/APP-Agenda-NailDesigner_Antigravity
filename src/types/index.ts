@@ -60,6 +60,7 @@ export interface Servico {
   servicos_pacote_detalhes?: { servico_id: string; quantidade: number }[];
   descricao?: string;
   foto?: string; // Foto principal de vitrine para o catálogo online
+  foto_thumb?: string; // Miniatura ultra-leve (WebP ~15KB) para exibição nos cards do catálogo
   fotos?: string[]; // Galeria de fotos adicionais do serviço
   destaque_catalogo?: boolean; // Se o serviço fica em destaque na vitrine
   itens_inclusos?: string[]; // Itens inclusos no procedimento (exibidos em detalhes no catálogo)

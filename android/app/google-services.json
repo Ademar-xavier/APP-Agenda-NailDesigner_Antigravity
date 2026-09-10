@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "204589246992",
+    "project_id": "sheila-santos-nails",
+    "storage_bucket": "sheila-santos-nails.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:204589246992:android:e6631afa717dae38803895",
+        "android_client_info": {
+          "package_name": "com.sheilasantosnails.agenda"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDg66PkWs7ylR0qdP0SoICfhtoVJPVD7r4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
