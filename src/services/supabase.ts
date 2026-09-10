@@ -50,6 +50,9 @@ export const deletarClienteSupabase = async (id: string) => {
 export const encodeServicoDescricao = (
   descricaoOriginal: string | null | undefined, 
   extra: { 
+    categoria?: string;
+    is_pacote?: boolean;
+    servicos_pacote?: string[];
     sinal_tipo?: string; 
     sinal_valor?: number; 
     materiais_utilizados?: any[]; 
@@ -72,7 +75,10 @@ export const encodeServicoDescricao = (
                    (extra.fotos && extra.fotos.length > 0) ||
                    extra.destaque_catalogo !== undefined ||
                    (extra.itens_inclusos && extra.itens_inclusos.length > 0) ||
-                   !!extra.orientacoes_agendamento;
+                   !!extra.orientacoes_agendamento ||
+                   !!extra.categoria ||
+                   extra.is_pacote !== undefined ||
+                   (extra.servicos_pacote && extra.servicos_pacote.length > 0);
   if (!hasExtra) return cleanDesc;
   const metaTag = `<!--NAIL_META:${JSON.stringify(extra)}-->`;
   return cleanDesc ? `${cleanDesc}\n\n${metaTag}` : metaTag;
