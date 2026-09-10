@@ -28,7 +28,8 @@ import {
   Heart,
   ShieldCheck,
   MessageCircle,
-  Upload
+  Upload,
+  Copy
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
@@ -338,6 +339,54 @@ export const Servicos: React.FC = () => {
     setModalOpen(true);
   };
 
+  const handleDuplicarServico = (serv: Servico) => {
+    setServicoEdicao(null); // ID novo será gerado ao salvar
+    setNome(`${serv.nome} (Cópia)`);
+    const catAlvo = (serv.categoria || '').trim();
+    const catEncontrada = categoriasServico.find(c => c.toLowerCase() === catAlvo.toLowerCase());
+
+    if (catEncontrada) {
+      setCategoria(catEncontrada);
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
+    } else if (catAlvo) {
+      addCategoriaServico(catAlvo);
+      setCategoria(catAlvo);
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
+    } else {
+      setCategoria(categoriasServico[0] || 'Alongamento');
+      setCustomCategoria('');
+      setShowCustomCategoria(false);
+    }
+    setDuracaoMinutos(serv.duracao_minutos);
+    setPreco(serv.preco);
+    setSinalTipo(serv.sinal_tipo);
+    setSinalValor(serv.sinal_valor);
+    setIntervaloManutencaoDias(serv.intervalo_manutencao_dias);
+    setDescricao(limparTextoDescricao(serv.descricao));
+    setMateriaisSelecionados(serv.materiais_utilizados ? [...serv.materiais_utilizados] : []);
+    setIsPacote(Boolean(serv.is_pacote));
+
+    const comboIds = (serv.servicos_pacote && serv.servicos_pacote.length > 0)
+      ? serv.servicos_pacote
+      : ((serv as any).itens_combo && (serv as any).itens_combo.length > 0)
+        ? (serv as any).itens_combo
+        : [];
+
+    const detalhesExistentes = (serv.servicos_pacote_detalhes && serv.servicos_pacote_detalhes.length > 0)
+      ? serv.servicos_pacote_detalhes.map(d => ({ ...d }))
+      : comboIds.map((id: string) => ({ servico_id: id, quantidade: 1, profissional_id: undefined }));
+
+    setServicosPacoteDetalhes(detalhesExistentes);
+    setFotoServico(serv.foto || '');
+    setFotoThumbServico(serv.foto_thumb || '');
+    setDestaqueCatalogo(!!serv.destaque_catalogo);
+    setItensInclusosTexto((serv.itens_inclusos || []).join('\n'));
+    setOrientacoesAgendamento(serv.orientacoes_agendamento || '');
+    setModalOpen(true);
+  };
+
   const handleCriarCategoriaInline = () => {
     const nomeLimpo = customCategoria.trim();
     if (!nomeLimpo) {
@@ -481,6 +530,61 @@ export const Servicos: React.FC = () => {
     }
 
     // Se para algum serviço não houver sessões mapeadas, preenche com as sessões até a quantidade do serviço
+    Object.keys(qtds).forEach(sid => {
+      if (!sessoesMap[sid] || sessoesMap[sid].length === 0) {
+        const qtd = qtds[sid] || 1;
+        const total = plano.qtd_procedimentos_mes || 4;
+        sessoesMap[sid] = Array.from({ length: Math.min(qtd, total) }, (_, i) => i + 1);
+      }
+    });
+
+    setPlanoQuantidadesServicos(qtds);
+    setPlanoProfissionaisServicos(profsMap);
+    setPlanoSessoesServicos(sessoesMap);
+    setPlanoDestaqueCatalogo(Boolean(plano.destaque_catalogo));
+    setModalPlanoAberto(true);
+  };
+
+  const handleDuplicarPlano = (plano: PlanoAssinatura) => {
+    setPlanoEditando(null); // ID novo será gerado ao salvar
+    setPlanoNome(`${plano.nome} (Cópia)`);
+    setPlanoDescricao(plano.descricao || '');
+    setPlanoPrecoMensal(plano.preco_mensal);
+    setPlanoQtdProcedimentos(plano.qtd_procedimentos_mes);
+    setPlanoValidadeDias(plano.validade_dias || 30);
+    setPlanoFrequenciaDias(plano.frequencia_dias ? Math.max(7, Math.round(plano.frequencia_dias / 7) * 7) : 7);
+    setPlanoServicosIds(plano.servicos_permitidos_ids || []);
+
+    const qtds: { [servicoId: string]: number } = {};
+    const profsMap: { [servicoId: string]: string } = {};
+    const sessoesMap: { [servicoId: string]: number[] } = {};
+
+    if (plano.itens_servicos && plano.itens_servicos.length > 0) {
+      plano.itens_servicos.forEach(item => {
+        if (servicos.some(s => s.id === item.servico_id && s.ativo)) {
+          qtds[item.servico_id] = item.quantidade;
+          profsMap[item.servico_id] = item.profissional_id || '';
+          if (item.sessoes && item.sessoes.length > 0) {
+            sessoesMap[item.servico_id] = [...item.sessoes];
+          } else if (plano.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+            const sList = plano.distribuicao_sessoes
+              .filter(d => d.servico_id === item.servico_id)
+              .map(d => d.sessao_numero);
+            if (sList.length > 0) {
+              sessoesMap[item.servico_id] = sList;
+            }
+          }
+        }
+      });
+    } else {
+      (plano.servicos_permitidos_ids || []).forEach(sid => {
+        if (servicos.some(s => s.id === sid && s.ativo)) {
+          qtds[sid] = 1;
+          profsMap[sid] = '';
+        }
+      });
+    }
+
     Object.keys(qtds).forEach(sid => {
       if (!sessoesMap[sid] || sessoesMap[sid].length === 0) {
         const qtd = qtds[sid] || 1;
@@ -1026,6 +1130,15 @@ export const Servicos: React.FC = () => {
                           Editar
                         </button>
                         <button
+                          type="button"
+                          onClick={() => handleDuplicarServico(s)}
+                          className="flex items-center justify-center gap-1 px-3 bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200/80 py-2 rounded-xl text-xs font-semibold shadow-2xs transition-all"
+                          title="Duplicar este serviço como um novo cadastro"
+                        >
+                          <Copy size={13} className="text-amber-700" />
+                          <span>Duplicar</span>
+                        </button>
+                        <button
                           onClick={() => {
                             confirmarAcao({
                               titulo: 'Desativar Serviço',
@@ -1143,6 +1256,13 @@ export const Servicos: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDuplicarPlano(plano)}
+                            className="p-1.5 hover:bg-amber-50 text-[#8C7A6B] hover:text-amber-700 rounded-lg transition-colors"
+                            title="Duplicar Plano VIP (Novo Cadastro)"
+                          >
+                            <Copy size={13} />
+                          </button>
                           <button
                             onClick={() => abrirModalEditarPlano(plano)}
                             className="p-1.5 hover:bg-[#FAF9F6] text-[#8C7A6B] hover:text-[#5A4535] rounded-lg transition-colors"
@@ -1706,6 +1826,36 @@ export const Servicos: React.FC = () => {
             <form onSubmit={handleSalvar} className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto p-6 space-y-4 pr-3">
                 
+                {/* Opção de Copiar Dados de Outro Serviço */}
+                {!servicoEdicao && servicos.length > 0 && (
+                  <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 shadow-2xs">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <Copy size={13} className="text-amber-700" />
+                        <span>Duplicar de outro serviço? (opcional)</span>
+                      </span>
+                      <span className="text-[10px] text-amber-700">Preenche automaticamente</span>
+                    </div>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const sId = e.target.value;
+                        if (!sId) return;
+                        const sAlvo = servicos.find(item => item.id === sId);
+                        if (sAlvo) handleDuplicarServico(sAlvo);
+                      }}
+                      className="w-full bg-white border border-amber-200 text-amber-950 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                    >
+                      <option value="">Selecione um serviço para clonar os dados...</option>
+                      {servicos.filter(s => s.ativo).map(s => (
+                        <option key={s.id} value={s.id}>
+                          {s.nome} ({formatarMoeda(s.preco)} - {s.duracao_minutos}min)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Nome do Serviço */}
                 <div>
                   <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Nome do Serviço</label>
@@ -2274,6 +2424,36 @@ export const Servicos: React.FC = () => {
             </div>
 
             <form onSubmit={handleSalvarPlano} className="p-5 overflow-y-auto space-y-4 flex-1">
+              {/* Opção de Copiar Dados de Outro Plano VIP */}
+              {!planoEditando && planosAssinatura.length > 0 && (
+                <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <Copy size={13} className="text-amber-700" />
+                      <span>Duplicar de outro plano VIP? (opcional)</span>
+                    </span>
+                    <span className="text-[10px] text-amber-700">Preenche regras e serviços</span>
+                  </div>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      const pId = e.target.value;
+                      if (!pId) return;
+                      const pAlvo = planosAssinatura.find(item => item.id === pId);
+                      if (pAlvo) handleDuplicarPlano(pAlvo);
+                    }}
+                    className="w-full bg-white border border-amber-200 text-amber-950 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+                  >
+                    <option value="">Selecione um plano VIP para clonar os dados...</option>
+                    {planosAssinatura.filter(p => p.ativo).map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.nome} ({formatarMoeda(p.preco_mensal)} - {p.qtd_procedimentos_mes} sessões)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Nome do Plano *</label>
                 <input

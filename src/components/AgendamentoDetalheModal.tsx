@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   MessageCircle, 
@@ -83,6 +83,51 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [editandoServicosEProf, setEditandoServicosEProf] = useState(false);
   const [servicosEditadosIds, setServicosEditadosIds] = useState<string[]>([]);
   const [profissionalEditadaId, setProfissionalEditadaId] = useState<string>(agendamento?.profissional_id || '');
+  const [aplicarEmFuturos, setAplicarEmFuturos] = useState(true);
+
+  // Identifica agendamentos futuros da mesma recorrência/clube VIP
+  const agendamentosFuturosRecorrencia = useMemo(() => {
+    if (!agendamento) return [];
+    const isVip = !!(
+      agendamento.pago_com_clube ||
+      agendamento.plano_id ||
+      agendamento.observacoes?.includes('Clube VIP') ||
+      agendamento.observacoes?.includes('👑')
+    );
+
+    return agendamentos.filter(a => {
+      if (a.id === agendamento.id) return false;
+      if (a.status === 'cancelado' || a.status === 'concluido') return false;
+      if (new Date(a.inicio) <= new Date(agendamento.inicio)) return false;
+
+      // Grupo de recorrência manual
+      if (agendamento.recorrencia_grupo_id && a.recorrencia_grupo_id === agendamento.recorrencia_grupo_id) {
+        return true;
+      }
+
+      // Sessão de Clube VIP da mesma cliente
+      if (isVip && a.cliente_id === agendamento.cliente_id) {
+        const aIsVip = !!(
+          a.pago_com_clube ||
+          a.plano_id ||
+          a.observacoes?.includes('Clube VIP') ||
+          a.observacoes?.includes('👑')
+        );
+        if (aIsVip) {
+          if (!agendamento.plano_id || !a.plano_id || agendamento.plano_id === a.plano_id) {
+            return true;
+          }
+        }
+      }
+
+      // Recorrência manual descrita nas observações
+      if (agendamento.cliente_id === a.cliente_id && agendamento.observacoes?.includes('[🔁 Recorrência') && a.observacoes?.includes('[🔁 Recorrência')) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [agendamento, agendamentos]);
 
   // Estados de Desconto na Comanda (Fechamento)
   const [descontoValor, setDescontoValor] = useState<number>(agendamento?.desconto_valor || 0);
@@ -211,20 +256,27 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const formatarObservacoesModal = (obs?: string, clienteNome?: string) => {
     if (!obs || !obs.trim()) return null;
 
+    // Remove tags técnicas como [PLANO_ID:xxx] de qualquer observação exibida na interface
+    let textoBase = obs
+      .replace(/\s*\[PLANO_ID:[a-zA-Z0-9_\-]+\]/gi, '')
+      .trim();
+
+    if (!textoBase) return null;
+
     const isGoogle = 
-      obs.includes('[Google Agenda Oficial]') || 
-      obs.includes('Google Agenda') || 
-      obs.includes('g_gen_');
+      textoBase.includes('[Google Agenda Oficial]') || 
+      textoBase.includes('Google Agenda') || 
+      textoBase.includes('g_gen_');
 
     if (!isGoogle) {
       return {
         isGoogle: false,
-        nota: obs.trim()
+        nota: textoBase
       };
     }
 
     // Limpa tags técnicas do Google e identificadores hash
-    let limpo = obs
+    let limpo = textoBase
       .replace(/\[Google Agenda Oficial\]/gi, '')
       .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
       .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
@@ -524,7 +576,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     atualizarServicosEProfissionalAgendamento(
       agendamento.id,
       servicosEditadosIds,
-      profissionalEditadaId || agendamento.profissional_id
+      profissionalEditadaId || agendamento.profissional_id,
+      agendamentosFuturosRecorrencia.length > 0 ? aplicarEmFuturos : false
     );
     setEditandoServicosEProf(false);
   };
@@ -786,6 +839,27 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 </div>
               );
             })()}
+
+            {/* Opção de propagar para agendamentos futuros da recorrência */}
+            {agendamentosFuturosRecorrencia.length > 0 && (
+              <label className="flex items-center gap-2.5 p-2.5 bg-amber-50 border border-amber-200/90 rounded-xl cursor-pointer text-xs font-medium text-amber-950 transition-colors hover:bg-amber-100/70 shadow-2xs">
+                <input
+                  type="checkbox"
+                  checked={aplicarEmFuturos}
+                  onChange={(e) => setAplicarEmFuturos(e.target.checked)}
+                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58] w-4 h-4 cursor-pointer shrink-0"
+                />
+                <div className="flex-1">
+                  <span className="font-bold flex items-center gap-1 text-[#5A4535]">
+                    <Repeat size={13} className="text-[#8C6D58]" />
+                    <span>Ajustar agendamentos futuros desta recorrência</span>
+                  </span>
+                  <span className="text-[10px] text-amber-800 block mt-0.5 leading-snug">
+                    Aplica o novo procedimento/profissional também aos próximos {agendamentosFuturosRecorrencia.length} {agendamentosFuturosRecorrencia.length === 1 ? 'agendamento' : 'agendamentos'} da sequência
+                  </span>
+                </div>
+              </label>
+            )}
 
             {/* Botões de Ação */}
             <div className="flex justify-end gap-2 text-xs pt-1">

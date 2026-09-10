@@ -157,7 +157,7 @@ interface AppStateContextType {
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
-  atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string) => void;
+  atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
@@ -2838,13 +2838,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const atualizarServicosEProfissionalAgendamento = (
     agendamentoId: string,
     novosServicosIds: string[],
-    novaProfissionalId: string
+    novaProfissionalId: string,
+    ajustarFuturos: boolean = true
   ) => {
     const ag = agendamentos.find(a => a.id === agendamentoId);
     if (!ag) return;
 
     const servicosEscolhidos = servicos.filter(s => novosServicosIds.includes(s.id));
     const duracaoTotal = servicosEscolhidos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+    const nomesServicosNovos = servicosEscolhidos.map(s => s.nome).join(' + ');
 
     // Calcula novo horário de término preservando o fuso/data original de início
     const dInicio = new Date(ag.inicio);
@@ -2857,15 +2859,94 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ? 0 
       : servicosEscolhidos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
 
+    // Atualiza nome dos serviços dentro da observação se formatado como Sessão X (...)
+    let obsAtualizada = ag.observacoes;
+    if (obsAtualizada && nomesServicosNovos && obsAtualizada.includes('Sessão ') && obsAtualizada.includes('(') && obsAtualizada.includes(')')) {
+      obsAtualizada = obsAtualizada.replace(/Sessão\s+(\d+)\s*\([^)]+\)/i, `Sessão $1 (${nomesServicosNovos})`);
+    }
+
     const atualizado: Agendamento = {
       ...ag,
       profissional_id: novaProfissionalId || ag.profissional_id,
       fim: fimStr,
-      valor_total: novoValorTotal
+      valor_total: novoValorTotal,
+      observacoes: obsAtualizada
     };
 
+    // Identifica agendamentos futuros da mesma série recorrente / plano VIP se solicitado
+    const futurosAtualizados: { ag: Agendamento; servicosIds: string[] }[] = [];
+
+    if (ajustarFuturos) {
+      const isVip = !!(
+        ag.pago_com_clube ||
+        ag.plano_id ||
+        ag.observacoes?.includes('Clube VIP') ||
+        ag.observacoes?.includes('👑')
+      );
+
+      agendamentos.forEach(a => {
+        if (a.id === agendamentoId) return;
+        if (a.status === 'cancelado' || a.status === 'concluido') return false;
+        if (new Date(a.inicio) <= new Date(ag.inicio)) return;
+
+        let ehDaMesmaSerie = false;
+
+        // Caso 1: Mesmo grupo de recorrência manual
+        if (ag.recorrencia_grupo_id && a.recorrencia_grupo_id === ag.recorrencia_grupo_id) {
+          ehDaMesmaSerie = true;
+        }
+
+        // Caso 2: Sessão de Clube VIP da mesma cliente
+        if (!ehDaMesmaSerie && isVip && a.cliente_id === ag.cliente_id) {
+          const aIsVip = !!(
+            a.pago_com_clube ||
+            a.plano_id ||
+            a.observacoes?.includes('Clube VIP') ||
+            a.observacoes?.includes('👑')
+          );
+          if (aIsVip) {
+            if (!ag.plano_id || !a.plano_id || ag.plano_id === a.plano_id) {
+              ehDaMesmaSerie = true;
+            }
+          }
+        }
+
+        // Caso 3: Recorrência marcada nas observações
+        if (!ehDaMesmaSerie && ag.cliente_id === a.cliente_id && ag.observacoes?.includes('[🔁 Recorrência') && a.observacoes?.includes('[🔁 Recorrência')) {
+          ehDaMesmaSerie = true;
+        }
+
+        if (ehDaMesmaSerie) {
+          const dIniFut = new Date(a.inicio);
+          const dFimFut = new Date(dIniFut.getTime() + duracaoTotal * 60000);
+          const isVipFutIncluso = Boolean(a.pago_com_clube && a.valor_total === 0);
+          const novoValorFut = isVipFutIncluso ? 0 : novoValorTotal;
+
+          let obsFut = a.observacoes;
+          if (obsFut && nomesServicosNovos && obsFut.includes('Sessão ') && obsFut.includes('(') && obsFut.includes(')')) {
+            obsFut = obsFut.replace(/Sessão\s+(\d+)\s*\([^)]+\)/i, `Sessão $1 (${nomesServicosNovos})`);
+          }
+
+          futurosAtualizados.push({
+            ag: {
+              ...a,
+              profissional_id: novaProfissionalId || a.profissional_id,
+              fim: dFimFut.toISOString(),
+              valor_total: novoValorFut,
+              observacoes: obsFut
+            },
+            servicosIds: novosServicosIds
+          });
+        }
+      });
+    }
+
+    const mapaAtualizados = new Map<string, Agendamento>();
+    mapaAtualizados.set(atualizado.id, atualizado);
+    futurosAtualizados.forEach(item => mapaAtualizados.set(item.ag.id, item.ag));
+
     setAgendamentos(prev => {
-      const next = prev.map(a => a.id === agendamentoId ? atualizado : a);
+      const next = prev.map(a => mapaAtualizados.get(a.id) || a);
       try { localStorage.setItem('nail_agendamentos', JSON.stringify(next)); } catch (e) {}
       dbSetAll(STORES.AGENDAMENTOS, next);
       return next;
@@ -2873,12 +2954,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setItensAgendamento(prev => {
       const nextItens = { ...prev, [agendamentoId]: novosServicosIds };
+      futurosAtualizados.forEach(item => {
+        nextItens[item.ag.id] = item.servicosIds;
+      });
       try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(nextItens)); } catch (e) {}
       return nextItens;
     });
 
     salvarAgendamentoSupabase(atualizado, novosServicosIds);
-    mostrarNotificacaoGlobal('✅ Procedimento e profissional atualizados com sucesso!');
+    futurosAtualizados.forEach(item => {
+      salvarAgendamentoSupabase(item.ag, item.servicosIds);
+    });
+
+    if (futurosAtualizados.length > 0) {
+      mostrarNotificacaoGlobal(`✅ Agendamento atualizado e propagado para ${futurosAtualizados.length} agendamento(s) futuro(s)!`);
+    } else {
+      mostrarNotificacaoGlobal('✅ Procedimento e profissional atualizados com sucesso!');
+    }
   };
 
   const concluirAtendimento = (
