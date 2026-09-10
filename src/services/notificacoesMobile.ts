@@ -1,7 +1,10 @@
 import { Capacitor } from '@capacitor/core';
+import { salvarTokenFcmSupabase } from './supabase';
 
 let canalInicializado = false;
+let fcmInicializado = false;
 
+// Inicializa canal de notificações locais (heads-up banner + som + vibração)
 export const inicializarCanalNotificacoes = async () => {
   if (canalInicializado || !Capacitor.isNativePlatform()) return;
   try {
@@ -30,12 +33,68 @@ export const inicializarCanalNotificacoes = async () => {
   }
 };
 
+// Inicializa Firebase Cloud Messaging (FCM) para receber avisos COM O APP FECHADO
+export const inicializarPushNotificationsFCM = async () => {
+  if (fcmInicializado || !Capacitor.isNativePlatform()) return;
+  try {
+    const { PushNotifications } = await import('@capacitor/push-notifications');
+
+    // Cria canal dedicado de Push FCM no Android 8+
+    await PushNotifications.createChannel({
+      id: 'fcm_agendamentos_nail',
+      name: 'Alertas em Segundo Plano (FCM)',
+      description: 'Notificações recebidas mesmo com o aplicativo fechado',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true
+    });
+
+    // 1. Registro bem-sucedido: Token FCM recebido do Google Services
+    PushNotifications.addListener('registration', (token) => {
+      console.log('[FCM] Token gerado com sucesso:', token.value);
+      try {
+        localStorage.setItem('nail_fcm_token', token.value);
+        salvarTokenFcmSupabase(token.value);
+      } catch (e) {}
+    });
+
+    // 2. Erro no registro
+    PushNotifications.addListener('registrationError', (err) => {
+      console.warn('[FCM] Erro ao registrar no Firebase:', err.error);
+    });
+
+    // 3. Notificação recebida em primeiro plano
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      console.log('[FCM] Notificação recebida:', notification);
+    });
+
+    // 4. Usuário clicou na notificação na barra de status
+    PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+      console.log('[FCM] Ação executada:', notification);
+      try {
+        window.focus();
+      } catch (e) {}
+    });
+
+    // Solicita permissão e registra
+    const perm = await PushNotifications.requestPermissions();
+    if (perm.receive === 'granted') {
+      await PushNotifications.register();
+      fcmInicializado = true;
+    }
+  } catch (err) {
+    console.warn('[FCM] Falha ao inicializar PushNotifications FCM:', err);
+  }
+};
+
 export const solicitarPermissaoNotificacoes = async (): Promise<boolean> => {
   // 1. Capacitor Native (Android / iOS)
   if (Capacitor.isNativePlatform()) {
     try {
       const { LocalNotifications } = await import('@capacitor/local-notifications');
       await inicializarCanalNotificacoes();
+      await inicializarPushNotificationsFCM();
       const status = await LocalNotifications.requestPermissions();
       return status.display === 'granted';
     } catch (e) {

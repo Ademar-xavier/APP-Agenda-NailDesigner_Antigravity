@@ -549,6 +549,28 @@ export const deletarDespesaSupabase = async (id: string) => {
   } catch (e) {}
 };
 
+// --- SALVAR TOKEN DE PUSH NOTIFICATIONS FCM (ANDROID) ---
+export const salvarTokenFcmSupabase = async (token: string) => {
+  if (!token) return;
+  try {
+    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+    const configSalao = data?.config_salao || {};
+    const tokensExistentes: string[] = Array.isArray(configSalao.fcm_tokens) ? configSalao.fcm_tokens : [];
+    if (!tokensExistentes.includes(token)) {
+      const novosTokens = [...tokensExistentes, token];
+      await salvarConfiguracoesSupabase({
+        configSalao: {
+          ...configSalao,
+          fcm_tokens: novosTokens
+        }
+      });
+      console.log('[FCM] Token de push salvo na nuvem com sucesso!');
+    }
+  } catch (e) {
+    console.warn('[FCM] Falha ao salvar token na nuvem:', e);
+  }
+};
+
 // --- SALVAR / ATUALIZAR CONFIGURAÇÕES GERAIS (Técnicas, Formatos, Equipe, Planos VIP, Produtos em JSONB) ---
 export const salvarConfiguracoesSupabase = async (dados: {
   configSalao?: any;
