@@ -96,12 +96,15 @@ export const salvarServicoSupabase = async (servico: any) => {
   try {
     const diasManutencao = Number(servico.intervalo_manutencao_dias !== undefined ? servico.intervalo_manutencao_dias : (servico.retorno_dias ?? 20));
     
-    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo, itens inclusos) na descrição sem quebrar colunas
+    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo, itens inclusos, combo) na descrição sem quebrar colunas
     const descricaoComMetadados = encodeServicoDescricao(servico.descricao, {
+      categoria: servico.categoria || 'Geral',
+      is_pacote: Boolean(servico.is_pacote),
+      servicos_pacote: servico.servicos_pacote || servico.itens_combo || [],
+      servicos_pacote_detalhes: servico.servicos_pacote_detalhes || [],
       sinal_tipo: servico.sinal_tipo,
       sinal_valor: servico.sinal_valor,
       materiais_utilizados: servico.materiais_utilizados,
-      servicos_pacote_detalhes: servico.servicos_pacote_detalhes,
       foto: servico.foto,
       foto_thumb: servico.foto_thumb,
       fotos: servico.fotos,

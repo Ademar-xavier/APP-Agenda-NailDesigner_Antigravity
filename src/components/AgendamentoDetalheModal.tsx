@@ -671,11 +671,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
             </div>
 
-            <div className="space-y-1.5 text-xs text-[#5A4535]">
+            <div className="space-y-2 text-xs text-[#5A4535]">
               {servs.map((s) => (
-                <div key={s.id} className="flex justify-between">
-                  <span>{s.nome}</span>
-                  <span className="font-semibold">{formatarMoeda(s.preco)}</span>
+                <div key={s.id} className="flex justify-between items-center">
+                  <div>
+                    <span className="font-semibold text-stone-800">{s.nome}</span>
+                    <span className="text-[10px] text-[#8C7A6B] block">Duração individual: {s.duracao_minutos} min</span>
+                  </div>
+                  <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
                 </div>
               ))}
             </div>

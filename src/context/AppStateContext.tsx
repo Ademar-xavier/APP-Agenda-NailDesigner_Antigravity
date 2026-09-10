@@ -1160,8 +1160,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               const { descricao: cleanDesc, extra } = decodeServicoDescricao(s.descricao);
               const dias = Number(s.intervalo_manutencao_dias !== undefined ? s.intervalo_manutencao_dias : (s.retorno_dias ?? 0));
               const local = prevServicos.find(p => p.id === s.id);
+              const isPacote = s.is_pacote !== undefined 
+                ? Boolean(s.is_pacote) 
+                : (extra.is_pacote !== undefined ? Boolean(extra.is_pacote) : (local?.is_pacote ?? false));
+
+              const servicosPacote = (s.servicos_pacote && s.servicos_pacote.length > 0)
+                ? s.servicos_pacote
+                : (s.itens_combo && s.itens_combo.length > 0)
+                  ? s.itens_combo
+                  : (extra.servicos_pacote && extra.servicos_pacote.length > 0)
+                    ? extra.servicos_pacote
+                    : (local?.servicos_pacote || []);
+
+              const pacoteDetalhes = (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0)
+                ? extra.servicos_pacote_detalhes
+                : (s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0)
+                  ? s.servicos_pacote_detalhes
+                  : (local?.servicos_pacote_detalhes && local.servicos_pacote_detalhes.length > 0)
+                    ? local.servicos_pacote_detalhes
+                    : servicosPacote.map((subId: string) => ({ servico_id: subId, quantidade: 1 }));
+
+              const catFinal = s.categoria || extra.categoria || local?.categoria || 'Geral';
+
               return {
                 ...s,
+                categoria: catFinal,
+                is_pacote: isPacote,
+                servicos_pacote: servicosPacote,
+                servicos_pacote_detalhes: pacoteDetalhes,
                 descricao: cleanDesc,
                 duracao_minutos: Number(s.duracao_minutos) || 60,
                 preco: Number(s.preco) || 0,
@@ -1170,7 +1196,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 sinal_tipo: extra.sinal_tipo || s.sinal_tipo || local?.sinal_tipo || 'nenhum',
                 sinal_valor: Number(extra.sinal_valor !== undefined ? extra.sinal_valor : (s.sinal_valor !== undefined ? s.sinal_valor : (local?.sinal_valor ?? 0))),
                 materiais_utilizados: extra.materiais_utilizados || s.materiais_utilizados || local?.materiais_utilizados || [],
-                servicos_pacote_detalhes: extra.servicos_pacote_detalhes || s.servicos_pacote_detalhes || local?.servicos_pacote_detalhes || [],
                 foto: extra.foto || s.foto || local?.foto || '',
                 foto_thumb: extra.foto_thumb || s.foto_thumb || local?.foto_thumb || '',
                 fotos: extra.fotos || s.fotos || local?.fotos || [],
@@ -1571,9 +1596,34 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const { descricao: cleanDesc, extra } = decodeServicoDescricao(raw.descricao);
             const dias = Number(raw.intervalo_manutencao_dias !== undefined ? raw.intervalo_manutencao_dias : (raw.retorno_dias ?? 0));
             const existing = prev.find(s => s.id === raw.id);
+            const isPacote = raw.is_pacote !== undefined 
+              ? Boolean(raw.is_pacote) 
+              : (extra.is_pacote !== undefined ? Boolean(extra.is_pacote) : (existing?.is_pacote ?? false));
+
+            const servicosPacote = (raw.servicos_pacote && raw.servicos_pacote.length > 0)
+              ? raw.servicos_pacote
+              : (raw.itens_combo && raw.itens_combo.length > 0)
+                ? raw.itens_combo
+                : (extra.servicos_pacote && extra.servicos_pacote.length > 0)
+                  ? extra.servicos_pacote
+                  : (existing?.servicos_pacote || []);
+
+            const pacoteDetalhes = (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0)
+              ? extra.servicos_pacote_detalhes
+              : (raw.servicos_pacote_detalhes && raw.servicos_pacote_detalhes.length > 0)
+                ? raw.servicos_pacote_detalhes
+                : (existing?.servicos_pacote_detalhes && existing.servicos_pacote_detalhes.length > 0)
+                  ? existing.servicos_pacote_detalhes
+                  : servicosPacote.map((subId: string) => ({ servico_id: subId, quantidade: 1 }));
+
+            const catFinal = raw.categoria || extra.categoria || existing?.categoria || 'Geral';
+
             const formatado: Servico = {
               ...raw,
-              categoria: raw.categoria || existing?.categoria || 'Geral',
+              categoria: catFinal,
+              is_pacote: isPacote,
+              servicos_pacote: servicosPacote,
+              servicos_pacote_detalhes: pacoteDetalhes,
               descricao: cleanDesc,
               duracao_minutos: Number(raw.duracao_minutos) || 60,
               preco: Number(raw.preco) || 0,
@@ -1582,7 +1632,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               sinal_tipo: extra.sinal_tipo || raw.sinal_tipo || existing?.sinal_tipo || 'nenhum',
               sinal_valor: Number(extra.sinal_valor !== undefined ? extra.sinal_valor : (raw.sinal_valor !== undefined ? raw.sinal_valor : (existing?.sinal_valor ?? 0))),
               materiais_utilizados: extra.materiais_utilizados || raw.materiais_utilizados || existing?.materiais_utilizados || [],
-              servicos_pacote_detalhes: extra.servicos_pacote_detalhes || raw.servicos_pacote_detalhes || existing?.servicos_pacote_detalhes || [],
               foto: extra.foto || raw.foto || existing?.foto || '',
               foto_thumb: extra.foto_thumb || raw.foto_thumb || existing?.foto_thumb || '',
               fotos: extra.fotos || raw.fotos || existing?.fotos || [],
@@ -2011,6 +2060,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const next = [...servicos, servico];
     setServicos(next);
     try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
+    dbSetAll(STORES.SERVICOS, next);
 
     // Habilita automaticamente o novo serviço na lista da profissional administradora e ativas
     setEquipe(prevEquipe => {
@@ -2037,21 +2087,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateServico = async (id: string, updated: Partial<Servico>) => {
-    let servicoSalvo: Servico | undefined;
+    const atual = servicos.find(s => s.id === id);
+    const servicoSalvo: Servico = {
+      ...(atual || {} as any),
+      ...updated,
+      id
+    };
+
     setServicos(prev => {
-      const next = prev.map(s => s.id === id ? { ...s, ...updated } : s);
-      servicoSalvo = next.find(s => s.id === id);
+      const next = prev.map(s => s.id === id ? servicoSalvo : s);
       try { localStorage.setItem('nail_servicos', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.SERVICOS, next);
       return next;
     });
 
-    if (servicoSalvo) {
-      const res = await salvarServicoSupabase(servicoSalvo);
-      if (res.sucesso) {
-        mostrarNotificacaoGlobal(`✅ Serviço "${servicoSalvo.nome}" salvo e verificado na nuvem!`);
-      } else {
-        mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro na nuvem: ${res.erro}`);
-      }
+    const res = await salvarServicoSupabase(servicoSalvo);
+    if (res.sucesso) {
+      mostrarNotificacaoGlobal(`✅ Serviço "${servicoSalvo.nome}" salvo e verificado na nuvem!`);
+    } else {
+      mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro na nuvem: ${res.erro}`);
     }
   };
 
