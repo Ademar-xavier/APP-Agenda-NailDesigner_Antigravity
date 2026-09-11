@@ -162,6 +162,7 @@ interface AppStateContextType {
     planoVipId?: string
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
+  remarcarAgendamento: (id: string, novoInicio: string, novoFim?: string, novaProfissionalId?: string) => { success: boolean; error?: string };
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
   atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
@@ -387,6 +388,24 @@ const itensAgendamentoMock: { [agendamentoId: string]: string[] } = {
   'a11': ['s3'], 'a12': ['s1'], 'a13': ['s2'], 'a14': ['s7'], 'a15': ['s6'],
   'a_elaine': ['s9'], 'a_juliana': ['s2'], 'a_fernanda': ['s2'], 'a_camille': ['s2'],
   'a16': ['s2'], 'a17': ['s2']
+};
+
+// --- Cálculo Seguro de Término de Atendimento (à prova de distorção de fuso UTC vs Local) ---
+export const calcularFimAgendamento = (inicioStr: string, duracaoMinutos: number): string => {
+  if (!inicioStr) return '';
+  const limpo = inicioStr.replace('Z', '').split('+')[0];
+  const [dataPart, horaPart] = limpo.split('T');
+  const [ano, mes, dia] = (dataPart || '').split('-').map(Number);
+  const [hora, min] = (horaPart || '00:00').split(':').map(Number);
+  if (!ano || !mes || !dia) return inicioStr;
+
+  const d = new Date(ano, mes - 1, dia, hora || 0, (min || 0) + duracaoMinutos, 0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${mi}:00`;
 };
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -1142,8 +1161,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
 
+          let fimEfetivo = a.fim;
+          if (!fimEfetivo || (fimEfetivo.replace('Z', '').split('+')[0] <= a.inicio.replace('Z', '').split('+')[0])) {
+            fimEfetivo = calcularFimAgendamento(a.inicio, 60);
+          }
+
           return {
             ...a,
+            fim: fimEfetivo,
             valor_total: valorEfetivo,
             pago_com_clube: isVip,
             plano_id: planoIdFinal
@@ -2785,10 +2810,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     
     let fimStr = novoAgendamento.fim;
-    if (!fimStr) {
-      const dataInicio = new Date(novoAgendamento.inicio);
-      const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
-      fimStr = formatarDataHoraLocal(dataFim);
+    if (!fimStr || (fimStr.replace('Z', '').split('+')[0] <= novoAgendamento.inicio.replace('Z', '').split('+')[0])) {
+      fimStr = calcularFimAgendamento(novoAgendamento.inicio, duracaoTotal);
     }
     
     const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, novoAgendamento.profissional_id);
@@ -2870,9 +2893,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const dataRepStr = `${anoRep}-${mesRep}-${diaRep}`;
         const inicioRepStr = `${dataRepStr}T${horaStrLimpa}`;
 
-        const [hR, mR] = horaStrLimpa.split(':').map(Number);
-        const dRepFim = new Date(anoRep, dRep.getMonth(), Number(diaRep), hR, mR + duracaoTotal);
-        const fimRepStr = formatarDataHoraLocal(dRepFim);
+        const fimRepStr = calcularFimAgendamento(inicioRepStr, duracaoTotal);
 
         const idRep = gerarCodigoReserva();
         const obsRep = `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão ${rep + 1} de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes ? novoAgendamento.observacoes.replace(/\[🔁.*?\]\s*/g, '') : ''}`.trim();
@@ -3191,9 +3212,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const nomesServicosNovos = servicosEscolhidos.map(s => s.nome).join(' + ');
 
     // Calcula novo horário de término preservando o fuso/data original de início no formato local
-    const dInicio = new Date(ag.inicio);
-    const dFim = new Date(dInicio.getTime() + duracaoTotal * 60000);
-    const fimStr = formatarDataHoraLocal(dFim);
+    const fimStr = calcularFimAgendamento(ag.inicio, duracaoTotal);
     const profEfetiva = novaProfissionalId || ag.profissional_id;
 
     // 1. Validação estrita de conflito no agendamento atual
@@ -3272,9 +3291,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         if (ehDaMesmaSerie) {
-          const dIniFut = new Date(a.inicio);
-          const dFimFut = new Date(dIniFut.getTime() + duracaoTotal * 60000);
-          const fimFutStr = formatarDataHoraLocal(dFimFut);
+          const fimFutStr = calcularFimAgendamento(a.inicio, duracaoTotal);
 
           // Protege cada agendamento futuro contra conflitos de horário com outros clientes!
           const temConflitoFuturo = checkConflitoHorario(a.inicio, fimFutStr, profEfetiva, a.id);
@@ -3342,6 +3359,75 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } else {
       mostrarNotificacaoGlobal('✅ Procedimento e profissional atualizados com sucesso!');
     }
+  };
+
+  const remarcarAgendamento = (
+    id: string,
+    novoInicio: string,
+    novoFim?: string,
+    novaProfissionalId?: string
+  ): { success: boolean; error?: string } => {
+    const ag = agendamentos.find(a => a.id === id);
+    if (!ag) {
+      return { success: false, error: 'Agendamento não encontrado.' };
+    }
+
+    const sIds = itensAgendamento[id] || [];
+    const servs = servicos.filter(s => sIds.includes(s.id));
+    const duracaoTotal = servs.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+
+    const profEfetiva = novaProfissionalId || ag.profissional_id;
+    const fimEfetivo = (novoFim && novoFim.replace('Z', '').split('+')[0] > novoInicio.replace('Z', '').split('+')[0])
+      ? novoFim
+      : calcularFimAgendamento(novoInicio, duracaoTotal);
+
+    // 1. Validação estrita de conflito de horário (ignorando o próprio agendamento sendo remarcado)
+    const conflito = checkConflitoHorario(novoInicio, fimEfetivo, profEfetiva, ag.id);
+    if (conflito) {
+      return {
+        success: false,
+        error: 'Horário indisponível ou em conflito com outro agendamento desta profissional.'
+      };
+    }
+
+    // 2. Se estava cancelado ou falta, reativa como confirmado; caso contrário mantém status atual
+    const novoStatus: AgendamentoStatus = (ag.status === 'cancelado' || ag.status === 'falta')
+      ? 'confirmado'
+      : ag.status;
+
+    const atualizado: Agendamento = {
+      ...ag,
+      inicio: novoInicio,
+      fim: fimEfetivo,
+      profissional_id: profEfetiva,
+      status: novoStatus
+    };
+
+    // 3. Atualizar estado de agendamentos e persistir
+    setAgendamentos(prev => {
+      const next = prev.map(a => a.id === id ? atualizado : a);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(next)); } catch (e) {}
+      dbSetAll(STORES.AGENDAMENTOS, next);
+      return next;
+    });
+
+    // 4. Salvar no Supabase (atualiza início, fim, profissional_id imediatamente)
+    salvarAgendamentoSupabase(atualizado, sIds);
+
+    // 5. Atualizar data dos pagamentos pendentes associados
+    setPagamentos(prev => prev.map(p => {
+      if (p.agendamento_id === id && p.status === 'pendente') {
+        return { ...p, data_pagamento: novoInicio };
+      }
+      return p;
+    }));
+
+    const [dParte, hParte] = novoInicio.split('T');
+    const dataBr = dParte ? dParte.split('-').reverse().join('/') : novoInicio;
+    const horaFmt = hParte ? hParte.substring(0, 5) : '';
+
+    mostrarNotificacaoGlobal(`✅ Agendamento remarcado para ${dataBr} às ${horaFmt}!`);
+    return { success: true };
   };
 
   const concluirAtendimento = (
@@ -3552,9 +3638,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       servsManutencao.forEach(serv => {
         const intervaloDias = Number(serv.intervalo_manutencao_dias !== undefined ? serv.intervalo_manutencao_dias : (serv as any).retorno_dias) || 20;
-        const dataSugerida = new Date(dataUltimoAtendimento.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
         
-        const dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
+        // Verifica se há sugestão de retorno personalizada salva para este serviço no cadastro da cliente
+        const sugestaoManual = cliente.preferencias?.sugestoes_retorno?.[serv.id] || cliente.preferencias?.retorno_sugerido;
+        let dataSugZero: Date;
+        let dataSugeridaFinal: string;
+
+        if (sugestaoManual && /^\d{4}-\d{2}-\d{2}$/.test(sugestaoManual)) {
+          const [anoS, mesS, diaS] = sugestaoManual.split('-').map(Number);
+          dataSugZero = new Date(anoS, mesS - 1, diaS);
+          dataSugeridaFinal = sugestaoManual;
+        } else {
+          const dataSugerida = new Date(dataUltimoAtendimento.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
+          dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
+          const y = dataSugZero.getFullYear();
+          const m = String(dataSugZero.getMonth() + 1).padStart(2, '0');
+          const d = String(dataSugZero.getDate()).padStart(2, '0');
+          dataSugeridaFinal = `${y}-${m}-${d}`;
+        }
+        
         const diffMs = dataSugZero.getTime() - hojeZero.getTime();
         const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
         const diasAtraso = diasRestantes < 0 ? Math.abs(diasRestantes) : 0;
@@ -3576,7 +3678,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ...serv,
             intervalo_manutencao_dias: intervaloDias
           },
-          dataSugerida: dataSugerida.toISOString().split('T')[0],
+          dataSugerida: dataSugeridaFinal,
           diasAtraso,
           diasRestantes,
           statusManutencao
@@ -4621,6 +4723,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       deleteServico,
       addAgendamento,
       updateAgendamentoStatus,
+      remarcarAgendamento,
       atualizarValorSinalAgendamento,
       atualizarServicosEProfissionalAgendamento,
       cancelAgendamento,

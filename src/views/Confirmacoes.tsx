@@ -39,7 +39,9 @@ export const Confirmacoes: React.FC = () => {
     updateAgendamentoStatus,
     checkConflitoHorario,
     avisosNaoLidos,
-    marcarAvisoComoLido
+    marcarAvisoComoLido,
+    updateCliente,
+    mostrarNotificacaoGlobal
   } = useAppState();
 
   const [activeTab, setActiveTab] = useState<AbaConfirmacao>('a_confirmar');
@@ -463,6 +465,46 @@ export const Confirmacoes: React.FC = () => {
     } else {
       setErrorManut(res.error || 'Erro ao agendar retorno.');
     }
+  };
+
+  const handleSolicitarConfirmacaoWhatsAppRetorno = () => {
+    if (!confirmarManutencaoItem) return;
+    const client = confirmarManutencaoItem.cliente;
+    const serv = confirmarManutencaoItem.servico;
+
+    // 1. Salvar a nova data como sugestão de retorno nas preferências da cliente
+    const sugestoesAtuais = client.preferencias?.sugestoes_retorno || {};
+    const novasPreferencias = {
+      ...(client.preferencias || {}),
+      sugestoes_retorno: {
+        ...sugestoesAtuais,
+        [serv.id]: manutData
+      },
+      retorno_sugerido: manutData
+    };
+
+    updateCliente(client.id, { preferencias: novasPreferencias });
+
+    // 2. Preparar mensagem no WhatsApp
+    const [ano, mes, dia] = manutData.split('-');
+    const dataFmt = `${dia}/${mes}/${ano}`;
+    const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+    const diaNome = diasSemana[new Date(`${manutData}T12:00:00`).getDay()];
+    const profObj = equipe.find(u => u.id === manutProfissionalId);
+    const profNome = profObj?.nome || 'Sheila';
+    const horaTexto = manutHora ? ` às ${manutHora}` : '';
+
+    const msg = `Olá, ${client.nome}! 💅\nPassando para combinarmos o seu retorno de manutenção para *${serv.nome}*!\n\nSugerimos a data de *${dataFmt}* (${diaNome})${horaTexto} com a profissional *${profNome}*.\n\nEsse dia e horário ficam bons para você? Ficamos no aguardo para confirmar sua vaga! 🥰`;
+
+    const url = gerarLinkWhatsApp(client.telefone, msg);
+    if (url) {
+      window.open(url, '_blank');
+      mostrarNotificacaoGlobal('✅ Data salva como nova sugestão de retorno e convite aberto no WhatsApp!');
+    } else {
+      mostrarNotificacaoGlobal('✅ Data salva como sugestão de retorno (cliente sem WhatsApp válido).', 'info');
+    }
+
+    setConfirmarManutencaoItem(prev => prev ? { ...prev, dataSugerida: manutData } : null);
   };
 
   const handleEnviarWhatsAppManutencao = (rec: { cliente: Cliente; servico: Servico; dataSugerida: string; diasAtraso: number }) => {
@@ -1585,7 +1627,29 @@ export const Confirmacoes: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex gap-2 justify-between pt-4 border-t border-[#EFECE6] w-full">
+              {/* Solicitar confirmação no WhatsApp */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleSolicitarConfirmacaoWhatsAppRetorno}
+                  className="w-full h-10 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2"
+                  title="Salvar esta data como sugestão de retorno e abrir mensagem de confirmação no WhatsApp"
+                >
+                  <MessageCircle size={15} />
+                  <span>
+                    {manutData !== confirmarManutencaoItem.dataSugerida
+                      ? 'Solicitar Confirmação da Nova Data (WhatsApp)'
+                      : 'Solicitar Confirmação (WhatsApp)'}
+                  </span>
+                </button>
+                {manutData !== confirmarManutencaoItem.dataSugerida && (
+                  <p className="text-[10.5px] text-emerald-800 text-center mt-1 font-medium">
+                    Ao enviar, a nova data ({formatarDataBrasileira(manutData)}) será salva como sugestão de retorno da cliente.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#EFECE6] w-full">
                 <button
                   type="button"
                   onClick={() => {
@@ -1593,27 +1657,27 @@ export const Confirmacoes: React.FC = () => {
                     handleDispensarManutencao(key);
                     setConfirmarManutencaoItem(null);
                   }}
-                  className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 text-xs font-bold rounded-xl transition-all"
+                  className="h-10 px-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] sm:text-xs font-bold rounded-xl transition-all flex items-center justify-center text-center leading-tight"
+                  title="Dispensar sugestão de retorno para esta cliente"
                 >
                   Dispensar Retorno
                 </button>
                 
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmarManutencaoItem(null)}
-                    className="px-3 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-[#FAF9F6]"
-                  >
-                    Voltar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={analiseManut.livres.length === 0}
-                    className="px-3 py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors"
-                  >
-                    Confirmar e Agendar
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmarManutencaoItem(null)}
+                  className="h-10 px-1 border border-[#EFECE6] text-[#8C7A6B] text-[11px] sm:text-xs font-bold rounded-xl hover:bg-[#FAF9F6] transition-colors flex items-center justify-center text-center"
+                >
+                  Voltar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={analiseManut.livres.length === 0}
+                  className="h-10 px-1 bg-[#8C6D58] hover:bg-[#725743] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-[11px] sm:text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center justify-center text-center leading-tight"
+                >
+                  Confirmar e Agendar
+                </button>
               </div>
             </form>
           </div>
