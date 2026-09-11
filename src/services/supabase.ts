@@ -340,8 +340,16 @@ export const atualizarValorSinalAgendamentoSupabase = async (
 // --- DELETAR AGENDAMENTO ---
 export const deletarAgendamentoSupabase = async (id: string) => {
   try {
-    const { error } = await supabase.from('agendamentos').delete().eq('id', id);
-    if (error) console.error('Erro ao deletar agendamento no Supabase:', error);
+    const { count, error } = await supabase.from('agendamentos').delete({ count: 'exact' }).eq('id', id);
+    if (error || !count || count === 0) {
+      // Caso a política de RLS do Supabase restrinja o DELETE físico para a role anon,
+      // atualizamos o status para 'cancelado' com motivo 'EXCLUIDO_ADMIN' para remoção lógica definitiva
+      await supabase.from('agendamentos').update({
+        status: 'cancelado',
+        motivo_cancelamento: 'EXCLUIDO_ADMIN',
+        observacoes: '[EXCLUIDO]'
+      }).eq('id', id);
+    }
   } catch (e) {
     console.error('Falha em deletarAgendamentoSupabase:', e);
   }

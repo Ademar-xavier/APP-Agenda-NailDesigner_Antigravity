@@ -769,7 +769,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             <p className="font-semibold mt-0.5">
               {agendamento.inicio.split('T')[1].substring(0, 5)} - {agendamento.fim.split('T')[1].substring(0, 5)} 
               <span className="text-[#8C7A6B] font-normal"> ({
-                Math.floor((new Date(agendamento.fim).getTime() - new Date(agendamento.inicio).getTime()) / (60 * 1000))
+                Math.max(0, Math.floor((new Date(agendamento.fim).getTime() - new Date(agendamento.inicio).getTime()) / (60 * 1000)))
               }min)</span>
             </p>
           </div>
