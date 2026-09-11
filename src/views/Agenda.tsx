@@ -13,11 +13,12 @@ import {
   RotateCcw,
   CheckCircle,
   Crown,
-  Repeat
+  Repeat,
+  Utensils
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
-import { PlanoAssinatura, AssinaturaCliente } from '../types';
+import { PlanoAssinatura, AssinaturaCliente, Agendamento } from '../types';
 import { encontrarPlanoVip, calcularIntervaloVip, obterTextoFrequenciaVip, extrairServicosPlanoHelper } from '../utils/planoVipHelper';
 
 interface AgendaProps {
@@ -44,7 +45,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     checkConflitoHorario,
     obterServicosDeAgendamento,
     planosAssinatura,
-    vincularAssinaturaCliente
+    vincularAssinaturaCliente,
+    ajustarHorarioAlmoco,
+    excluirOuLiberarAlmoco
   } = useAppState();
 
   // Data Base Real (Data Local Hoje)
@@ -54,6 +57,76 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [dataSelecionada, setDataSelecionada] = useState<string>(dataBaseStr);
   const [filtroStatus, setFiltroStatus] = useState<string>('todos');
   const [busca, setBusca] = useState<string>('');
+
+  // --- Modal de Gestão de Horário de Almoço ---
+  const [isAlmocoModalOpen, setIsAlmocoModalOpen] = useState(false);
+  const [almocoProfissionalId, setAlmocoProfissionalId] = useState<string>('todas');
+  const [almocoInicio, setAlmocoInicio] = useState<string>('12:00');
+  const [almocoFim, setAlmocoFim] = useState<string>('13:00');
+  const [almocoEscopo, setAlmocoEscopo] = useState<'dia' | 'profissional' | 'salao'>('dia');
+  const [salvandoAlmoco, setSalvandoAlmoco] = useState(false);
+
+  const handleAbrirModalAlmoco = (profId?: string, horaIni?: string, horaFim?: string) => {
+    const profAlvo = profId || (currentUser?.perfil === 'profissional' ? currentUser.id : 'todas');
+    setAlmocoProfissionalId(profAlvo);
+
+    if (horaIni && horaFim) {
+      setAlmocoInicio(horaIni);
+      setAlmocoFim(horaFim);
+    } else {
+      const profObj = equipe.find(u => u.id === profAlvo);
+      setAlmocoInicio(profObj?.horario_almoco_inicio || '12:00');
+      setAlmocoFim(profObj?.horario_almoco_fim || '13:00');
+    }
+
+    setAlmocoEscopo('dia');
+    setIsAlmocoModalOpen(true);
+  };
+
+  const handleChangeAlmocoProf = (novoId: string) => {
+    setAlmocoProfissionalId(novoId);
+    if (novoId !== 'todas') {
+      const profObj = equipe.find(u => u.id === novoId);
+      if (profObj) {
+        setAlmocoInicio(profObj.horario_almoco_inicio || '12:00');
+        setAlmocoFim(profObj.horario_almoco_fim || '13:00');
+      }
+    }
+  };
+
+  const handleSalvarAlmoco = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!almocoInicio || !almocoFim) return;
+    setSalvandoAlmoco(true);
+    try {
+      const escopoEfetivo = almocoProfissionalId === 'todas' && almocoEscopo === 'profissional' ? 'salao' : almocoEscopo;
+      await ajustarHorarioAlmoco({
+        data: dataSelecionada,
+        profissionalId: almocoProfissionalId,
+        inicio: almocoInicio,
+        fim: almocoFim,
+        escopo: escopoEfetivo
+      });
+      setIsAlmocoModalOpen(false);
+    } finally {
+      setSalvandoAlmoco(false);
+    }
+  };
+
+  const handleExcluirOuLiberarAlmoco = async () => {
+    setSalvandoAlmoco(true);
+    try {
+      const escopoEfetivo = almocoProfissionalId === 'todas' && almocoEscopo === 'profissional' ? 'salao' : almocoEscopo;
+      await excluirOuLiberarAlmoco({
+        data: dataSelecionada,
+        profissionalId: almocoProfissionalId,
+        escopo: escopoEfetivo
+      });
+      setIsAlmocoModalOpen(false);
+    } finally {
+      setSalvandoAlmoco(false);
+    }
+  };
   
   // Calendário Popover com Destaque de Atendimentos
   const [showCalendarPicker, setShowCalendarPicker] = useState<boolean>(false);
@@ -443,36 +516,74 @@ export const Agenda: React.FC<AgendaProps> = ({
     setDataSelecionada(`${y}-${m}-${d}`);
   };
 
-  // Filtrar e organizar agendamentos para o dia selecionado
-  const agendamentosDoDia = agendamentos
-    .filter(a => a.inicio.startsWith(dataSelecionada))
-    .filter(a => {
-      // Se for profissional da equipe, visualiza apenas a própria agenda
-      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
-        return false;
-      }
-      return true;
-    })
-    .filter(a => {
-      if (filtroStatus !== 'todos' && a.status !== filtroStatus) return false;
-      if (busca) {
-        if (a.cliente_id === 'bloqueado') {
-          return a.observacoes?.toLowerCase().includes(busca.toLowerCase());
-        }
-        const client = clientes.find(c => c.id === a.cliente_id);
-        const servs = servicos.filter(s => (a.cliente_id !== 'bloqueado') && (agendamentos.some(item => item.id === a.id))); // Safely fetch
-        return client?.nome.toLowerCase().includes(busca.toLowerCase()) || 
-               client?.telefone.includes(busca);
-      }
-      return true;
-    })
-    .sort((a, b) => a.inicio.localeCompare(b.inicio));
-
   // Validação do dia da semana e expediente cadastrado
   const nomesDias = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
   const diaSemanaSelecionado = new Date(dataSelecionada + 'T12:00:00').getDay();
   const expedienteDoDia = configSalao.horarios_trabalho?.[diaSemanaSelecionado];
   const diaFechado = !expedienteDoDia || !expedienteDoDia.ativo;
+
+  // Filtrar e organizar agendamentos para o dia selecionado (incluindo horário de almoço das profissionais)
+  const agendamentosDoDia = useMemo(() => {
+    // 1. Agendamentos reais desta data
+    const reais = agendamentos.filter(a => a.inicio.startsWith(dataSelecionada));
+
+    // 2. Blocos de almoço padrão (se não houver agendamento real de almoço ou cancelamento pontual nesta data)
+    const blocosAlmocoVirtuais: Agendamento[] = [];
+    if (!diaFechado) {
+      equipe.forEach(u => {
+        if (!u.ativo) return;
+        if (u.horario_almoco_ativo === false) return;
+
+        // Se houver agendamento real de almoço ou cancelamento pontual nesta data para esta profissional, não sintetiza
+        const jaTemAlmocoNesteDia = reais.some(a => 
+          a.profissional_id === u.id && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'))
+        );
+
+        if (!jaTemAlmocoNesteDia) {
+          const ini = u.horario_almoco_inicio || '12:00';
+          const fim = u.horario_almoco_fim || '13:00';
+          blocosAlmocoVirtuais.push({
+            id: `almoco_virt_${u.id}_${dataSelecionada}`,
+            cliente_id: 'bloqueado',
+            profissional_id: u.id,
+            inicio: `${dataSelecionada}T${ini}:00`,
+            fim: `${dataSelecionada}T${fim}:00`,
+            status: 'bloqueado',
+            valor_total: 0,
+            valor_sinal: 0,
+            observacoes: `[Almoço] Horário de Almoço - ${u.nome}`,
+            origem: 'admin',
+            criado_em: `${dataSelecionada}T00:00:00Z`
+          });
+        }
+      });
+    }
+
+    const todos = [...reais, ...blocosAlmocoVirtuais];
+
+    return todos
+      .filter(a => {
+        // Se for profissional da equipe, visualiza apenas a própria agenda
+        if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
+          return false;
+        }
+        return true;
+      })
+      .filter(a => {
+        if (filtroStatus !== 'todos' && a.status !== filtroStatus) return false;
+        if (busca) {
+          if (a.cliente_id === 'bloqueado') {
+            return a.observacoes?.toLowerCase().includes(busca.toLowerCase());
+          }
+          const client = clientes.find(c => c.id === a.cliente_id);
+          return client?.nome.toLowerCase().includes(busca.toLowerCase()) || 
+                 client?.telefone.includes(busca);
+        }
+        return true;
+      })
+      .sort((a, b) => a.inicio.localeCompare(b.inicio));
+  }, [agendamentos, dataSelecionada, diaFechado, equipe, currentUser, filtroStatus, busca, clientes]);
 
   // Duração necessária para o atendimento em minutos
   const duracaoMinutosAtual = useMemo(() => {
@@ -1006,13 +1117,24 @@ export const Agenda: React.FC<AgendaProps> = ({
               : 'Gerencie os agendamentos das clientes e bloqueios pessoais'}
           </p>
         </div>
-        <button
-          onClick={handleOpenLocalModal}
-          className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
-        >
-          <Plus size={16} />
-          <span>Novo Agendamento</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleAbrirModalAlmoco()}
+            className="flex items-center justify-center gap-1.5 bg-[#FAF4ED] hover:bg-[#F6ECE8] text-[#8C6D58] border border-[#E8DEC9] px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-2xs"
+            title="Ajustar ou liberar horário de almoço na agenda"
+          >
+            <Utensils size={15} />
+            <span>Horário de Almoço</span>
+          </button>
+          <button
+            onClick={handleOpenLocalModal}
+            className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
+          >
+            <Plus size={16} />
+            <span>Novo Agendamento</span>
+          </button>
+        </div>
       </div>
 
       {/* Controles e Filtros */}
@@ -1230,6 +1352,47 @@ export const Agenda: React.FC<AgendaProps> = ({
                 falta: 'Falta',
                 bloqueado: 'Horário Bloqueado'
               };
+
+              const isAlmoco = a.observacoes?.includes('[Almoço]');
+
+              if (isAlmoco) {
+                return (
+                  <div
+                    key={a.id}
+                    onClick={() => handleAbrirModalAlmoco(a.profissional_id, horaIn, horaFi)}
+                    className="p-4 border rounded-xl cursor-pointer hover:shadow-sm transition-all bg-[#FAF4ED] border-[#E8DEC9] text-[#786150] hover:border-[#8C6D58]"
+                    title="Toque para alterar ou liberar o horário de almoço"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 font-bold text-sm bg-white px-2.5 py-1 rounded-lg border border-[#E8DEC9] text-[#8C6D58] shadow-2xs">
+                          <Clock size={13} />
+                          <span>{horaIn} - {horaFi}</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-bold text-sm text-[#5A4535] flex items-center gap-1.5">
+                              <span>🍽️</span> Horário de Almoço
+                            </h4>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-[#E8DEC9] text-[#8C6D58]">
+                              {prof?.nome || 'Salão'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#8C7A6B] mt-0.5">
+                            Intervalo bloqueado na agenda interna e pública • Toque para editar ou liberar
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-2 border-t border-black border-opacity-5 sm:border-none pt-2 sm:pt-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-white px-2.5 py-1 rounded-lg border border-[#E8DEC9] text-[#8C6D58] flex items-center gap-1 shadow-2xs">
+                          <Utensils size={12} /> Almoço
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div
@@ -2258,6 +2421,204 @@ export const Agenda: React.FC<AgendaProps> = ({
                     className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
                   >
                     {isBloqueio ? 'Bloquear Horário' : 'Salvar'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL GESTÃO DE HORÁRIO DE ALMOÇO --- */}
+      {isAlmocoModalOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto"
+          onClick={() => !salvandoAlmoco && setIsAlmocoModalOpen(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-[#EFECE6] my-auto animate-in fade-in zoom-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex justify-between items-start border-b border-[#EFECE6] pb-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#FAF4ED] text-[#8C6D58] border border-[#E8DEC9] flex items-center justify-center font-bold shadow-2xs">
+                  <Utensils size={18} />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#5A4535]">Gestão de Horário de Almoço</h3>
+                  <p className="text-xs text-[#8C7A6B]">Ajuste ou libere o intervalo para atendimentos</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsAlmocoModalOpen(false)}
+                disabled={salvandoAlmoco}
+                className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarAlmoco} className="space-y-4">
+              {/* Seletor de Profissional */}
+              <div>
+                <label className="block text-xs font-bold text-[#5A4535] mb-1">
+                  Profissional / Salão
+                </label>
+                <select
+                  value={almocoProfissionalId}
+                  onChange={(e) => handleChangeAlmocoProf(e.target.value)}
+                  disabled={currentUser?.perfil === 'profissional'}
+                  className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                >
+                  {currentUser?.perfil === 'admin' && (
+                    <option value="todas">🌟 Todas as Profissionais (Salão Completo)</option>
+                  )}
+                  {equipe.filter(u => u.ativo).map(p => (
+                    <option key={p.id} value={p.id}>
+                      💅 {p.nome} {p.especialidade ? `(${p.especialidade})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-[#8C7A6B] mt-1">
+                  {almocoProfissionalId === 'todas' 
+                    ? 'A alteração afetará a agenda de todas as profissionais ativas' 
+                    : `Configurando almoço de ${equipe.find(u => u.id === almocoProfissionalId)?.nome || 'profissional'}`}
+                </p>
+              </div>
+
+              {/* Data Selecionada */}
+              <div className="bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] flex items-center justify-between text-xs">
+                <span className="text-[#8C7A6B] font-semibold">Data Selecionada:</span>
+                <span className="font-bold text-[#5A4535] flex items-center gap-1.5">
+                  <CalendarIcon size={14} className="text-[#8C6D58]" />
+                  {dataSelecionada.split('-').reverse().join('/')}
+                </span>
+              </div>
+
+              {/* Inputs de Horário */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] mb-1">Início do Almoço</label>
+                  <input
+                    type="time"
+                    value={almocoInicio}
+                    onChange={(e) => setAlmocoInicio(e.target.value)}
+                    required
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-[#8C7A6B] mb-1">Término do Almoço</label>
+                  <input
+                    type="time"
+                    value={almocoFim}
+                    onChange={(e) => setAlmocoFim(e.target.value)}
+                    required
+                    className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                  />
+                </div>
+              </div>
+
+              {/* Opções de Escopo de Aplicação */}
+              <div className="pt-2 border-t border-[#EFECE6]">
+                <label className="block text-xs font-bold text-[#5A4535] mb-2">
+                  Onde aplicar esta alteração?
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors bg-white hover:bg-[#FAF9F6] text-xs">
+                    <input
+                      type="radio"
+                      name="almocoEscopo"
+                      value="dia"
+                      checked={almocoEscopo === 'dia'}
+                      onChange={() => setAlmocoEscopo('dia')}
+                      className="mt-0.5 text-[#8C6D58] focus:ring-[#8C6D58]"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5A4535] block">
+                        Apenas nesta data ({dataSelecionada.split('-').reverse().join('/')})
+                      </span>
+                      <span className="text-[10px] text-[#8C7A6B] block mt-0.5">
+                        Altera o horário apenas para este dia. Os outros dias mantêm o horário padrão.
+                      </span>
+                    </div>
+                  </label>
+
+                  {almocoProfissionalId !== 'todas' && (
+                    <label className="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors bg-white hover:bg-[#FAF9F6] text-xs">
+                      <input
+                        type="radio"
+                        name="almocoEscopo"
+                        value="profissional"
+                        checked={almocoEscopo === 'profissional'}
+                        onChange={() => setAlmocoEscopo('profissional')}
+                        className="mt-0.5 text-[#8C6D58] focus:ring-[#8C6D58]"
+                      />
+                      <div>
+                        <span className="font-bold text-[#5A4535] block">
+                          Padrão de {equipe.find(u => u.id === almocoProfissionalId)?.nome || 'Profissional'} (Todos os dias)
+                        </span>
+                        <span className="text-[10px] text-[#8C7A6B] block mt-0.5">
+                          Atualiza o cadastro permanente da profissional para sempre usar este horário.
+                        </span>
+                      </div>
+                    </label>
+                  )}
+
+                  <label className="flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors bg-white hover:bg-[#FAF9F6] text-xs">
+                    <input
+                      type="radio"
+                      name="almocoEscopo"
+                      value="salao"
+                      checked={almocoEscopo === 'salao'}
+                      onChange={() => setAlmocoEscopo('salao')}
+                      className="mt-0.5 text-[#8C6D58] focus:ring-[#8C6D58]"
+                    />
+                    <div>
+                      <span className="font-bold text-[#5A4535] block">
+                        Padrão de Todo o Salão (Todas as profissionais)
+                      </span>
+                      <span className="text-[10px] text-[#8C7A6B] block mt-0.5">
+                        Aplica este horário a todas as profissionais em todos os dias futuros.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-[#EFECE6]">
+                <button
+                  type="button"
+                  onClick={handleExcluirOuLiberarAlmoco}
+                  disabled={salvandoAlmoco}
+                  className="px-3 py-2 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                  title="Liberar o horário de almoço para que clientes possam agendar neste período"
+                >
+                  <AlertTriangle size={14} />
+                  <span>
+                    {almocoEscopo === 'dia' ? 'Liberar Almoço Hoje' : 'Desativar Almoço'}
+                  </span>
+                </button>
+
+                <div className="flex-1 flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsAlmocoModalOpen(false)}
+                    disabled={salvandoAlmoco}
+                    className="px-3 py-2 border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6] rounded-xl text-xs font-bold transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvandoAlmoco}
+                    className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <CheckCircle size={14} />
+                    <span>{salvandoAlmoco ? 'Salvando...' : 'Salvar Horário'}</span>
                   </button>
                 </div>
               </div>

@@ -367,6 +367,9 @@ export const Configuracoes: React.FC = () => {
   const [novoMembroChavePix, setNovoMembroChavePix] = useState('');
   const [novoMembroUsarPixProprio, setNovoMembroUsarPixProprio] = useState(false);
   const [novoMembroComissao, setNovoMembroComissao] = useState<number | ''>(50);
+  const [novoMembroAlmocoAtivo, setNovoMembroAlmocoAtivo] = useState(true);
+  const [novoMembroAlmocoInicio, setNovoMembroAlmocoInicio] = useState('12:00');
+  const [novoMembroAlmocoFim, setNovoMembroAlmocoFim] = useState('13:00');
 
   // --- ALTERAR SENHA MODAL STATE ---
   const [isAlterarSenhaModalOpen, setIsAlterarSenhaModalOpen] = useState(false);
@@ -385,6 +388,9 @@ export const Configuracoes: React.FC = () => {
   const [editChavePix, setEditChavePix] = useState('');
   const [editUsarPixProprio, setEditUsarPixProprio] = useState(false);
   const [editComissao, setEditComissao] = useState<number | ''>(50);
+  const [editAlmocoAtivo, setEditAlmocoAtivo] = useState(true);
+  const [editAlmocoInicio, setEditAlmocoInicio] = useState('12:00');
+  const [editAlmocoFim, setEditAlmocoFim] = useState('13:00');
 
   const formatarMoedaLocal = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
@@ -401,6 +407,9 @@ export const Configuracoes: React.FC = () => {
     setEditChavePix(membro.chave_pix || '');
     setEditUsarPixProprio(membro.usar_pix_proprio || false);
     setEditComissao(membro.comissao_padrao_porcentagem ?? 50);
+    setEditAlmocoAtivo(membro.horario_almoco_ativo ?? true);
+    setEditAlmocoInicio(membro.horario_almoco_inicio || '12:00');
+    setEditAlmocoFim(membro.horario_almoco_fim || '13:00');
     setIsEditarMembroModalOpen(true);
   };
 
@@ -417,7 +426,10 @@ export const Configuracoes: React.FC = () => {
       servicos_habilitados: editServicosHabilitados,
       chave_pix: editChavePix.trim(),
       usar_pix_proprio: editUsarPixProprio,
-      comissao_padrao_porcentagem: Number(editComissao)
+      comissao_padrao_porcentagem: Number(editComissao),
+      horario_almoco_ativo: editAlmocoAtivo,
+      horario_almoco_inicio: editAlmocoInicio || '12:00',
+      horario_almoco_fim: editAlmocoFim || '13:00'
     });
 
     setIsEditarMembroModalOpen(false);
@@ -526,7 +538,10 @@ export const Configuracoes: React.FC = () => {
       servicos_habilitados: novoMembroServicos,
       chave_pix: novoMembroChavePix.trim(),
       usar_pix_proprio: novoMembroUsarPixProprio,
-      comissao_padrao_porcentagem: Number(novoMembroComissao)
+      comissao_padrao_porcentagem: Number(novoMembroComissao),
+      horario_almoco_ativo: novoMembroAlmocoAtivo,
+      horario_almoco_inicio: novoMembroAlmocoInicio || '12:00',
+      horario_almoco_fim: novoMembroAlmocoFim || '13:00'
     });
 
     setNovoMembroNome('');
@@ -538,6 +553,9 @@ export const Configuracoes: React.FC = () => {
     setNovoMembroChavePix('');
     setNovoMembroUsarPixProprio(false);
     setNovoMembroComissao(50);
+    setNovoMembroAlmocoAtivo(true);
+    setNovoMembroAlmocoInicio('12:00');
+    setNovoMembroAlmocoFim('13:00');
     setIsEquipeModalOpen(false);
     exibirToast(`✅ Profissional ${novoMembroNome} cadastrada e sincronizada com a nuvem!`);
     triggerSuccess();
@@ -1424,6 +1442,9 @@ export const Configuracoes: React.FC = () => {
                               }`}>
                                 {membro.ativo ? 'Ativa' : 'Inativa'}
                               </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF4ED] text-[#8C6D58] border border-[#E8DEC9] flex items-center gap-1">
+                                🍽️ {membro.horario_almoco_ativo !== false ? `${membro.horario_almoco_inicio || '12:00'} às ${membro.horario_almoco_fim || '13:00'}` : 'Almoço desativado'}
+                              </span>
                             </div>
                             <p className="text-xs text-[#8C7A6B] mt-0.5">
                               {membro.perfil === 'admin' 
@@ -2103,6 +2124,54 @@ export const Configuracoes: React.FC = () => {
                 )}
               </div>
 
+              {/* Horário de Almoço */}
+              <div className="pt-3 border-t border-[#EFECE6] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-[#5A4535]">🍽️ Horário de Almoço / Intervalo</label>
+                    <p className="text-[10px] text-[#8C7A6B]">Bloqueia este intervalo na agenda interna e pública</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setNovoMembroAlmocoAtivo(!novoMembroAlmocoAtivo)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      novoMembroAlmocoAtivo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        novoMembroAlmocoAtivo ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {novoMembroAlmocoAtivo && (
+                  <div className="grid grid-cols-2 gap-3 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] animate-in fade-in duration-150">
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Início do Almoço</label>
+                      <input
+                        type="time"
+                        value={novoMembroAlmocoInicio}
+                        onChange={(e) => setNovoMembroAlmocoInicio(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                        required={novoMembroAlmocoAtivo}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Término do Almoço</label>
+                      <input
+                        type="time"
+                        value={novoMembroAlmocoFim}
+                        onChange={(e) => setNovoMembroAlmocoFim(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                        required={novoMembroAlmocoAtivo}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Serviços que realiza */}
               <div className="pt-2 border-t border-[#EFECE6]">
                 <div className="flex items-center justify-between mb-1.5">
@@ -2303,6 +2372,54 @@ export const Configuracoes: React.FC = () => {
                     <p className="text-[10px] text-[#8C7A6B] mt-1 italic">
                       * Ao ativar, cobranças de sinal e links de pagamento desta profissional usarão esta chave Pix no lugar do Pix do salão.
                     </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Horário de Almoço */}
+              <div className="pt-3 border-t border-[#EFECE6] space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-[#5A4535]">🍽️ Horário de Almoço / Intervalo</label>
+                    <p className="text-[10px] text-[#8C7A6B]">Bloqueia este intervalo na agenda interna e pública</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditAlmocoAtivo(!editAlmocoAtivo)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      editAlmocoAtivo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        editAlmocoAtivo ? 'translate-x-4' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {editAlmocoAtivo && (
+                  <div className="grid grid-cols-2 gap-3 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] animate-in fade-in duration-150">
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Início do Almoço</label>
+                      <input
+                        type="time"
+                        value={editAlmocoInicio}
+                        onChange={(e) => setEditAlmocoInicio(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                        required={editAlmocoAtivo}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Término do Almoço</label>
+                      <input
+                        type="time"
+                        value={editAlmocoFim}
+                        onChange={(e) => setEditAlmocoFim(e.target.value)}
+                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                        required={editAlmocoAtivo}
+                      />
+                    </div>
                   </div>
                 )}
               </div>

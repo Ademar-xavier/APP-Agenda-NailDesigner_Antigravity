@@ -522,15 +522,27 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
     if (usuario.especialidade !== undefined) {
       payload.especialidade = usuario.especialidade;
     }
+    if (usuario.horario_almoco_ativo !== undefined) {
+      payload.horario_almoco_ativo = usuario.horario_almoco_ativo;
+    }
+    if (usuario.horario_almoco_inicio !== undefined) {
+      payload.horario_almoco_inicio = usuario.horario_almoco_inicio;
+    }
+    if (usuario.horario_almoco_fim !== undefined) {
+      payload.horario_almoco_fim = usuario.horario_almoco_fim;
+    }
 
     let { error } = await supabase.from('usuarios').upsert(payload);
 
     // Se a tabela usuarios não tiver colunas extras ainda, faz fallback seguro
-    if (error && error.code === 'PGRST204') {
+    if (error && (error.code === 'PGRST204' || error.code === '42703')) {
       delete payload.servicos_habilitados;
       delete payload.chave_pix;
       delete payload.usar_pix_proprio;
       delete payload.especialidade;
+      delete payload.horario_almoco_ativo;
+      delete payload.horario_almoco_inicio;
+      delete payload.horario_almoco_fim;
       const res = await supabase.from('usuarios').upsert(payload);
       error = res.error;
     }

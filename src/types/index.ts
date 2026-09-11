@@ -15,6 +15,9 @@ export interface Usuario {
   comissao_padrao_porcentagem?: number; // Percentual de comissão padrão (ex: 50%)
   descontar_taxa_cartao?: boolean; // Se desconta taxa do repasse
   descontar_materiais?: boolean; // Se desconta materiais do repasse
+  horario_almoco_ativo?: boolean; // Se o horário de almoço padrão está ativado
+  horario_almoco_inicio?: string; // Horário de início do almoço (ex: '12:00')
+  horario_almoco_fim?: string; // Horário de término do almoço (ex: '13:00')
 }
 
 export interface Cliente {
