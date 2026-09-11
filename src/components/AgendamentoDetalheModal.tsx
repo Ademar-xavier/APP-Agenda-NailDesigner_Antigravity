@@ -17,7 +17,8 @@ import {
   Crown,
   Plus,
   Trash2,
-  Repeat
+  Repeat,
+  Lock
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
@@ -57,6 +58,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     atualizarValorSinalAgendamento,
     atualizarServicosEProfissionalAgendamento,
     cancelAgendamento,
+    deleteAgendamento,
+    checkConflitoHorario,
     confirmarSinal,
     concluirAtendimento,
     obterServicosDeAgendamento,
@@ -73,9 +76,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [valorRecebido, setValorRecebido] = useState(0);
 
   const agendamento = agendamentos.find(a => a.id === agendamentoId);
-  const cliente = clientes.find(c => c.id === agendamento?.cliente_id);
+  const isBloqueio = agendamento?.cliente_id === 'bloqueado';
+  const cliente = isBloqueio ? null : clientes.find(c => c.id === agendamento?.cliente_id);
   const prof = equipe.find(u => u.id === agendamento?.profissional_id);
-  const servs = agendamento ? obterServicosDeAgendamento(agendamento.id) : [];
+  const servs = (agendamento && !isBloqueio) ? obterServicosDeAgendamento(agendamento.id) : [];
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
 
@@ -573,10 +577,37 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       });
       return;
     }
+
+    const servsNovos = servicos.filter(s => servicosEditadosIds.includes(s.id));
+    const durTotalNova = servsNovos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+    const dIni = new Date(agendamento.inicio);
+    const dFim = new Date(dIni.getTime() + durTotalNova * 60000);
+
+    const ano = dFim.getFullYear();
+    const mes = String(dFim.getMonth() + 1).padStart(2, '0');
+    const dia = String(dFim.getDate()).padStart(2, '0');
+    const hora = String(dFim.getHours()).padStart(2, '0');
+    const min = String(dFim.getMinutes()).padStart(2, '0');
+    const seg = String(dFim.getSeconds()).padStart(2, '0');
+    const fimFormatado = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+
+    const profAlvo = profissionalEditadaId || agendamento.profissional_id;
+
+    // Verificar se o novo horário de término conflita com outro agendamento
+    const temConflito = checkConflitoHorario(agendamento.inicio, fimFormatado, profAlvo, agendamento.id);
+    if (temConflito) {
+      mostrarAlerta({
+        titulo: 'Conflito de Horário Detectado',
+        mensagem: `A nova duração (${durTotalNova} min até às ${hora}:${min}) conflita com outro agendamento ativo desta profissional. Por favor, selecione serviços com menor duração ou libere o horário antes de salvar.`,
+        tipo: 'erro'
+      });
+      return;
+    }
+
     atualizarServicosEProfissionalAgendamento(
       agendamento.id,
       servicosEditadosIds,
-      profissionalEditadaId || agendamento.profissional_id,
+      profAlvo,
       agendamentosFuturosRecorrencia.length > 0 ? aplicarEmFuturos : false
     );
     setEditandoServicosEProf(false);
@@ -603,7 +634,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     confirmado: 'bg-[#EBF7EE] text-[#2B7A4B] border-[#C2EAD0]',
     concluido: 'bg-gray-100 text-gray-700 border-gray-200',
     cancelado: 'bg-red-50 text-red-700 border-red-150',
-    falta: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-150'
+    falta: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-150',
+    bloqueado: 'bg-[#F4ECE3] text-[#786150] border-[#E8DEC9]'
   };
 
   const statusLabels: { [key: string]: string } = {
@@ -611,7 +643,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     confirmado: 'Confirmado',
     concluido: 'Concluído',
     cancelado: 'Cancelado',
-    falta: 'Falta'
+    falta: 'Falta',
+    bloqueado: 'Bloqueado'
   };
 
   return (
@@ -627,43 +660,74 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         {/* Header (Like Claude's UI) */}
         <div className="flex justify-between items-start mb-4 border-b border-[#EFECE6] pb-3">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-[#F6ECE8] text-[#8C6D58] flex items-center justify-center font-bold text-sm border border-[#EFECE6]">
-              {initials}
-            </div>
+            {isBloqueio ? (
+              <div className="w-11 h-11 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center font-bold text-sm border border-amber-200 shadow-2xs">
+                <Lock size={18} className="text-[#8C6D58]" />
+              </div>
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-[#F6ECE8] text-[#8C6D58] flex items-center justify-center font-bold text-sm border border-[#EFECE6]">
+                {initials}
+              </div>
+            )}
             <div>
-              <h3 className="font-bold text-[#5A4535] text-sm leading-tight">{cliente?.nome || 'Horário Reservado'}</h3>
-              <p className="text-xs text-[#8C7A6B] mt-0.5">{cliente?.telefone}</p>
+              <h3 className="font-bold text-[#5A4535] text-sm leading-tight">
+                {isBloqueio 
+                  ? (agendamento?.observacoes?.includes('[Salão Completo]') ? 'Bloqueio do Salão Completo' : 'Bloqueio de Horário Pessoal')
+                  : (cliente?.nome || 'Horário Reservado')}
+              </h3>
+              <p className="text-xs text-[#8C7A6B] mt-0.5">
+                {isBloqueio 
+                  ? `Profissional: ${prof?.nome || (agendamento?.observacoes?.includes('[Salão Completo]') ? 'Todas as Profissionais' : 'Salão')}`
+                  : (cliente?.telefone || 'Sem telefone')}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <select
-              value={statusVisual}
-              onChange={(e) => {
-                const novoStatus = e.target.value as AgendamentoStatus;
-                setStatusVisual(novoStatus);
-                if (novoStatus === 'cancelado') {
-                  setAcao('cancelar');
-                } else if (novoStatus === 'falta') {
-                  setAcao('falta');
-                } else if (novoStatus === 'concluido') {
-                  setAcao('concluir');
-                } else {
-                  // Ao mudar para 'pendente' ou 'confirmado', fecha imediatamente qualquer caixa de motivo/ação aberta
-                  setAcao(null);
-                  if (novoStatus !== agendamento.status) {
-                    updateAgendamentoStatus(agendamento.id, novoStatus);
+            {isBloqueio ? (
+              <select
+                value={statusVisual}
+                onChange={(e) => {
+                  const novoStatus = e.target.value as AgendamentoStatus;
+                  setStatusVisual(novoStatus);
+                  updateAgendamentoStatus(agendamento.id, novoStatus);
+                }}
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
+                title="Alterar status deste bloqueio"
+              >
+                <option value="bloqueado">🔒 Bloqueado</option>
+                <option value="concluido">🎉 Concluído</option>
+                <option value="cancelado">❌ Cancelado</option>
+              </select>
+            ) : (
+              <select
+                value={statusVisual}
+                onChange={(e) => {
+                  const novoStatus = e.target.value as AgendamentoStatus;
+                  setStatusVisual(novoStatus);
+                  if (novoStatus === 'cancelado') {
+                    setAcao('cancelar');
+                  } else if (novoStatus === 'falta') {
+                    setAcao('falta');
+                  } else if (novoStatus === 'concluido') {
+                    setAcao('concluir');
+                  } else {
+                    // Ao mudar para 'pendente' ou 'confirmado', fecha imediatamente qualquer caixa de motivo/ação aberta
+                    setAcao(null);
+                    if (novoStatus !== agendamento.status) {
+                      updateAgendamentoStatus(agendamento.id, novoStatus);
+                    }
                   }
-                }
-              }}
-              className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
-              title="Clique para alterar o status deste agendamento"
-            >
-              <option value="pendente">⏳ Pendente (A Confirmar)</option>
-              <option value="confirmado">✅ Confirmado</option>
-              <option value="concluido">🎉 Concluído</option>
-              <option value="falta">⚠️ Falta</option>
-              <option value="cancelado">❌ Cancelar</option>
-            </select>
+                }}
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
+                title="Clique para alterar o status deste agendamento"
+              >
+                <option value="pendente">⏳ Pendente (A Confirmar)</option>
+                <option value="confirmado">✅ Confirmado</option>
+                <option value="concluido">🎉 Concluído</option>
+                <option value="falta">⚠️ Falta</option>
+                <option value="cancelado">❌ Cancelar</option>
+              </select>
+            )}
             <button 
               onClick={onClose}
               className="p-1 rounded-full hover:bg-[#FAF9F6] text-[#8C7A6B]"
@@ -680,8 +744,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             <p className="font-mono font-bold text-xs mt-0.5 text-[#8C6D58]">#{agendamento.id}</p>
           </div>
           <div>
-            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Origem</p>
-            <p className="font-semibold mt-0.5 capitalize">{agendamento.origem}</p>
+            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">{isBloqueio ? 'Tipo' : 'Origem'}</p>
+            <p className="font-semibold mt-0.5 capitalize">{isBloqueio ? 'Bloqueio de Agenda' : agendamento.origem}</p>
           </div>
           <div>
             <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Data</p>
@@ -698,20 +762,87 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           </div>
           <div className="col-span-2">
             <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Profissional</p>
-            <p className="font-semibold mt-0.5">{prof?.nome || 'Não definido'}</p>
+            <p className="font-semibold mt-0.5">
+              {prof?.nome || (agendamento.observacoes?.includes('[Salão Completo]') ? 'Todas as Profissionais (Salão Completo)' : 'Não definido')}
+            </p>
           </div>
         </div>
 
-        {/* Services Box & Edição de Serviço / Profissional */}
-        {!editandoServicosEProf ? (
-          <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
+        {isBloqueio ? (
+          <div className="space-y-4">
+            {/* Motivo do Bloqueio */}
+            <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs text-[#5A4535]">
+              <span className="block font-bold text-[10px] uppercase text-[#8C7A6B] mb-1">
+                Motivo / Descrição do Bloqueio:
+              </span>
+              <p className="font-medium text-[#5A4535] whitespace-pre-line">
+                {agendamento.observacoes || 'Bloqueio de Horário Pessoal'}
+              </p>
+            </div>
+
+            {/* Aviso informativo de bloqueio */}
+            <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold">
+                <Lock size={14} className="text-amber-700" />
+                <span>Horário Indisponível para Clientes</span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-snug">
+                {agendamento.observacoes?.includes('[Salão Completo]')
+                  ? 'Este horário está bloqueado para todas as profissionais ativas no salão. Nenhuma cliente poderá agendar este período.'
+                  : `Este horário está bloqueado na agenda de ${prof?.nome || 'esta profissional'}. Clientes não conseguirão agendar este período.`}
+              </p>
+            </div>
+
+            {/* Ações de Bloqueio */}
+            <div className="pt-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  confirmarAcao({
+                    titulo: 'Excluir Bloqueio de Horário?',
+                    mensagem: 'Deseja realmente remover este bloqueio da agenda? O horário voltará a ficar disponível para atendimentos.',
+                    tipo: 'aviso',
+                    textoConfirmar: 'Sim, Excluir Bloqueio',
+                    textoCancelar: 'Voltar',
+                    onConfirm: () => {
+                      deleteAgendamento(agendamento.id);
+                      onClose();
+                    }
+                  });
+                }}
+                className="w-full py-2.5 px-4 rounded-xl border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+              >
+                <Trash2 size={14} />
+                <span>Excluir este Bloqueio</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2 px-4 rounded-xl border border-[#EFECE6] bg-white hover:bg-[#FAF9F6] text-[#8C7A6B] text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Services Box & Edição de Serviço / Profissional */}
+            {!editandoServicosEProf ? (
+              <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Serviços & Profissional</p>
               {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && (
                 <button
                   type="button"
                   onClick={() => {
-                    setServicosEditadosIds(servs.map(s => s.id));
+                    let initialIds = servs.map(s => s.id);
+                    const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
+                    if (combosPresentes.length > 0) {
+                      const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
+                      initialIds = initialIds.filter(id => !subIds.includes(id));
+                    }
+                    setServicosEditadosIds(initialIds);
                     setProfissionalEditadaId(agendamento.profissional_id);
                     setEditandoServicosEProf(true);
                   }}
@@ -797,14 +928,41 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                           checked={isChecked}
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setServicosEditadosIds(prev => [...prev, s.id]);
+                              if (s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0) {
+                                setServicosEditadosIds(prev => [
+                                  ...prev.filter(id => !s.servicos_pacote!.includes(id)),
+                                  s.id
+                                ]);
+                              } else {
+                                const combosQueContem = servicos
+                                  .filter(other => other.is_pacote && other.servicos_pacote?.includes(s.id))
+                                  .map(c => c.id);
+                                setServicosEditadosIds(prev => [
+                                  ...prev.filter(id => !combosQueContem.includes(id)),
+                                  s.id
+                                ]);
+                              }
                             } else {
                               setServicosEditadosIds(prev => prev.filter(id => id !== s.id));
                             }
                           }}
                           className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
                         />
-                        <span>{s.nome}</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{s.nome}</span>
+                            {s.is_pacote && (
+                              <span className="text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1 py-0.2 rounded-xs">
+                                Combo
+                              </span>
+                            )}
+                          </div>
+                          {s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0 && (
+                            <span className="text-[10px] text-[#8C7A6B] block">
+                              Inclui: {servicos.filter(sub => s.servicos_pacote?.includes(sub.id)).map(sub => sub.nome).join(' + ')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-[#8C7A6B] block">{s.duracao_minutos} min</span>
@@ -1395,6 +1553,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </button>
             </div>
           </div>
+        )}
+          </>
         )}
 
       </div>
