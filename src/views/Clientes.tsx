@@ -852,9 +852,40 @@ export const Clientes: React.FC<ClientesProps> = ({
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="text-xs font-bold text-amber-950 block">{clienteSelecionado.assinatura.nome_plano}</span>
-                          <span className="text-[10px] text-amber-800 block">
-                            Iniciado em {new Date(clienteSelecionado.assinatura.data_inicio).toLocaleDateString('pt-BR')}
-                          </span>
+                          {(() => {
+                            const agsVipCliente = agendamentos
+                              .filter(a => a.cliente_id === clienteSelecionado.id && a.status !== 'cancelado' && (
+                                a.pago_com_clube ||
+                                a.plano_id ||
+                                a.observacoes?.includes('Clube VIP') ||
+                                a.observacoes?.includes('👑')
+                              ))
+                              .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
+
+                            const ag1aSessao = agsVipCliente.find(a => 
+                              a.recorrencia_posicao?.startsWith('1 de') || 
+                              a.observacoes?.includes('Sessão 1')
+                            ) || agsVipCliente[0];
+
+                            const dataInicioCiclo = ag1aSessao 
+                              ? new Date(ag1aSessao.inicio) 
+                              : new Date(clienteSelecionado.assinatura.data_inicio);
+
+                            const dataRenovacaoCiclo = clienteSelecionado.assinatura.data_renovacao
+                              ? new Date(clienteSelecionado.assinatura.data_renovacao)
+                              : new Date(dataInicioCiclo.getTime() + 30 * 86400000);
+
+                            return (
+                              <div className="text-[10px] text-amber-900 space-y-0.5 mt-0.5">
+                                <span className="block">
+                                  <strong>1ª Sessão (Início):</strong> {dataInicioCiclo.toLocaleDateString('pt-BR')}
+                                </span>
+                                <span className="block">
+                                  <strong>Renovação do Ciclo:</strong> {dataRenovacaoCiclo.toLocaleDateString('pt-BR')}
+                                </span>
+                              </div>
+                            );
+                          })()}
                           {(() => {
                             const pl = planosAssinatura.find(p => p.id === clienteSelecionado.assinatura?.plano_id)
                               || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === clienteSelecionado.assinatura?.nome_plano?.trim().toLowerCase());
