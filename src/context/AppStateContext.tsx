@@ -145,7 +145,7 @@ interface AppStateContextType {
   
   // Ações de Agendamentos
   addAgendamento: (
-    agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
+    agendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'> & { fim?: string }, 
     servicosSelecionados: string[],
     recorrenciaManual?: {
       tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
@@ -2423,7 +2423,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // --- Ações de Agendamento ---
   const addAgendamento = (
-    novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'>, 
+    novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'> & { fim?: string }, 
     servicosSelecionados: string[] = [],
     recorrenciaManual?: {
       tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
@@ -2436,7 +2436,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
     let duracaoTotal = servs.reduce((acc, s) => acc + s.duracao_minutos, 0);
     if (duracaoTotal <= 0) {
-      duracaoTotal = 60;
+      if (novoAgendamento.fim) {
+        const diffMin = Math.round((new Date(novoAgendamento.fim).getTime() - new Date(novoAgendamento.inicio).getTime()) / (60 * 1000));
+        duracaoTotal = diffMin > 0 ? diffMin : 60;
+      } else {
+        duracaoTotal = 60;
+      }
     }
 
     // Regra VIP: Se for atendimento do Clube VIP com múltiplas profissionais atribuídas,
@@ -2455,17 +2460,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
     
-    const dataInicio = new Date(novoAgendamento.inicio);
-    const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
-    
-    // Formata em horário local (sem a distorção de fuso UTC do toISOString)
-    const ano = dataFim.getFullYear();
-    const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
-    const dia = String(dataFim.getDate()).padStart(2, '0');
-    const hora = String(dataFim.getHours()).padStart(2, '0');
-    const min = String(dataFim.getMinutes()).padStart(2, '0');
-    const seg = String(dataFim.getSeconds()).padStart(2, '0');
-    const fimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+    let fimStr = novoAgendamento.fim;
+    if (!fimStr) {
+      const dataInicio = new Date(novoAgendamento.inicio);
+      const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
+      
+      // Formata em horário local (sem a distorção de fuso UTC do toISOString)
+      const ano = dataFim.getFullYear();
+      const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
+      const dia = String(dataFim.getDate()).padStart(2, '0');
+      const hora = String(dataFim.getHours()).padStart(2, '0');
+      const min = String(dataFim.getMinutes()).padStart(2, '0');
+      const seg = String(dataFim.getSeconds()).padStart(2, '0');
+      fimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+    }
     
     const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, novoAgendamento.profissional_id);
     if (conflito && novoAgendamento.cliente_id !== 'bloqueado') {

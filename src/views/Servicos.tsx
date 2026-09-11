@@ -1130,15 +1130,6 @@ export const Servicos: React.FC = () => {
                           Editar
                         </button>
                         <button
-                          type="button"
-                          onClick={() => handleDuplicarServico(s)}
-                          className="flex items-center justify-center gap-1 px-3 bg-amber-50/80 hover:bg-amber-100 text-amber-900 border border-amber-200/80 py-2 rounded-xl text-xs font-semibold shadow-2xs transition-all"
-                          title="Duplicar este serviço como um novo cadastro"
-                        >
-                          <Copy size={13} className="text-amber-700" />
-                          <span>Duplicar</span>
-                        </button>
-                        <button
                           onClick={() => {
                             confirmarAcao({
                               titulo: 'Desativar Serviço',
@@ -1256,13 +1247,6 @@ export const Servicos: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDuplicarPlano(plano)}
-                            className="p-1.5 hover:bg-amber-50 text-[#8C7A6B] hover:text-amber-700 rounded-lg transition-colors"
-                            title="Duplicar Plano VIP (Novo Cadastro)"
-                          >
-                            <Copy size={13} />
-                          </button>
                           <button
                             onClick={() => abrirModalEditarPlano(plano)}
                             className="p-1.5 hover:bg-[#FAF9F6] text-[#8C7A6B] hover:text-[#5A4535] rounded-lg transition-colors"
