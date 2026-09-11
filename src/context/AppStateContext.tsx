@@ -3011,6 +3011,20 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ? { ...p, status: 'estornado' }
         : p
       ));
+    } else if (status === 'concluido') {
+      const agAlvo = agendamentos.find(a => a.id === id);
+      const clienteId = agAlvo?.cliente_id;
+      const cliAlvo = clientes.find(c => c.id === clienteId);
+      const isVip = !!(
+        agAlvo?.pago_com_clube ||
+        agAlvo?.observacoes?.includes('Clube VIP') ||
+        agAlvo?.observacoes?.includes('👑') ||
+        (cliAlvo?.assinatura && cliAlvo.assinatura.status === 'ativo')
+      );
+      if (isVip && clienteId && cliAlvo?.assinatura && cliAlvo.assinatura.saldo_restante > 0) {
+        const servs = obterServicosDeAgendamento(id);
+        abaterSaldoAssinatura(clienteId, servs[0]?.id);
+      }
     } else if (status === 'pendente') {
       setPagamentos(prev => {
         const existente = prev.find(p => p.agendamento_id === id);
@@ -3449,6 +3463,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const obterRecomendacoesManutencao = () => {
     const hoje = new Date();
     const hojeZero = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    const hojeFimDoDia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).getTime();
+
     const recomendacoes: { 
       cliente: Cliente; 
       servico: Servico; 
@@ -3458,64 +3474,111 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
     }[] = [];
 
+    // Expande combos e pacotes para que os sub-serviços com ciclo de retorno sejam avaliados
+    const expandirServicosComSubItens = (listaServs: Servico[]): Servico[] => {
+      const resultado: Servico[] = [];
+      listaServs.forEach(s => {
+        const itensCombo = s.servicos_pacote || (s as any).itens_combo || [];
+        if (s.is_pacote && itensCombo.length > 0) {
+          itensCombo.forEach((subId: string) => {
+            const sub = servicos.find(serv => serv.id === subId);
+            if (sub && !resultado.some(x => x.id === sub.id)) resultado.push(sub);
+          });
+        } else {
+          if (!resultado.some(x => x.id === s.id)) resultado.push(s);
+        }
+      });
+      return resultado;
+    };
+
     clientes.forEach(cliente => {
-      // Considera atendimentos concluídos ou confirmados
-      const agendsCliente = agendamentos
-        .filter(a => a.cliente_id === cliente.id && (a.status === 'concluido' || a.status === 'confirmado'))
+      // 1. Considera APENAS atendimentos já feitos (no passado/hoje ou concluídos)
+      const agendsFeitos = agendamentos
+        .filter(a => 
+          a.cliente_id === cliente.id && 
+          a.status !== 'cancelado' &&
+          a.cliente_id !== 'bloqueado' &&
+          (a.status === 'concluido' || new Date(a.inicio).getTime() <= hojeFimDoDia)
+        )
         .sort((a, b) => new Date(b.inicio).getTime() - new Date(a.inicio).getTime());
       
-      if (agendsCliente.length === 0) return;
+      if (agendsFeitos.length === 0) return;
 
-      const ultimoAgend = agendsCliente[0];
-      const servs = obterServicosDeAgendamento(ultimoAgend.id);
-      
+      const ultimoAgend = agendsFeitos[0];
+      const dataUltimoAtendimento = new Date(ultimoAgend.inicio);
+
+      // 2. Verifica se a cliente já possui agendamento FUTURO marcado após hoje
+      const temAgendamentoFuturo = agendamentos.some(a => 
+        a.cliente_id === cliente.id && 
+        new Date(a.inicio).getTime() > hojeFimDoDia && 
+        (a.status === 'confirmado' || a.status === 'pendente')
+      );
+
+      if (temAgendamentoFuturo) return;
+
+      let servs = expandirServicosComSubItens(obterServicosDeAgendamento(ultimoAgend.id));
+
+      // Fallback: se itens_servicos estiver vazio, extrai por observação VIP ou valor
+      if (servs.length === 0 && ultimoAgend.observacoes) {
+        if (ultimoAgend.observacoes.includes('Manicure')) {
+          const sMan = servicos.find(s => s.id === 's1');
+          if (sMan) servs.push(sMan);
+        }
+        if (ultimoAgend.observacoes.includes('Pedicure')) {
+          const sPed = servicos.find(s => s.id === 's_itq1t5mda');
+          if (sPed) servs.push(sPed);
+        }
+      }
+      if (servs.length === 0) {
+        if (ultimoAgend.valor_total === 80) {
+          const s3 = servicos.find(s => s.id === 's3');
+          if (s3) servs = expandirServicosComSubItens([s3]);
+        } else if (ultimoAgend.valor_total === 45) {
+          const sPed = servicos.find(s => s.id === 's_itq1t5mda');
+          if (sPed) servs.push(sPed);
+        } else if (ultimoAgend.valor_total === 40) {
+          const sMan = servicos.find(s => s.id === 's1');
+          if (sMan) servs.push(sMan);
+        }
+      }
+
       const servsManutencao = servs.filter(s => {
-        const d = Number(s.intervalo_manutencao_dias || (s as any).retorno_dias) || 0;
+        const d = Number(s.intervalo_manutencao_dias !== undefined ? s.intervalo_manutencao_dias : (s as any).retorno_dias) || 0;
         return d > 0;
       });
       if (servsManutencao.length === 0) return;
 
       servsManutencao.forEach(serv => {
-        const intervaloDias = Number(serv.intervalo_manutencao_dias || (serv as any).retorno_dias) || 20;
-        const dataUltimoAtendimento = new Date(ultimoAgend.inicio);
+        const intervaloDias = Number(serv.intervalo_manutencao_dias !== undefined ? serv.intervalo_manutencao_dias : (serv as any).retorno_dias) || 20;
         const dataSugerida = new Date(dataUltimoAtendimento.getTime() + intervaloDias * 24 * 60 * 60 * 1000);
         
-        // Verifica se a cliente já tem um agendamento futuro marcado após o último atendimento
-        const temAgendamentoFuturo = agendamentos.some(a => 
-          a.cliente_id === cliente.id && 
-          new Date(a.inicio).getTime() > dataUltimoAtendimento.getTime() && 
-          (a.status === 'confirmado' || a.status === 'pendente')
-        );
+        const dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
+        const diffMs = dataSugZero.getTime() - hojeZero.getTime();
+        const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        const diasAtraso = diasRestantes < 0 ? Math.abs(diasRestantes) : 0;
 
-        if (!temAgendamentoFuturo) {
-          const dataSugZero = new Date(dataSugerida.getFullYear(), dataSugerida.getMonth(), dataSugerida.getDate());
-          const diffMs = dataSugZero.getTime() - hojeZero.getTime();
-          const diasRestantes = Math.round(diffMs / (1000 * 60 * 60 * 24));
-          const diasAtraso = diasRestantes < 0 ? Math.abs(diasRestantes) : 0;
-
-          let statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada' = 'programada';
-          if (diasRestantes < 0) {
-            statusManutencao = 'atrasada';
-          } else if (diasRestantes === 0) {
-            statusManutencao = 'hoje';
-          } else if (diasRestantes <= 7) {
-            statusManutencao = 'em_breve';
-          } else {
-            statusManutencao = 'programada';
-          }
-
-          recomendacoes.push({
-            cliente,
-            servico: {
-              ...serv,
-              intervalo_manutencao_dias: intervaloDias
-            },
-            dataSugerida: dataSugerida.toISOString().split('T')[0],
-            diasAtraso,
-            diasRestantes,
-            statusManutencao
-          });
+        let statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada' = 'programada';
+        if (diasRestantes < 0) {
+          statusManutencao = 'atrasada';
+        } else if (diasRestantes === 0) {
+          statusManutencao = 'hoje';
+        } else if (diasRestantes <= 7) {
+          statusManutencao = 'em_breve';
+        } else {
+          statusManutencao = 'programada';
         }
+
+        recomendacoes.push({
+          cliente,
+          servico: {
+            ...serv,
+            intervalo_manutencao_dias: intervaloDias
+          },
+          dataSugerida: dataSugerida.toISOString().split('T')[0],
+          diasAtraso,
+          diasRestantes,
+          statusManutencao
+        });
       });
     });
 

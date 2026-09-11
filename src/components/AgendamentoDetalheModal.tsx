@@ -164,7 +164,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     (cliente?.assinatura && cliente.assinatura.status === 'ativo') ||
     isVipAgendamento
   );
-  const [usarSaldoClube, setUsarSaldoClube] = useState(false);
+  const [usarSaldoClube, setUsarSaldoClube] = useState(isVipAgendamento);
   const servicoCorrespondente = servs.find(s => 
     cliente?.assinatura?.itens_saldo?.some(item => item.servico_id === s.id && item.saldo_restante > 0)
   ) || servs[0];
@@ -1152,6 +1152,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           const intervaloDias = calcularIntervaloVip(planoVipObj, cliente?.assinatura);
           const { descricaoCompleta } = obterTextoFrequenciaVip(intervaloDias);
 
+          const sessaoNumRaw = agendamento.recorrencia_posicao || (agendamento.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
+          const sessaoNum = sessaoNumRaw ? Number(sessaoNumRaw) : null;
+          const totalSessoesPlano = Number(planoVipObj?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4);
+
+          let badgeTexto = 'VIP';
+          if (sessaoNum !== null && !isNaN(sessaoNum) && sessaoNum > 0) {
+            if (agendamento.status === 'concluido') {
+              const restApos = Math.max(0, totalSessoesPlano - sessaoNum);
+              badgeTexto = restApos === 0 ? '0 sessões rest. (Finalizado)' : (restApos === 1 ? '1 sessão rest.' : `${restApos} sessões rest.`);
+            } else {
+              const restAtual = Math.max(1, totalSessoesPlano - (sessaoNum - 1));
+              badgeTexto = restAtual === 1 ? '1 sessão rest. (última)' : `${restAtual} sessões rest.`;
+            }
+          } else if (cliente?.assinatura?.saldo_restante !== undefined) {
+            const s = cliente.assinatura.saldo_restante;
+            badgeTexto = s === 0 ? '0 sessões rest.' : (s === 1 ? '1 sessão rest.' : `${s} sessões rest.`);
+          }
+
           return (
             <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
               <div className="flex items-center justify-between">
@@ -1162,7 +1180,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   </span>
                 </div>
                 <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
-                  {cliente?.assinatura?.saldo_restante !== undefined ? `${cliente.assinatura.saldo_restante} ${cliente.assinatura.saldo_restante === 1 ? 'sessão rest.' : 'sessões rest.'}` : 'VIP'}
+                  {badgeTexto}
                 </span>
               </div>
 
