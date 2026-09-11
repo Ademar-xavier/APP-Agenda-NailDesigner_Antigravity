@@ -19,7 +19,16 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 import { PlanoAssinatura, AssinaturaCliente, Agendamento } from '../types';
-import { encontrarPlanoVip, calcularIntervaloVip, obterTextoFrequenciaVip, extrairServicosPlanoHelper } from '../utils/planoVipHelper';
+import { 
+  encontrarPlanoVip, 
+  calcularIntervaloVip, 
+  obterTextoFrequenciaVip, 
+  extrairServicosPlanoHelper,
+  obterConfiguracaoSessaoVip,
+  calcularDuracaoSessaoVip,
+  obterServicosIdsSessaoVip,
+  obterTextoResumoSessoesVip
+} from '../utils/planoVipHelper';
 
 interface AgendaProps {
   currentView: string;
@@ -292,17 +301,18 @@ export const Agenda: React.FC<AgendaProps> = ({
     });
   }, [servicos, profSelecionada, isVipMode, servicosVipIds]);
 
-  // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços e isenta de sinal
+  // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços da 1ª sessão e isenta de sinal
   useEffect(() => {
     if (hasVipAtivo) {
       setAgendarComoVip(true);
       setCobrarSinal(false);
       setValorSinalManual(0);
-      const sIds = extrairServicosPlano(planoClienteObj, assCliente);
+      const sIds = obterServicosIdsSessaoVip(planoClienteObj, 1, servicos);
       if (sIds.length > 0) {
         setServicosSelecionados(sIds);
       }
-      const profDesignada = planoClienteObj?.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
+      const procsS1 = obterConfiguracaoSessaoVip(planoClienteObj, 1, servicos);
+      const profDesignada = procsS1[0]?.profissional_id || planoClienteObj?.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
       if (profDesignada) {
         setProfissionalId(profDesignada);
       }
@@ -311,18 +321,19 @@ export const Agenda: React.FC<AgendaProps> = ({
       setCobrarSinal(false);
       setValorSinalManual(0);
       const pl = planosAssinatura.find(p => p.id === planoVipContratarId);
-      const sIds = extrairServicosPlano(pl);
+      const sIds = obterServicosIdsSessaoVip(pl, 1, servicos);
       if (sIds.length > 0) {
         setServicosSelecionados(sIds);
       }
-      const profDesignada = pl?.itens_servicos?.[0]?.profissional_id;
+      const procsS1 = obterConfiguracaoSessaoVip(pl, 1, servicos);
+      const profDesignada = procsS1[0]?.profissional_id || pl?.itens_servicos?.[0]?.profissional_id;
       if (profDesignada) {
         setProfissionalId(profDesignada);
       }
     } else {
       setAgendarComoVip(false);
     }
-  }, [clienteId, hasVipAtivo, planoClienteObj, assCliente, planoVipContratarId, planosAssinatura]);
+  }, [clienteId, hasVipAtivo, planoClienteObj, assCliente, planoVipContratarId, planosAssinatura, servicos]);
 
   // Resumo Inteligente de Tempo Total e Retorno de Manutenção
   const resumoServicosSelecionados = useMemo(() => {
@@ -595,24 +606,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     }
     const pl = (agendarComoVip && planoClienteObj) || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
     if (pl) {
-      if (pl.itens_servicos && pl.itens_servicos.length > 0) {
-        const dur = pl.itens_servicos.reduce((acc, it) => {
-          const s = servicos.find(item => item.id === it.servico_id);
-          return acc + (s?.duracao_minutos || 0);
-        }, 0);
-        const profs = Array.from(new Set(pl.itens_servicos.map(it => it.profissional_id).filter(Boolean)));
-        if (profs.length > 1 && dur > 0) {
-          return Math.max(30, Math.round(dur / profs.length));
-        }
-        if (dur > 0) return dur;
-      }
-      if (pl.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
-        const dur = pl.servicos_permitidos_ids.reduce((acc, sid) => {
-          const s = servicos.find(item => item.id === sid);
-          return acc + (s?.duracao_minutos || 0);
-        }, 0);
-        if (dur > 0) return dur;
-      }
+      // Para Clube VIP, a duração considerada no agendamento inicial é rigorosamente a da Sessão 1
+      const durSessao1 = calcularDuracaoSessaoVip(pl, 1, servicos);
+      if (durSessao1 > 0) return durSessao1;
     }
     return resumoServicosSelecionados.duracaoTotal > 0 ? resumoServicosSelecionados.duracaoTotal : 30;
   }, [isBloqueio, horaInicio, bloqueioHoraFim, agendarComoVip, planoClienteObj, planoVipContratarId, planosAssinatura, servicos, resumoServicosSelecionados.duracaoTotal]);
@@ -1651,11 +1647,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                                             setCobrarSinal(false);
                                             setValorSinalManual(0);
                                             const pl = encontrarPlanoVip(ass.plano_id, ass, null, planosAssinatura);
-                                            const sIds = extrairServicosPlano(pl, ass);
+                                            const sIds = obterServicosIdsSessaoVip(pl, 1, servicos);
                                             if (sIds.length > 0) {
                                               setServicosSelecionados(sIds);
                                             }
-                                            const profDesignada = pl?.itens_servicos?.[0]?.profissional_id || ass.itens_saldo?.[0]?.profissional_id;
+                                            const procsS1 = obterConfiguracaoSessaoVip(pl, 1, servicos);
+                                            const profDesignada = procsS1[0]?.profissional_id || pl?.itens_servicos?.[0]?.profissional_id || ass.itens_saldo?.[0]?.profissional_id;
                                             if (profDesignada) {
                                               setProfissionalId(profDesignada);
                                             }
@@ -1743,11 +1740,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 setValorSinalManual(0);
                                 const pl = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
                                 if (pl) {
-                                  const sIds = extrairServicosPlano(pl, assCliente);
+                                  const sIds = obterServicosIdsSessaoVip(pl, 1, servicos);
                                   if (sIds.length > 0) {
                                     setServicosSelecionados(sIds);
                                   }
-                                  const profDesignada = pl.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
+                                  const procsS1 = obterConfiguracaoSessaoVip(pl, 1, servicos);
+                                  const profDesignada = procsS1[0]?.profissional_id || pl?.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
                                   if (profDesignada) {
                                     setProfissionalId(profDesignada);
                                   }
@@ -1761,12 +1759,24 @@ export const Agenda: React.FC<AgendaProps> = ({
                           </span>
                         </label>
                         {agendarComoVip && (
-                          <div className="space-y-1 bg-white/80 p-2.5 rounded-lg border border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
+                          <div className="space-y-1.5 bg-white/80 p-2.5 rounded-lg border border-amber-200/60 text-[10px] text-amber-900 leading-relaxed">
                             <div className="flex items-center justify-between font-bold text-amber-950">
-                              <span>⏱️ Duração prevista da sessão VIP:</span>
+                              <span>⏱️ Duração prevista da 1ª Sessão:</span>
                               <span className="bg-amber-200/90 px-2 py-0.5 rounded-md text-amber-950">{duracaoMinutosAtual} minutos</span>
                             </div>
-                            <p className="pt-1">
+                            {(() => {
+                              const resumo = obterTextoResumoSessoesVip(planoAtivoModal, servicos);
+                              if (resumo.detalhePorSessao) {
+                                return (
+                                  <div className="text-[10px] text-amber-900 bg-amber-50/90 p-1.5 rounded border border-amber-200/70 space-y-0.5">
+                                    <span className="font-bold text-amber-950 block">Distribuição por sessão:</span>
+                                    <span className="text-[9.5px] leading-tight block">{resumo.detalhePorSessao}</span>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                            <p className="pt-0.5">
                               ✨ <strong>{resumoServicosSelecionados.intervaloVip === 14 ? 'Recorrência Quinzenal Automática:' : (resumoServicosSelecionados.intervaloVip === 7 ? 'Recorrência Semanal Automática:' : 'Recorrência VIP Automática:')}</strong> Ao salvar este agendamento, as próximas sessões ({resumoServicosSelecionados.intervaloVip === 14 ? 'quinzenais a cada 14 dias' : (resumoServicosSelecionados.intervaloVip === 7 ? 'semanais' : `a cada ${resumoServicosSelecionados.intervaloVip} dias`)}) deste ciclo serão agendadas automaticamente no mesmo dia da semana e horário!
                             </p>
                           </div>
@@ -1806,11 +1816,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                               setValorSinalManual(0);
                               const pl = planosAssinatura.find(p => p.id === pId);
                               if (pl) {
-                                const sIds = extrairServicosPlano(pl);
+                                const sIds = obterServicosIdsSessaoVip(pl, 1, servicos);
                                 if (sIds.length > 0) {
                                   setServicosSelecionados(sIds);
                                 }
-                                const profDesignada = pl.itens_servicos?.[0]?.profissional_id;
+                                const procsS1 = obterConfiguracaoSessaoVip(pl, 1, servicos);
+                                const profDesignada = procsS1[0]?.profissional_id || pl.itens_servicos?.[0]?.profissional_id;
                                 if (profDesignada) {
                                   setProfissionalId(profDesignada);
                                 }

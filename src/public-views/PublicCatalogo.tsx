@@ -25,6 +25,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura } from '../types';
 import { gerarLinkWhatsApp, getCatalogoUrl } from '../utils/urlHelper';
+import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
 
 interface ExtraItem {
   id: string;
@@ -745,6 +746,21 @@ export const PublicCatalogo: React.FC = () => {
 
                     {/* Vantagens / Benefícios Transparentes */}
                     <div className="pt-3 border-t border-[#EEDDE1]/60 space-y-2 text-xs text-[#756B6D]">
+                      <div className="flex items-center gap-2">
+                        <Clock size={14} className="text-[#B85C78] shrink-0" />
+                        <span>Duração: <strong>{obterTextoResumoSessoesVip(plano, servicos).duracaoResumo}</strong></span>
+                      </div>
+                      {(() => {
+                        const resumo = obterTextoResumoSessoesVip(plano, servicos);
+                        if (resumo.detalhePorSessao && resumo.detalhePorSessao.includes('•')) {
+                          return (
+                            <div className="text-[10px] text-[#756B6D] bg-[#FDF7F8] p-1.5 rounded-lg border border-[#EEDDE1] ml-5 leading-tight">
+                              {resumo.detalhePorSessao}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       <div className="flex items-center gap-2">
                         <Check size={14} className="text-[#B85C78] shrink-0" />
                         <span>Horário fixo garantido na semana/quinzena</span>

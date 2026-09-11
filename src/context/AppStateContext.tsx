@@ -50,7 +50,13 @@ import {
 } from '../services/supabase';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus, inicializarCanalNotificacoes } from '../services/notificacoesMobile';
 import { App as CapApp } from '@capacitor/app';
-import { encontrarPlanoVip, calcularIntervaloVip } from '../utils/planoVipHelper';
+import { 
+  encontrarPlanoVip, 
+  calcularIntervaloVip,
+  obterConfiguracaoSessaoVip,
+  calcularDuracaoSessaoVip,
+  obterServicosIdsSessaoVip
+} from '../utils/planoVipHelper';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
 
@@ -2755,18 +2761,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    // Regra VIP: Se for atendimento do Clube VIP com múltiplas profissionais atribuídas,
-    // a duração total da sessão é dividida pela quantidade de profissionais que atendem em paralelo.
-    if (novoAgendamento.pago_com_clube) {
+    // Regra VIP: Se for atendimento do Clube VIP, calcula a duração da Sessão 1
+    if (novoAgendamento.pago_com_clube || planoVipId) {
       const cli = clientes.find(c => c.id === novoAgendamento.cliente_id);
       const plano = (planoVipId ? planosAssinatura.find(p => p.id === planoVipId) : null)
         || planosAssinatura.find(p => p.id === cli?.assinatura?.plano_id)
         || planosAssinatura.find(p => p.nome?.trim().toLowerCase() === cli?.assinatura?.nome_plano?.trim().toLowerCase());
-      if (plano?.itens_servicos && plano.itens_servicos.length > 0) {
-        const itensSemana0 = plano.itens_servicos.filter(it => (it.quantidade || 1) > 0);
-        const profsSemana0 = Array.from(new Set(itensSemana0.map(it => it.profissional_id || novoAgendamento.profissional_id)));
-        if (profsSemana0.length > 1) {
-          duracaoTotal = Math.round(duracaoTotal / profsSemana0.length);
+      if (plano) {
+        const durS1 = calcularDuracaoSessaoVip(plano, 1, servicos);
+        if (durS1 > 0) {
+          duracaoTotal = durS1;
         }
       }
     }
@@ -4163,8 +4167,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     }
 
-    // O número de semanas a agendar cobre exatamente todas as sessões do ciclo (ex: 4 semanas)
-    const maxSemanas = Math.max(totalSessoes, filaProcedimentosCiclo.length);
+    // O número de semanas/sessões a agendar cobre exatamente as sessões configuradas do ciclo
+    let maxSemanas = totalSessoes;
+    if (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+      maxSemanas = Math.max(...plano.distribuicao_sessoes.map(d => d.sessao_numero));
+    } else if (plano?.itens_servicos && plano.itens_servicos.some(it => it.sessoes && it.sessoes.length > 0)) {
+      const sessoesNosItens = plano.itens_servicos.flatMap(it => it.sessoes || []);
+      if (sessoesNosItens.length > 0) {
+        maxSemanas = Math.max(...sessoesNosItens);
+      }
+    } else {
+      maxSemanas = Math.max(totalSessoes, filaProcedimentosCiclo.length);
+    }
 
     // Extrai data e horário originais como strings puras para evitar distorção de fuso horário
     const partesInicio = agInicial.inicio.replace(' ', 'T').split('T');
@@ -4212,11 +4226,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const clienteIdFinal = cliente?.id || agInicial.cliente_id;
     const nomePlanoObs = plano?.nome || cliente?.assinatura?.nome_plano || 'Clube VIP';
 
-    const temDistribuicaoSessoes = Boolean(
-      (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) ||
-      (plano?.itens_servicos && plano.itens_servicos.some(it => it.sessoes && it.sessoes.length > 0))
-    );
-
     for (let semana = 0; semana < maxSemanas; semana++) {
       const sessaoNum = semana + 1;
 
@@ -4256,32 +4265,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // Determina os procedimentos designados para esta sessão
       let procsDestaSessao: { servico_id: string; nome_servico: string; profissional_id: string; duracao_minutos: number }[] = [];
 
-      if (temDistribuicaoSessoes) {
-        if (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
-          procsDestaSessao = plano.distribuicao_sessoes
-            .filter(d => d.sessao_numero === sessaoNum)
-            .map(d => {
-              const s = servicos.find(item => item.id === d.servico_id);
-              return {
-                servico_id: d.servico_id,
-                nome_servico: d.nome_servico || s?.nome || 'Sessão VIP',
-                profissional_id: d.profissional_id || agInicial.profissional_id,
-                duracao_minutos: d.duracao_minutos || s?.duracao_minutos || 60
-              };
-            });
-        } else if (plano?.itens_servicos) {
-          plano.itens_servicos.forEach(it => {
-            if (it.sessoes && it.sessoes.includes(sessaoNum)) {
-              const s = servicos.find(item => item.id === it.servico_id);
-              procsDestaSessao.push({
-                servico_id: it.servico_id,
-                nome_servico: it.nome_servico || s?.nome || 'Sessão VIP',
-                profissional_id: it.profissional_id || agInicial.profissional_id,
-                duracao_minutos: s?.duracao_minutos || 60
-              });
-            }
-          });
-        }
+      const procs = obterConfiguracaoSessaoVip(plano, sessaoNum, servicos);
+      if (procs.length > 0) {
+        procsDestaSessao = procs.map(d => ({
+          servico_id: d.servico_id,
+          nome_servico: d.nome_servico,
+          profissional_id: d.profissional_id || agInicial.profissional_id,
+          duracao_minutos: d.duracao_minutos || 60
+        }));
       }
 
       // Se não houver configuração explícita para esta sessão, usa o fallback da fila sequencial
@@ -4336,14 +4327,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             const valorPlano = Number(plano?.preco_mensal) || 0;
             const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
 
-            if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id) {
+            if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id || agInicial.recorrencia_posicao !== `1 de ${maxSemanas}`) {
               const atualizado: Agendamento = {
                 ...agInicial,
                 fim: fimStr,
                 observacoes: novoObs,
                 valor_total: valorTotalFinal,
                 pago_com_clube: true,
-                plano_id: plano?.id || agInicial.plano_id
+                plano_id: plano?.id || agInicial.plano_id,
+                recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
+                recorrencia_tipo: 'semanal',
+                recorrencia_posicao: `1 de ${maxSemanas}`
               };
               salvarAgendamentoSupabase(atualizado, servicosIds);
               setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
@@ -4419,6 +4413,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               pago_com_clube: true,
               plano_id: plano?.id,
               origem: 'admin',
+              recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
+              recorrencia_tipo: 'semanal',
+              recorrencia_posicao: `${sessaoNum} de ${maxSemanas}`,
               observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados})`,
               criado_em: new Date().toISOString()
             };

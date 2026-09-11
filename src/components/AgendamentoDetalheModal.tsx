@@ -81,6 +81,19 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const prof = equipe.find(u => u.id === agendamento?.profissional_id);
   const servs = (agendamento && !isBloqueio) ? obterServicosDeAgendamento(agendamento.id) : [];
 
+  const isVip = !!(
+    agendamento?.pago_com_clube ||
+    agendamento?.plano_id ||
+    agendamento?.observacoes?.includes('Clube VIP') ||
+    agendamento?.observacoes?.includes('👑')
+  );
+
+  const duracaoMinutosAgendamento = useMemo(() => {
+    if (!agendamento?.inicio || !agendamento?.fim) return 60;
+    const diff = Math.round((new Date(agendamento.fim).getTime() - new Date(agendamento.inicio).getTime()) / (60 * 1000));
+    return diff > 0 ? diff : 60;
+  }, [agendamento?.inicio, agendamento?.fim]);
+
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
 
   // Estados de Edição de Procedimentos e Profissional
@@ -855,20 +868,58 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
             </div>
 
-            <div className="space-y-2 text-xs text-[#5A4535]">
-              {servs.map((s) => (
-                <div key={s.id} className="flex justify-between items-center">
-                  <div>
-                    <span className="font-semibold text-stone-800">{s.nome}</span>
-                    <span className="text-[10px] text-[#8C7A6B] block">Duração individual: {s.duracao_minutos} min</span>
+            {isVip && (
+              <div className="mb-2.5 p-2.5 bg-amber-50/90 border border-amber-200/80 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 border border-amber-200 shrink-0">
+                    <Crown size={15} />
                   </div>
-                  <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
+                  <div>
+                    <span className="text-xs font-bold text-amber-950 block">
+                      {agendamento.recorrencia_posicao 
+                        ? `Sessão ${agendamento.recorrencia_posicao} • Clube VIP`
+                        : (agendamento.observacoes?.match(/Sessão\s*(\d+)/i) 
+                            ? `Sessão ${agendamento.observacoes.match(/Sessão\s*(\d+)/i)![1]} • Clube VIP`
+                            : 'Atendimento Clube VIP')}
+                    </span>
+                    <span className="text-[10px] text-amber-800">
+                      Procedimento(s) programado(s) para esta sessão
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10.5px] font-bold text-amber-950 bg-amber-200/90 px-2 py-0.5 rounded-md border border-amber-300 inline-block shadow-2xs">
+                    ⏱️ {duracaoMinutosAgendamento} min
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5 text-xs text-[#5A4535]">
+              {servs.map((s) => (
+                <div key={s.id} className="flex justify-between items-center p-2 rounded-lg bg-white border border-[#EFECE6] shadow-2xs">
+                  <div>
+                    <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                      {s.nome}
+                      {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
+                    </span>
+                    <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
+                  </div>
+                  <div className="text-right">
+                    {agendamento.pago_com_clube ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                        Incluso no VIP
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
             <div className="mt-2.5 flex justify-between border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
-              <span>Total</span>
-              <span>{formatarMoeda(agendamento.valor_total)}</span>
+              <span>{isVip ? 'Valor cobrado nesta sessão' : 'Total'}</span>
+              <span>{agendamento.pago_com_clube ? 'R$ 0,00 (Plano VIP)' : formatarMoeda(agendamento.valor_total)}</span>
             </div>
             {agendamento.valor_sinal > 0 && (
               <div className="mt-1 flex justify-between text-[10px] text-[#8C7A6B]">
