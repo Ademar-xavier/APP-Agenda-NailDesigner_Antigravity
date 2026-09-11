@@ -164,6 +164,13 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     (cliente?.assinatura && cliente.assinatura.status === 'ativo') ||
     isVipAgendamento
   );
+  const sessaoNumRawCalculado = agendamento?.recorrencia_posicao || (agendamento?.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
+  const sessaoNumCalculado = sessaoNumRawCalculado ? Number(sessaoNumRawCalculado) : null;
+  const isPrimeiraSessaoVip = Boolean(
+    (sessaoNumCalculado === 1 || agendamento?.observacoes?.includes('Sessão 1')) &&
+    isVipAgendamento
+  );
+
   const [usarSaldoClube, setUsarSaldoClube] = useState(isVipAgendamento);
   const servicoCorrespondente = servs.find(s => 
     cliente?.assinatura?.itens_saldo?.some(item => item.servico_id === s.id && item.saldo_restante > 0)
@@ -229,10 +236,13 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       const descVal = Math.max(0, Number(descontoValor) || 0);
       const valorBase = Math.max(0, agendamento.valor_total - jaPago);
       const valorServicoComDesconto = Math.max(0, valorBase - descVal);
-      const valorServico = usarSaldoClube ? 0 : valorServicoComDesconto;
+
+      // Na 1ª Sessão com valor_total > 0, o valor cobrado é a mensalidade do plano VIP (não é isenta)
+      const isSessaoIsentaClube = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
+      const valorServico = isSessaoIsentaClube ? 0 : valorServicoComDesconto;
       setValorRecebido(valorServico + totalProdutos);
     }
-  }, [agendamento, produtosComanda, usarSaldoClube, descontoValor]);
+  }, [agendamento, produtosComanda, usarSaldoClube, descontoValor, isPrimeiraSessaoVip]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -919,7 +929,17 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </div>
             <div className="mt-2.5 flex justify-between border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
               <span>{isVip ? 'Valor cobrado nesta sessão' : 'Total'}</span>
-              <span>{agendamento.pago_com_clube ? 'R$ 0,00 (Plano VIP)' : formatarMoeda(agendamento.valor_total)}</span>
+              <span>
+                {isVip ? (
+                  agendamento.valor_total > 0
+                    ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)`
+                    : 'R$ 0,00 (Incluso no VIP)'
+                ) : (
+                  agendamento.pago_com_clube
+                    ? (agendamento.valor_total > 0 ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)` : 'R$ 0,00 (Plano VIP)')
+                    : formatarMoeda(agendamento.valor_total)
+                )}
+              </span>
             </div>
             {agendamento.valor_sinal > 0 && (
               <div className="mt-1 flex justify-between text-[10px] text-[#8C7A6B]">
@@ -1152,9 +1172,37 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           const intervaloDias = calcularIntervaloVip(planoVipObj, cliente?.assinatura);
           const { descricaoCompleta } = obterTextoFrequenciaVip(intervaloDias);
 
-          const sessaoNumRaw = agendamento.recorrencia_posicao || (agendamento.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
+          const recPosStr = agendamento.recorrencia_posicao || '';
+          const matchPos = recPosStr.match(/(\d+)\s+de\s+(\d+)/i);
+          const sessaoNumFromPos = matchPos ? Number(matchPos[1]) : null;
+          const totalFromPos = matchPos ? Number(matchPos[2]) : null;
+
+          const sessaoNumRaw = sessaoNumFromPos || (agendamento.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
           const sessaoNum = sessaoNumRaw ? Number(sessaoNumRaw) : null;
-          const totalSessoesPlano = Number(planoVipObj?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4);
+
+          // Determina o total real de sessões do ciclo
+          let totalSessoesPlano = totalFromPos || 0;
+          if (!totalSessoesPlano && planoVipObj?.distribuicao_sessoes && planoVipObj.distribuicao_sessoes.length > 0) {
+            totalSessoesPlano = Math.max(...planoVipObj.distribuicao_sessoes.map(d => d.sessao_numero));
+          }
+          if (!totalSessoesPlano && planoVipObj?.itens_servicos) {
+            const sessoesItens = planoVipObj.itens_servicos.flatMap(it => it.sessoes || []);
+            if (sessoesItens.length > 0) {
+              totalSessoesPlano = Math.max(...sessoesItens);
+            }
+          }
+          // Maior sessão existente nos agendamentos desta cliente para este ciclo
+          const sessoesDaCliente = agendamentos
+            .filter(a => a.cliente_id === agendamento.cliente_id && a.status !== 'cancelado')
+            .map(a => {
+              const m = a.recorrencia_posicao?.match(/(\d+)\s+de\s+(\d+)/i);
+              if (m) return Math.max(Number(m[1]), Number(m[2]));
+              const sMatch = a.observacoes?.match(/Sessão\s*(\d+)/i);
+              return sMatch ? Number(sMatch[1]) : 0;
+            });
+          const maiorSessaoExistente = sessoesDaCliente.length > 0 ? Math.max(...sessoesDaCliente) : 0;
+          const totalBase = Number(planoVipObj?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4);
+          totalSessoesPlano = Math.max(totalSessoesPlano, maiorSessaoExistente, totalBase, sessaoNum || 1);
 
           let badgeTexto = 'VIP';
           if (sessaoNum !== null && !isNaN(sessaoNum) && sessaoNum > 0) {
@@ -1366,7 +1414,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
                   />
                   <span className="text-xs text-amber-950 font-medium">
-                    Debitar atendimento do plano do Clube (Isenta cobrança do serviço)
+                    {isPrimeiraSessaoVip && agendamento.valor_total > 0
+                      ? '1ª Sessão: Cobrança da mensalidade do Clube VIP'
+                      : 'Debitar atendimento do plano do Clube (Isenta cobrança do serviço)'}
                   </span>
                 </label>
 
@@ -1521,12 +1571,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             {/* Resumo da Comanda */}
             <div className="bg-white/80 p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-xs">
               <div className="flex justify-between text-[#8C7A6B]">
-                <span>Serviço realizado:</span>
-                <span className={(usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento)) ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
+                <span>{isPrimeiraSessaoVip && agendamento.valor_total > 0 ? 'Mensalidade do Clube VIP:' : 'Serviço realizado:'}</span>
+                <span className={((!isPrimeiraSessaoVip || agendamento.valor_total === 0) && (usarSaldoClube || isVipAgendamento)) ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
                   {formatarMoeda(agendamento.valor_total)}
                 </span>
               </div>
-              {(usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento)) && (
+              {((!isPrimeiraSessaoVip || agendamento.valor_total === 0) && (usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento))) && (
                 <div className="flex justify-between text-amber-800 font-medium">
                   <span>Plano Clube VIP:</span>
                   <span>R$ 0,00 (Sessão inclusa no plano)</span>
@@ -1576,8 +1626,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <input
                   type="number"
                   step="0.01"
-                  value={valorRecebido}
-                  onChange={(e) => setValorRecebido(Number(e.target.value))}
+                  min="0"
+                  placeholder="0,00"
+                  value={valorRecebido === 0 ? '' : valorRecebido}
+                  onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setValorRecebido(v === '' ? 0 : Math.max(0, parseFloat(v) || 0));
+                  }}
                   className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 bg-white text-[#5A4535] font-bold font-serif"
                 />
               </div>

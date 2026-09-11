@@ -601,6 +601,31 @@ export const Servicos: React.FC = () => {
     setModalPlanoAberto(true);
   };
 
+  // Calcula o total de sessões distintas (visitas ao salão) com base nos serviços e suas sessões
+  const recalcularTotalSessoesPlano = (
+    quantidades: { [servicoId: string]: number },
+    sessoes: { [servicoId: string]: number[] }
+  ) => {
+    const sessoesDistintas = new Set<number>();
+    let temSessaoMarcada = false;
+    Object.entries(quantidades).forEach(([sid, qtd]) => {
+      if (qtd > 0) {
+        const sList = sessoes[sid] || [];
+        if (sList.length > 0) {
+          temSessaoMarcada = true;
+          sList.forEach(n => sessoesDistintas.add(n));
+        }
+      }
+    });
+    if (temSessaoMarcada && sessoesDistintas.size > 0) {
+      const maxSessao = Math.max(...sessoesDistintas);
+      setPlanoQtdProcedimentos(Math.max(maxSessao, sessoesDistintas.size));
+    } else {
+      const soma = Object.values(quantidades).reduce((acc, q) => acc + q, 0);
+      setPlanoQtdProcedimentos(soma > 0 ? soma : 1);
+    }
+  };
+
   const toggleSessaoServicoPlano = (servicoId: string, sessaoNum: number) => {
     setPlanoSessoesServicos(prev => {
       const atuais = prev[servicoId] || [];
@@ -610,7 +635,12 @@ export const Servicos: React.FC = () => {
       } else {
         proximas = [...atuais, sessaoNum].sort((a, b) => a - b);
       }
-      return { ...prev, [servicoId]: proximas };
+      const sNext = { ...prev, [servicoId]: proximas };
+
+      // Se colocar múltiplos serviços na mesma sessão, recalcula a quantidade de sessões do plano automaticamente
+      recalcularTotalSessoesPlano(planoQuantidadesServicos, sNext);
+
+      return sNext;
     });
   };
 
@@ -619,27 +649,23 @@ export const Servicos: React.FC = () => {
       const atual = prev[servicoId] || 0;
       const novaQtd = Math.max(0, atual + delta);
       const updated = { ...prev };
+      let sNextState = { ...planoSessoesServicos };
+
       if (novaQtd === 0) {
         delete updated[servicoId];
-        setPlanoSessoesServicos(sPrev => {
-          const sNext = { ...sPrev };
-          delete sNext[servicoId];
-          return sNext;
-        });
+        delete sNextState[servicoId];
+        setPlanoSessoesServicos(sNextState);
       } else {
         updated[servicoId] = novaQtd;
-        setPlanoSessoesServicos(sPrev => {
-          const existentes = sPrev[servicoId] || [];
-          if (existentes.length === 0) {
-            const tot = Number(planoQtdProcedimentos) || 4;
-            return { ...sPrev, [servicoId]: Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1) };
-          }
-          return sPrev;
-        });
+        const existentes = sNextState[servicoId] || [];
+        if (existentes.length === 0) {
+          const tot = Number(planoQtdProcedimentos) || 4;
+          sNextState[servicoId] = Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1);
+          setPlanoSessoesServicos(sNextState);
+        }
       }
 
-      const total = Object.values(updated).reduce((acc, q) => acc + q, 0);
-      setPlanoQtdProcedimentos(total > 0 ? total : 1);
+      recalcularTotalSessoesPlano(updated, sNextState);
       setPlanoServicosIds(Object.keys(updated));
       return updated;
     });
@@ -649,27 +675,23 @@ export const Servicos: React.FC = () => {
     setPlanoQuantidadesServicos(prev => {
       const novaQtd = Math.max(0, val);
       const updated = { ...prev };
+      let sNextState = { ...planoSessoesServicos };
+
       if (novaQtd === 0) {
         delete updated[servicoId];
-        setPlanoSessoesServicos(sPrev => {
-          const sNext = { ...sPrev };
-          delete sNext[servicoId];
-          return sNext;
-        });
+        delete sNextState[servicoId];
+        setPlanoSessoesServicos(sNextState);
       } else {
         updated[servicoId] = novaQtd;
-        setPlanoSessoesServicos(sPrev => {
-          const existentes = sPrev[servicoId] || [];
-          if (existentes.length === 0) {
-            const tot = Number(planoQtdProcedimentos) || 4;
-            return { ...sPrev, [servicoId]: Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1) };
-          }
-          return sPrev;
-        });
+        const existentes = sNextState[servicoId] || [];
+        if (existentes.length === 0) {
+          const tot = Number(planoQtdProcedimentos) || 4;
+          sNextState[servicoId] = Array.from({ length: Math.min(novaQtd, tot) }, (_, i) => i + 1);
+          setPlanoSessoesServicos(sNextState);
+        }
       }
 
-      const total = Object.values(updated).reduce((acc, q) => acc + q, 0);
-      setPlanoQtdProcedimentos(total > 0 ? total : 1);
+      recalcularTotalSessoesPlano(updated, sNextState);
       setPlanoServicosIds(Object.keys(updated));
       return updated;
     });
@@ -2534,7 +2556,7 @@ export const Servicos: React.FC = () => {
                     Serviços e Quantidades Inclusas no Mês
                   </label>
                   <span className="text-[11px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2.5 py-0.5 rounded-full border border-[#EFECE6]">
-                    Total: {Object.values(planoQuantidadesServicos).reduce((a, b) => a + b, 0)} sessões/mês
+                    Total: {Object.values(planoQuantidadesServicos).reduce((a, b) => a + b, 0)} procedimento(s) ({planoQtdProcedimentos} sessão/sessões)
                   </span>
                 </div>
                 <p className="text-[11px] text-[#8C7A6B] mb-2 leading-relaxed">
@@ -2645,26 +2667,31 @@ export const Servicos: React.FC = () => {
                                 </span>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {Array.from({ length: Math.max(1, Number(planoQtdProcedimentos) || 4) }, (_, idx) => {
-                                  const sessaoNum = idx + 1;
-                                  const sessoesAtuais = planoSessoesServicos[s.id] || [];
-                                  const isSessaoAtiva = sessoesAtuais.includes(sessaoNum);
-                                  return (
-                                    <button
-                                      key={sessaoNum}
-                                      type="button"
-                                      onClick={() => toggleSessaoServicoPlano(s.id, sessaoNum)}
-                                      className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
-                                        isSessaoAtiva
-                                          ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
-                                          : 'bg-white text-[#8C7A6B] border-[#EFECE6] hover:bg-amber-50 hover:border-amber-300'
-                                      }`}
-                                      title={`Marcar para realizar na ${sessaoNum}ª Sessão`}
-                                    >
-                                      {sessaoNum}ª Sessão
-                                    </button>
-                                  );
-                                })}
+                                {(() => {
+                                  const todasSessoesMarcadas = Object.values(planoSessoesServicos).flat();
+                                  const maxSessaoMarcada = todasSessoesMarcadas.length > 0 ? Math.max(...todasSessoesMarcadas) : 0;
+                                  const qtdBotoes = Math.max(4, Number(planoQtdProcedimentos) || 4, maxSessaoMarcada);
+                                  return Array.from({ length: qtdBotoes }, (_, idx) => {
+                                    const sessaoNum = idx + 1;
+                                    const sessoesAtuais = planoSessoesServicos[s.id] || [];
+                                    const isSessaoAtiva = sessoesAtuais.includes(sessaoNum);
+                                    return (
+                                      <button
+                                        key={sessaoNum}
+                                        type="button"
+                                        onClick={() => toggleSessaoServicoPlano(s.id, sessaoNum)}
+                                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                          isSessaoAtiva
+                                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                                            : 'bg-white text-[#8C7A6B] border-[#EFECE6] hover:bg-amber-50 hover:border-amber-300'
+                                        }`}
+                                        title={`Marcar para realizar na ${sessaoNum}ª Sessão`}
+                                      >
+                                        {sessaoNum}ª Sessão
+                                      </button>
+                                    );
+                                  });
+                                })()}
                               </div>
                             </div>
                           </div>

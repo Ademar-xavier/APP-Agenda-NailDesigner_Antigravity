@@ -3362,7 +3362,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const atualizados = prev.map(a => {
         if (a.id === agendamentoId) {
           const totalAdicionalProdutos = produtosVendidos ? produtosVendidos.reduce((acc, p) => acc + p.subtotal, 0) : 0;
-          const novoValorTotal = pagoComClube 
+          // Se a sessão VIP possui valor_total (mensalidade cobrada na 1ª sessão), preserva o valor recebido
+          const isMensalidadeVipCobrada = a.valor_total > 0 && valorRestante > 0;
+          const novoValorTotal = (pagoComClube && !isMensalidadeVipCobrada)
             ? totalAdicionalProdutos 
             : Math.max(0, (a.valor_total - valorDesconto) + totalAdicionalProdutos);
 
@@ -4034,8 +4036,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!plano) return;
 
     const agora = new Date();
-    const renovacao = new Date(agora);
-    renovacao.setDate(renovacao.getDate() + (plano.validade_dias || 30));
+    // Se a cliente já tiver a 1ª sessão agendada, utiliza a data real do primeiro agendamento
+    const agsVipCliente = agendamentos.filter(a => a.cliente_id === clienteId && a.status !== 'cancelado');
+    const ag1aSessao = agsVipCliente.find(a => a.recorrencia_posicao?.startsWith('1 de') || a.observacoes?.includes('Sessão 1'));
+    const dataInicioEfetiva = ag1aSessao ? ag1aSessao.inicio : agora.toISOString();
+    const dIni = new Date(dataInicioEfetiva);
+    const renovacao = new Date(dIni.getTime() + (plano.validade_dias || 30) * 86400000);
 
     const itensSaldo = (plano.itens_servicos && plano.itens_servicos.length > 0)
       ? plano.itens_servicos.map(item => ({
@@ -4277,21 +4283,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Frequência de retorno configurada no plano VIP (prevalecendo sobre a assinatura antiga da cliente)
     const intervaloDias = calcularIntervaloVip(plano, cliente?.assinatura);
 
-    // Se o cliente tem assinatura mas estava desatualizada ou com frequência divergente, sincroniza imediatamente
-    if (cliente && plano && (!cliente.assinatura?.frequencia_dias || cliente.assinatura.frequencia_dias !== intervaloDias || cliente.assinatura.plano_id !== plano.id)) {
+    // Sincroniza a assinatura da cliente com a data real de início da 1ª sessão agendada e validade
+    if (cliente && plano) {
+      const dataInicio1aSessao = agInicial.inicio;
+      const dIni = new Date(dataInicio1aSessao);
+      const dRenov = new Date(dIni.getTime() + (plano.validade_dias || 30) * 86400000);
+      const totalCicloReal = Math.max(totalSessoes, maxSemanas);
+
       const assAtualizada: AssinaturaCliente = {
         ...(cliente.assinatura || {
           plano_id: plano.id,
           nome_plano: plano.nome,
-          data_inicio: new Date().toISOString(),
-          data_renovacao: new Date(Date.now() + (plano.validade_dias || 30) * 86400000).toISOString(),
-          saldo_restante: totalSessoes,
-          total_mes: totalSessoes,
+          saldo_restante: totalCicloReal,
+          total_mes: totalCicloReal,
           status: 'ativo'
         }),
         plano_id: plano.id,
         nome_plano: plano.nome,
-        frequencia_dias: intervaloDias
+        frequencia_dias: intervaloDias,
+        data_inicio: dataInicio1aSessao,
+        data_renovacao: dRenov.toISOString(),
+        total_mes: totalCicloReal,
+        saldo_restante: (cliente.assinatura?.saldo_restante !== undefined && cliente.assinatura.saldo_restante > 0)
+          ? cliente.assinatura.saldo_restante
+          : totalCicloReal
       };
       const cliAtualizado = {
         ...cliente,
