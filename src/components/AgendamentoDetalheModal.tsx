@@ -20,7 +20,7 @@ import {
   Repeat,
   Lock
 } from 'lucide-react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, calcularFimAgendamento } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
@@ -32,7 +32,7 @@ interface AgendamentoDetalheModalProps {
   onOpenComanda?: () => void;
 }
 
-type Acao = null | 'cancelar' | 'concluir' | 'falta';
+type Acao = null | 'cancelar' | 'concluir' | 'falta' | 'remarcar';
 
 const MOTIVO_CANCELAMENTO_PADRAO = 'Imprevisto operacional no salão / necessidade de reagendamento';
 const SUGESTOES_MOTIVOS = [
@@ -55,6 +55,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     servicos,
     configSalao,
     updateAgendamentoStatus,
+    remarcarAgendamento,
     atualizarValorSinalAgendamento,
     atualizarServicosEProfissionalAgendamento,
     cancelAgendamento,
@@ -90,11 +91,128 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   const duracaoMinutosAgendamento = useMemo(() => {
     if (!agendamento?.inicio || !agendamento?.fim) return 60;
-    const diff = Math.round((new Date(agendamento.fim).getTime() - new Date(agendamento.inicio).getTime()) / (60 * 1000));
-    return diff > 0 ? diff : 60;
+    try {
+      const getMins = (str: string) => {
+        const limpo = str.replace('Z', '').split('+')[0];
+        const [, horaPart] = limpo.split('T');
+        if (!horaPart) return 0;
+        const [h, m] = horaPart.split(':').map(Number);
+        return (h || 0) * 60 + (m || 0);
+      };
+      const diff = getMins(agendamento.fim) - getMins(agendamento.inicio);
+      return diff > 0 ? diff : 60;
+    } catch {
+      return 60;
+    }
   }, [agendamento?.inicio, agendamento?.fim]);
 
   const [statusVisual, setStatusVisual] = useState<AgendamentoStatus>(agendamento?.status || 'confirmado');
+
+  // Estados de Remarcação de Horário / Dia
+  const [dataRemarcacao, setDataRemarcacao] = useState<string>(
+    agendamento?.inicio ? agendamento.inicio.split('T')[0] : new Date().toISOString().split('T')[0]
+  );
+  const [horaRemarcacao, setHoraRemarcacao] = useState<string>(
+    agendamento?.inicio ? agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00' : '09:00'
+  );
+  const [profRemarcacaoId, setProfRemarcacaoId] = useState<string>(agendamento?.profissional_id || '');
+  const [notificarWhatsAppRemarcacao, setNotificarWhatsAppRemarcacao] = useState<boolean>(true);
+  const [errorRemarcacao, setErrorRemarcacao] = useState<string>('');
+
+  useEffect(() => {
+    if (agendamento) {
+      setDataRemarcacao(agendamento.inicio.split('T')[0]);
+      setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
+      setProfRemarcacaoId(agendamento.profissional_id);
+    }
+  }, [agendamento]);
+
+  const analiseHorariosRemarcacao = useMemo(() => {
+    if (!dataRemarcacao || !profRemarcacaoId) return { livres: [] as string[], ocupados: [] as string[], fechado: false };
+
+    const diaSemana = new Date(dataRemarcacao + 'T12:00:00').getDay();
+    const expediente = configSalao.horarios_trabalho?.[diaSemana];
+
+    if (!expediente || !expediente.ativo) {
+      return { livres: [] as string[], ocupados: [] as string[], fechado: true };
+    }
+
+    const [hIni, mIni] = (expediente.inicio || '08:00').split(':').map(Number);
+    const [hFim, mFim] = (expediente.fim || '20:00').split(':').map(Number);
+    const minInicio = hIni * 60 + mIni;
+    const minFim = hFim * 60 + mFim;
+
+    const duracao = duracaoMinutosAgendamento > 0 ? duracaoMinutosAgendamento : 60;
+    const livres: string[] = [];
+    const ocupados: string[] = [];
+
+    for (let m = minInicio; m <= minFim - duracao; m += 30) {
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      const slot = `${hStr}:${mStr}`;
+
+      const inicioAgend = `${dataRemarcacao}T${slot}:00`;
+      const fimAgend = calcularFimAgendamento(inicioAgend, duracao);
+
+      const conflito = checkConflitoHorario(inicioAgend, fimAgend, profRemarcacaoId, agendamento?.id);
+
+      if (!conflito) {
+        livres.push(slot);
+      } else {
+        ocupados.push(slot);
+      }
+    }
+
+    return { livres, ocupados, fechado: false };
+  }, [dataRemarcacao, profRemarcacaoId, duracaoMinutosAgendamento, configSalao, checkConflitoHorario, agendamento?.id]);
+
+  useEffect(() => {
+    if (analiseHorariosRemarcacao.livres.length > 0 && !analiseHorariosRemarcacao.livres.includes(horaRemarcacao)) {
+      setHoraRemarcacao(analiseHorariosRemarcacao.livres[0]);
+    }
+  }, [analiseHorariosRemarcacao.livres]);
+
+  const handleConfirmarRemarcacao = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!agendamento) return;
+    setErrorRemarcacao('');
+
+    if (!dataRemarcacao) {
+      setErrorRemarcacao('Por favor, selecione uma data.');
+      return;
+    }
+    if (!horaRemarcacao) {
+      setErrorRemarcacao('Por favor, selecione um horário disponível.');
+      return;
+    }
+
+    const novoInicio = `${dataRemarcacao}T${horaRemarcacao}:00`;
+    const novoFim = calcularFimAgendamento(novoInicio, duracaoMinutosAgendamento);
+
+    const res = remarcarAgendamento(agendamento.id, novoInicio, novoFim, profRemarcacaoId);
+    if (!res.success) {
+      setErrorRemarcacao(res.error || 'Erro ao remarcar agendamento.');
+      return;
+    }
+
+    if (notificarWhatsAppRemarcacao && cliente?.telefone) {
+      const [ano, mes, dia] = dataRemarcacao.split('-');
+      const dataFormatada = `${dia}/${mes}/${ano}`;
+      const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+      const diaNome = diasSemana[new Date(`${dataRemarcacao}T12:00:00`).getDay()];
+      const profNome = equipe.find(u => u.id === profRemarcacaoId)?.nome || prof?.nome || 'Sheila';
+      const nomesServicos = servs.map(s => s.nome).join(' + ') || 'Atendimento';
+
+      const textoWhats = `Olá, ${cliente.nome}! 💅\nSeu agendamento foi remarcado com sucesso.\n\n📅 *Nova Data:* ${dataFormatada} (${diaNome})\n⏰ *Novo Horário:* ${horaRemarcacao}\n👩‍🎨 *Profissional:* ${profNome}\n✨ *Procedimento:* ${nomesServicos}\n\nQualquer dúvida ou imprevisto, é só nos avisar por aqui! 🥰`;
+      const urlWhats = gerarLinkWhatsApp(cliente.telefone, textoWhats);
+      if (urlWhats) {
+        window.open(urlWhats, '_blank');
+      }
+    }
+
+    setAcao(null);
+    onClose();
+  };
 
   // Estados de Edição de Procedimentos e Profissional
   const [editandoServicosEProf, setEditandoServicosEProf] = useState(false);
@@ -603,16 +721,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
     const servsNovos = servicos.filter(s => servicosEditadosIds.includes(s.id));
     const durTotalNova = servsNovos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
-    const dIni = new Date(agendamento.inicio);
-    const dFim = new Date(dIni.getTime() + durTotalNova * 60000);
-
-    const ano = dFim.getFullYear();
-    const mes = String(dFim.getMonth() + 1).padStart(2, '0');
-    const dia = String(dFim.getDate()).padStart(2, '0');
-    const hora = String(dFim.getHours()).padStart(2, '0');
-    const min = String(dFim.getMinutes()).padStart(2, '0');
-    const seg = String(dFim.getSeconds()).padStart(2, '0');
-    const fimFormatado = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+    const fimFormatado = calcularFimAgendamento(agendamento.inicio, durTotalNova);
+    const horaFmt = fimFormatado.split('T')[1]?.substring(0, 5) || '';
 
     const profAlvo = profissionalEditadaId || agendamento.profissional_id;
 
@@ -621,7 +731,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     if (temConflito) {
       mostrarAlerta({
         titulo: 'Conflito de Horário Detectado',
-        mensagem: `A nova duração (${durTotalNova} min até às ${hora}:${min}) conflita com outro agendamento ativo desta profissional. Por favor, selecione serviços com menor duração ou libere o horário antes de salvar.`,
+        mensagem: `A nova duração (${durTotalNova} min até às ${horaFmt}) conflita com outro agendamento ativo desta profissional. Por favor, selecione serviços com menor duração ou libere o horário antes de salvar.`,
         tipo: 'erro'
       });
       return;
@@ -708,24 +818,41 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           <div className="flex items-center gap-2">
             {isBloqueio ? (
               <select
-                value={statusVisual}
+                value={acao === 'remarcar' ? 'remarcar' : statusVisual}
                 onChange={(e) => {
-                  const novoStatus = e.target.value as AgendamentoStatus;
+                  const val = e.target.value;
+                  if (val === 'remarcar') {
+                    setAcao('remarcar');
+                    setDataRemarcacao(agendamento.inicio.split('T')[0]);
+                    setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
+                    setProfRemarcacaoId(agendamento.profissional_id);
+                    return;
+                  }
+                  const novoStatus = val as AgendamentoStatus;
                   setStatusVisual(novoStatus);
                   updateAgendamentoStatus(agendamento.id, novoStatus);
                 }}
-                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${acao === 'remarcar' ? 'bg-[#8C6D58] text-white border-[#8C6D58]' : (statusStyles[statusVisual] || '')}`}
                 title="Alterar status deste bloqueio"
               >
                 <option value="bloqueado">🔒 Bloqueado</option>
+                <option value="remarcar">📅 Remarcar horário / dia</option>
                 <option value="concluido">🎉 Concluído</option>
                 <option value="cancelado">❌ Cancelado</option>
               </select>
             ) : (
               <select
-                value={statusVisual}
+                value={acao === 'remarcar' ? 'remarcar' : statusVisual}
                 onChange={(e) => {
-                  const novoStatus = e.target.value as AgendamentoStatus;
+                  const val = e.target.value;
+                  if (val === 'remarcar') {
+                    setAcao('remarcar');
+                    setDataRemarcacao(agendamento.inicio.split('T')[0]);
+                    setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
+                    setProfRemarcacaoId(agendamento.profissional_id);
+                    return;
+                  }
+                  const novoStatus = val as AgendamentoStatus;
                   setStatusVisual(novoStatus);
                   if (novoStatus === 'cancelado') {
                     setAcao('cancelar');
@@ -741,13 +868,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     }
                   }
                 }}
-                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${statusStyles[statusVisual] || ''}`}
-                title="Clique para alterar o status deste agendamento"
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${acao === 'remarcar' ? 'bg-[#8C6D58] text-white border-[#8C6D58]' : (statusStyles[statusVisual] || '')}`}
+                title="Clique para alterar o status ou remarcar este agendamento"
               >
                 <option value="pendente">⏳ Pendente (A Confirmar)</option>
                 <option value="confirmado">✅ Confirmado</option>
                 <option value="concluido">🎉 Concluído</option>
                 <option value="falta">⚠️ Falta</option>
+                <option value="remarcar">📅 Remarcar horário / dia</option>
                 <option value="cancelado">❌ Cancelar</option>
               </select>
             )}
@@ -856,25 +984,42 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Serviços & Profissional</p>
               {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    let initialIds = servs.map(s => s.id);
-                    const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
-                    if (combosPresentes.length > 0) {
-                      const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
-                      initialIds = initialIds.filter(id => !subIds.includes(id));
-                    }
-                    setServicosEditadosIds(initialIds);
-                    setProfissionalEditadaId(agendamento.profissional_id);
-                    setEditandoServicosEProf(true);
-                  }}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
-                  title="Trocar procedimentos ou alterar a profissional responsável"
-                >
-                  <Sparkles size={12} className="text-amber-500" />
-                  <span>Trocar Serviço / Profissional</span>
-                </button>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAcao('remarcar');
+                      setDataRemarcacao(agendamento.inicio.split('T')[0]);
+                      setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
+                      setProfRemarcacaoId(agendamento.profissional_id);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
+                    title="Remarcar dia, horário ou profissional"
+                  >
+                    <Calendar size={12} className="text-[#8C6D58]" />
+                    <span>Remarcar Horário / Dia</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let initialIds = servs.map(s => s.id);
+                      const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
+                      if (combosPresentes.length > 0) {
+                        const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
+                        initialIds = initialIds.filter(id => !subIds.includes(id));
+                      }
+                      setServicosEditadosIds(initialIds);
+                      setProfissionalEditadaId(agendamento.profissional_id);
+                      setEditandoServicosEProf(true);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
+                    title="Trocar procedimentos ou alterar a profissional responsável"
+                  >
+                    <Sparkles size={12} className="text-amber-500" />
+                    <span>Trocar Serviço / Profissional</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1306,6 +1451,156 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         {/* --- INLINE ACTION BOXES --- */}
         
+        {/* Remarcar inline */}
+        {acao === 'remarcar' && (
+          <div className="p-3.5 border border-[#8C6D58]/30 bg-[#FAF6F0] rounded-xl space-y-3.5 mb-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#5A4535]">
+                <Calendar size={15} className="text-[#8C6D58]" />
+                <span>Remarcar Horário / Dia</span>
+              </div>
+              <span className="text-[10.5px] font-bold text-[#8C6D58] bg-white px-2 py-0.5 rounded-md border border-[#EFECE6]">
+                ⏱️ {duracaoMinutosAgendamento} min
+              </span>
+            </div>
+
+            {errorRemarcacao && (
+              <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>{errorRemarcacao}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                  Nova Data
+                </label>
+                <div className="flex items-center gap-2 p-2 border border-[#EFECE6] rounded-xl bg-white">
+                  <Calendar size={14} className="text-[#8C6D58] shrink-0" />
+                  <input
+                    type="date"
+                    required
+                    value={dataRemarcacao}
+                    onChange={(e) => {
+                      setDataRemarcacao(e.target.value);
+                      setErrorRemarcacao('');
+                    }}
+                    className="text-xs font-bold text-[#5A4535] bg-transparent outline-none w-full border-none focus:ring-0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                  Profissional
+                </label>
+                <select
+                  value={profRemarcacaoId}
+                  onChange={(e) => {
+                    setProfRemarcacaoId(e.target.value);
+                    setErrorRemarcacao('');
+                  }}
+                  className="w-full border border-[#EFECE6] rounded-xl p-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
+                >
+                  {equipe.filter(u => u.ativo).map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome} ({u.especialidade || (u.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Vagas disponíveis */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase">
+                  Horários Disponíveis ({analiseHorariosRemarcacao.livres.length} livres)
+                </label>
+                <span className="text-[10px] text-[#8C7A6B]">
+                  Duração: {duracaoMinutosAgendamento} min
+                </span>
+              </div>
+
+              {analiseHorariosRemarcacao.fechado ? (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center gap-1.5">
+                  <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                  <span>O salão não abre neste dia da semana. Selecione outra data.</span>
+                </div>
+              ) : analiseHorariosRemarcacao.livres.length === 0 ? (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center gap-1.5">
+                  <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                  <span>Nenhum horário disponível para esta duração nesta data. Tente outra data ou profissional.</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-white border border-[#EFECE6] rounded-xl">
+                  {analiseHorariosRemarcacao.livres.map(h => {
+                    const isSel = horaRemarcacao === h;
+                    return (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => {
+                          setHoraRemarcacao(h);
+                          setErrorRemarcacao('');
+                        }}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                          isSel
+                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-xs'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-[#F2DFD5]/40 hover:border-[#8C6D58]/40'
+                        }`}
+                      >
+                        {h}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Checkbox avisar cliente via WhatsApp */}
+            {cliente?.telefone && (
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-[#5A4535] select-none pt-1">
+                <input
+                  type="checkbox"
+                  checked={notificarWhatsAppRemarcacao}
+                  onChange={(e) => setNotificarWhatsAppRemarcacao(e.target.checked)}
+                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]/30 w-4 h-4"
+                />
+                <span className="flex items-center gap-1 font-medium">
+                  <MessageCircle size={14} className="text-emerald-600" />
+                  Avisar {cliente.nome} pelo WhatsApp após remarcar
+                </span>
+              </label>
+            )}
+
+            {/* Botões de Ação do Painel de Remarcação */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#EFECE6]">
+              <button
+                type="button"
+                onClick={() => {
+                  setAcao(null);
+                  setErrorRemarcacao('');
+                  setStatusVisual(agendamento.status);
+                }}
+                className="px-3.5 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-white transition-colors"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarRemarcacao}
+                disabled={analiseHorariosRemarcacao.livres.length === 0 || !horaRemarcacao}
+                className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+              >
+                <CalendarCheck size={14} />
+                <span>Confirmar Remarcação</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Cancelar inline */}
         {acao === 'cancelar' && (
           <div className="p-3 border border-red-200 bg-red-50 rounded-xl space-y-3 mb-4 animate-in fade-in duration-150">
