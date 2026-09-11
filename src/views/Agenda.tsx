@@ -139,6 +139,7 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [horaInicio, setHoraInicio] = useState<string>('09:00');
   const [obsAgendamento, setObsAgendamento] = useState<string>('');
   const [isBloqueio, setIsBloqueio] = useState<boolean>(false);
+  const [bloqueioHoraFim, setBloqueioHoraFim] = useState<string>('10:00');
   const [profissionalId, setProfissionalId] = useState<string>('u1');
   const [errorAgendamento, setErrorAgendamento] = useState<string>('');
   const [cobrarSinal, setCobrarSinal] = useState<boolean>(false);
@@ -414,6 +415,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     setRecorrenciaIntervaloDias(15);
     setRecorrenciaRepeticoes(4);
     setRecorrenciaCustomDias(15);
+    setIsBloqueio(false);
+    setObsAgendamento('');
+    setBloqueioHoraFim('10:00');
     closeNewAgendamentoModal();
   };
 
@@ -472,7 +476,12 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Duração necessária para o atendimento em minutos
   const duracaoMinutosAtual = useMemo(() => {
-    if (isBloqueio) return 30;
+    if (isBloqueio) {
+      const [hIni, mIni] = (horaInicio || '09:00').split(':').map(Number);
+      const [hFim, mFim] = (bloqueioHoraFim || '10:00').split(':').map(Number);
+      const diff = (hFim * 60 + mFim) - (hIni * 60 + mIni);
+      return diff > 0 ? diff : 30;
+    }
     const pl = (agendarComoVip && planoClienteObj) || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
     if (pl) {
       if (pl.itens_servicos && pl.itens_servicos.length > 0) {
@@ -495,7 +504,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
     }
     return resumoServicosSelecionados.duracaoTotal > 0 ? resumoServicosSelecionados.duracaoTotal : 30;
-  }, [isBloqueio, agendarComoVip, planoClienteObj, planoVipContratarId, planosAssinatura, servicos, resumoServicosSelecionados.duracaoTotal]);
+  }, [isBloqueio, horaInicio, bloqueioHoraFim, agendarComoVip, planoClienteObj, planoVipContratarId, planosAssinatura, servicos, resumoServicosSelecionados.duracaoTotal]);
 
   // Análise completa de disponibilidade de horários (Livres vs Ocupados)
   const analiseHorarios = useMemo(() => {
@@ -515,14 +524,15 @@ export const Agenda: React.FC<AgendaProps> = ({
     const ocupados: { hora: string; motivo: string }[] = [];
 
     // Avalia cada intervalo de 30 em 30 minutos dentro do expediente (permitindo agendamentos retroativos no painel admin)
-    for (let m = minInicio; m <= minFim - duracaoMinutosAtual; m += 30) {
+    const duracaoVerificacao = isBloqueio ? 30 : duracaoMinutosAtual;
+    for (let m = minInicio; m <= minFim - duracaoVerificacao; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
       const slot = `${hStr}:${mStr}`;
 
       const inicioAgend = `${dataSelecionada}T${slot}:00`;
       const dateInicio = new Date(`${dataSelecionada}T${slot}:00`);
-      const dateFim = new Date(dateInicio.getTime() + duracaoMinutosAtual * 60 * 1000);
+      const dateFim = new Date(dateInicio.getTime() + duracaoVerificacao * 60 * 1000);
       const anoF = dateFim.getFullYear();
       const mesF = String(dateFim.getMonth() + 1).padStart(2, '0');
       const diaF = String(dateFim.getDate()).padStart(2, '0');
@@ -581,6 +591,78 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     return { livres, ocupados };
   }, [diaFechado, expedienteDoDia, dataSelecionada, duracaoMinutosAtual, isBloqueio, profissionalId, agendamentos, clientes, checkConflitoHorario]);
+
+  // Opções para o seletor de horário de término do bloqueio pessoal
+  const opcoesHoraFimBloqueio = useMemo(() => {
+    if (!horaInicio) return [];
+    const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+    const minInicioTotal = hI * 60 + mI;
+
+    const [hFExp, mFExp] = (expedienteDoDia?.fim || '20:00').split(':').map(Number);
+    const minFimLimite = Math.max(hFExp * 60 + mFExp, 22 * 60);
+
+    const opcoes: { hora: string; labelDuracao: string; minutos: number }[] = [];
+
+    for (let m = minInicioTotal + 15; m <= Math.min(minFimLimite, 23 * 60 + 45); m += 15) {
+      const diff = m - minInicioTotal;
+      const hStr = String(Math.floor(m / 60)).padStart(2, '0');
+      const mStr = String(m % 60).padStart(2, '0');
+      const horaFormatada = `${hStr}:${mStr}`;
+
+      const horas = Math.floor(diff / 60);
+      const mins = diff % 60;
+      let labelDuracao = '';
+      if (horas > 0 && mins > 0) {
+        labelDuracao = `${horas}h ${mins}min`;
+      } else if (horas > 0) {
+        labelDuracao = `${horas}h`;
+      } else {
+        labelDuracao = `${mins} min`;
+      }
+
+      opcoes.push({
+        hora: horaFormatada,
+        labelDuracao,
+        minutos: diff
+      });
+    }
+
+    return opcoes;
+  }, [horaInicio, expedienteDoDia]);
+
+  // Mantém o término do bloqueio sempre à frente do início
+  useEffect(() => {
+    if (isBloqueio) {
+      const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+      const [hF, mF] = (bloqueioHoraFim || '10:00').split(':').map(Number);
+      const minI = hI * 60 + mI;
+      const minF = hF * 60 + mF;
+      if (minF <= minI) {
+        const novoFim = Math.min(minI + 60, 23 * 60 + 59);
+        const hStr = String(Math.floor(novoFim / 60)).padStart(2, '0');
+        const mStr = String(novoFim % 60).padStart(2, '0');
+        setBloqueioHoraFim(`${hStr}:${mStr}`);
+      }
+    }
+  }, [horaInicio, isBloqueio]);
+
+  // Aplicar duração predefinida rápida ao bloqueio pessoal
+  const aplicarDuracaoRapidaBloqueio = (minutos: number) => {
+    const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+    const minI = hI * 60 + mI;
+    let novoFimMin = minI + minutos;
+
+    if (minutos === -1) {
+      const [hFExp, mFExp] = (expedienteDoDia?.fim || '20:00').split(':').map(Number);
+      novoFimMin = Math.max(minI + 30, hFExp * 60 + mFExp);
+    }
+
+    novoFimMin = Math.min(novoFimMin, 23 * 60 + 59);
+    const hStr = String(Math.floor(novoFimMin / 60)).padStart(2, '0');
+    const mStr = String(novoFimMin % 60).padStart(2, '0');
+    setBloqueioHoraFim(`${hStr}:${mStr}`);
+    setErrorAgendamento('');
+  };
 
   const horasExpediente = analiseHorarios.livres;
 
@@ -721,18 +803,42 @@ export const Agenda: React.FC<AgendaProps> = ({
     // 2. Calcular valores e horários para verificar disponibilidade ANTES de cadastrar cliente
     const servs = servicos.filter(s => servicosSelecionados.includes(s.id));
     const total = isBloqueio ? 0 : servs.reduce((acc, s) => acc + s.preco, 0);
-    const duracaoTotal = isBloqueio ? 30 : duracaoMinutosAtual;
 
     const dataInicioStr = `${dataSelecionada}T${horaInicio}:00`;
-    const dataInicio = new Date(dataInicioStr);
-    const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
-    const ano = dataFim.getFullYear();
-    const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
-    const dia = String(dataFim.getDate()).padStart(2, '0');
-    const hora = String(dataFim.getHours()).padStart(2, '0');
-    const min = String(dataFim.getMinutes()).padStart(2, '0');
-    const seg = String(dataFim.getSeconds()).padStart(2, '0');
-    const dataFimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+    let duracaoTotal = duracaoMinutosAtual;
+    let dataFimStr = '';
+
+    if (isBloqueio) {
+      const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+      const [hF, mF] = (bloqueioHoraFim || '10:00').split(':').map(Number);
+      const minI = hI * 60 + mI;
+      const minF = hF * 60 + mF;
+      if (minF <= minI) {
+        setErrorAgendamento('O horário de término do bloqueio deve ser posterior ao horário de início.');
+        return;
+      }
+      duracaoTotal = minF - minI;
+
+      const [anoD, mesD, diaD] = dataSelecionada.split('-').map(Number);
+      const dFim = new Date(anoD, mesD - 1, diaD, hF, mF, 0);
+      const anoF = dFim.getFullYear();
+      const mesF = String(dFim.getMonth() + 1).padStart(2, '0');
+      const diaF = String(dFim.getDate()).padStart(2, '0');
+      const horaF = String(dFim.getHours()).padStart(2, '0');
+      const minFStr = String(dFim.getMinutes()).padStart(2, '0');
+      const segF = String(dFim.getSeconds()).padStart(2, '0');
+      dataFimStr = `${anoF}-${mesF}-${diaF}T${horaF}:${minFStr}:${segF}`;
+    } else {
+      const dataInicio = new Date(dataInicioStr);
+      const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
+      const ano = dataFim.getFullYear();
+      const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
+      const dia = String(dataFim.getDate()).padStart(2, '0');
+      const hora = String(dataFim.getHours()).padStart(2, '0');
+      const min = String(dataFim.getMinutes()).padStart(2, '0');
+      const seg = String(dataFim.getSeconds()).padStart(2, '0');
+      dataFimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+    }
 
     // 3. Avaliar conflito de horário em primeiro lugar (não cadastra cliente se conflitar)
     if (!isBloqueio && checkConflitoHorario(dataInicioStr, dataFimStr, profissionalId)) {
@@ -783,7 +889,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
     const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
     const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
-    const obsFinal = `${prefixoVip}${obsAgendamento}`.trim();
+    const obsFinal = `${prefixoVip}${obsAgendamento}`.trim() || (isBloqueio ? 'Bloqueio Pessoal' : '');
 
     const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
       ? {
@@ -808,6 +914,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       cliente_id: cId,
       profissional_id: profissionalId,
       inicio: dataInicioStr,
+      fim: dataFimStr,
       status: statusFinal,
       valor_total: totalFinal,
       valor_sinal: valorSinalFinal,
@@ -825,6 +932,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       setServicosSelecionados([]);
       setObsAgendamento('');
       setIsBloqueio(false);
+      setBloqueioHoraFim('10:00');
       setCobrarSinal(false);
       setValorSinalManual('');
       setAgendarComoVip(false);
@@ -1673,20 +1781,38 @@ export const Agenda: React.FC<AgendaProps> = ({
                     </div>
                   </>
                 ) : (
-                  <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Título/Motivo do Bloqueio</label>
-                    <input 
-                      type="text" 
-                      value={obsAgendamento}
-                      onChange={(e) => setObsAgendamento(e.target.value)}
-                      placeholder="Ex: Almoço / Manutenção da Cadeira..."
-                      className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
-                    />
+                  <div className="space-y-3 bg-[#FAF9F6] p-3.5 rounded-xl border border-[#EFECE6]">
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Profissional do Bloqueio</label>
+                      <select
+                        value={profissionalId}
+                        onChange={(e) => setProfissionalId(e.target.value)}
+                        disabled={currentUser?.perfil === 'profissional'}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] disabled:opacity-75"
+                      >
+                        {equipe
+                          .filter(u => u.ativo)
+                          .map(u => (
+                            <option key={u.id} value={u.id}>{u.nome} ({u.especialidade || (u.perfil === 'admin' ? 'Administradora' : 'Profissional')})</option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Título / Motivo do Bloqueio</label>
+                      <input 
+                        type="text" 
+                        value={obsAgendamento}
+                        onChange={(e) => setObsAgendamento(e.target.value)}
+                        placeholder="Ex: Almoço / Manutenção da Cadeira / Consulta..."
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
+                      />
+                    </div>
                   </div>
                 )}
 
                 {/* Data & Hora */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className={`grid grid-cols-1 ${isBloqueio ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3`}>
                   <div>
                     <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Data</label>
                     <input 
@@ -1723,12 +1849,88 @@ export const Agenda: React.FC<AgendaProps> = ({
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none font-medium"
                       >
                         {analiseHorarios.livres.map(h => (
-                          <option key={h} value={h}>{h} (Disponível)</option>
+                          <option key={h} value={h}>{h} {isBloqueio ? '' : '(Disponível)'}</option>
                         ))}
                       </select>
                     )}
                   </div>
+                  {isBloqueio && (
+                    <div>
+                      <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1">Horário de Término</label>
+                      <select
+                        value={bloqueioHoraFim}
+                        onChange={(e) => {
+                          setBloqueioHoraFim(e.target.value);
+                          setErrorAgendamento('');
+                        }}
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none font-medium"
+                      >
+                        {opcoesHoraFimBloqueio.map(opt => (
+                          <option key={opt.hora} value={opt.hora}>
+                            {opt.hora} ({opt.labelDuracao})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
+
+                {/* Atalhos de Duração Rápida do Bloqueio */}
+                {isBloqueio && (
+                  <div className="bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#5A4535] flex items-center gap-1">
+                        <Clock size={12} className="text-[#8C6D58]" />
+                        <span>Duração do Bloqueio:</span>
+                        <strong className="text-[#8C6D58] ml-1">
+                          {(() => {
+                            const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+                            const [hF, mF] = (bloqueioHoraFim || '10:00').split(':').map(Number);
+                            const diff = (hF * 60 + mF) - (hI * 60 + mI);
+                            if (diff <= 0) return 'Horário inválido';
+                            const h = Math.floor(diff / 60);
+                            const m = diff % 60;
+                            return `${h > 0 ? `${h}h ` : ''}${m > 0 ? `${m}min` : ''}`.trim() + ` (${horaInicio} às ${bloqueioHoraFim})`;
+                          })()}
+                        </strong>
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <span className="text-[10px] font-bold text-[#8C7A6B] mr-0.5">Definir rápido:</span>
+                      {[
+                        { label: '30 min', min: 30 },
+                        { label: '1 hora', min: 60 },
+                        { label: '1h 30m', min: 90 },
+                        { label: '2 horas', min: 120 },
+                        { label: '3 horas', min: 180 },
+                        { label: 'Resto do dia', min: -1 }
+                      ].map(item => {
+                        const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
+                        const [hF, mF] = (bloqueioHoraFim || '10:00').split(':').map(Number);
+                        const currentDiff = (hF * 60 + mF) - (hI * 60 + mI);
+                        const isActive = item.min === -1 
+                          ? bloqueioHoraFim === (expedienteDoDia?.fim || '20:00')
+                          : currentDiff === item.min;
+
+                        return (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => aplicarDuracaoRapidaBloqueio(item.min)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                              isActive
+                                ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                                : 'bg-white text-[#5A4535] border-[#EFECE6] hover:border-[#8C6D58] hover:bg-[#F6ECE8]'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Painel Visual de Horários Disponíveis e Ocupados */}
                 {!diaFechado && (
@@ -1739,7 +1941,9 @@ export const Agenda: React.FC<AgendaProps> = ({
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[11px] font-bold text-[#5A4535] flex items-center gap-1.5">
                             <CheckCircle size={13} className="text-emerald-600" />
-                            <span>Horários Livres Disponíveis ({analiseHorarios.livres.length})</span>
+                            <span>
+                              {isBloqueio ? 'Horários Livres para Início' : 'Horários Livres Disponíveis'} ({analiseHorarios.livres.length})
+                            </span>
                           </span>
                           <span className="text-[10px] text-[#8C7A6B]">Toque para selecionar</span>
                         </div>
