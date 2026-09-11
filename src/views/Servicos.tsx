@@ -36,6 +36,7 @@ import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, Cata
 import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
 import { otimizarImagemWebP, gerarThumbnailWebP } from '../utils/imageOptimizer';
+import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
 
 // Compressão automática em WebP ultra-leve para exibição rápida e economia de banda
 const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.75): Promise<string> => {
@@ -1308,30 +1309,24 @@ export const Servicos: React.FC = () => {
                             })()}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between text-xs text-[#5A4535] pt-1.5 border-t border-[#EFECE6]/60">
-                          <span>Duração por sessão:</span>
-                          <span className="font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200 text-[10px]">
-                            ⏱️ {(() => {
-                              const dur = (plano.itens_servicos && plano.itens_servicos.length > 0)
-                                ? plano.itens_servicos.reduce((acc, it) => {
-                                    const s = servicos.find(serv => serv.id === it.servico_id);
-                                    return acc + (s?.duracao_minutos || 0);
-                                  }, 0)
-                                : (plano.servicos_permitidos_ids && plano.servicos_permitidos_ids.length > 0)
-                                  ? plano.servicos_permitidos_ids.reduce((acc, sid) => {
-                                      const s = servicos.find(serv => serv.id === sid);
-                                      return acc + (s?.duracao_minutos || 0);
-                                    }, 0)
-                                  : 60;
-                              
-                              const profs = Array.from(new Set((plano.itens_servicos || []).map(it => it.profissional_id).filter(Boolean)));
-                              if (profs.length > 1 && dur > 0) {
-                                const durDividida = Math.round(dur / profs.length);
-                                return `${durDividida} min (${dur}m total ÷ ${profs.length} profissionais simultâneas)`;
-                              }
-                              return `${dur} min`;
-                            })()}
-                          </span>
+                        <div className="flex flex-col gap-1 text-xs text-[#5A4535] pt-1.5 border-t border-[#EFECE6]/60">
+                          <div className="flex items-center justify-between">
+                            <span>Duração por sessão:</span>
+                            <span className="font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200 text-[10px]">
+                              ⏱️ {obterTextoResumoSessoesVip(plano, servicos).duracaoResumo}
+                            </span>
+                          </div>
+                          {(() => {
+                            const resumo = obterTextoResumoSessoesVip(plano, servicos);
+                            if (resumo.detalhePorSessao && resumo.detalhePorSessao.includes('•')) {
+                              return (
+                                <span className="text-[10px] text-amber-800 bg-amber-50/80 p-1.5 rounded border border-amber-200/50 leading-tight">
+                                  {resumo.detalhePorSessao}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                       </div>
 

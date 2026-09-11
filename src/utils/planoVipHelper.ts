@@ -288,3 +288,210 @@ export const extrairServicosPlanoHelper = (
 
   return ids;
 };
+
+export interface ProcedimentoSessaoVip {
+  servico_id: string;
+  nome_servico: string;
+  profissional_id?: string;
+  duracao_minutos: number;
+}
+
+/**
+ * Retorna os procedimentos/serviços configurados exatamente para uma sessão específica de um plano VIP
+ */
+export const obterConfiguracaoSessaoVip = (
+  plano?: PlanoAssinatura | null,
+  sessaoNumero: number = 1,
+  todosServicos: Servico[] = []
+): ProcedimentoSessaoVip[] => {
+  if (!plano) return [];
+
+  const procs: ProcedimentoSessaoVip[] = [];
+
+  // 1. Prioridade máxima: distribuicao_sessoes configurada
+  if (plano.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+    const itensSessao = plano.distribuicao_sessoes.filter(d => d.sessao_numero === sessaoNumero);
+    if (itensSessao.length > 0) {
+      itensSessao.forEach(d => {
+        const s = todosServicos.find(serv => serv.id === d.servico_id);
+        procs.push({
+          servico_id: d.servico_id,
+          nome_servico: d.nome_servico || s?.nome || 'Procedimento VIP',
+          profissional_id: d.profissional_id,
+          duracao_minutos: d.duracao_minutos || s?.duracao_minutos || 60
+        });
+      });
+      return procs;
+    }
+  }
+
+  // 2. Segunda prioridade: itens_servicos com array sessoes
+  if (plano.itens_servicos && plano.itens_servicos.length > 0) {
+    const itensComSessao = plano.itens_servicos.filter(it => it.sessoes && it.sessoes.includes(sessaoNumero));
+    if (itensComSessao.length > 0) {
+      itensComSessao.forEach(it => {
+        const s = todosServicos.find(serv => serv.id === it.servico_id);
+        procs.push({
+          servico_id: it.servico_id,
+          nome_servico: it.nome_servico || s?.nome || 'Procedimento VIP',
+          profissional_id: it.profissional_id,
+          duracao_minutos: s?.duracao_minutos || 60
+        });
+      });
+      return procs;
+    }
+
+    // Se nenhum item tem sessoes explícitas (ex: plano simples):
+    plano.itens_servicos.forEach(it => {
+      const s = todosServicos.find(serv => serv.id === it.servico_id);
+      procs.push({
+        servico_id: it.servico_id,
+        nome_servico: it.nome_servico || s?.nome || 'Procedimento VIP',
+        profissional_id: it.profissional_id,
+        duracao_minutos: s?.duracao_minutos || 60
+      });
+    });
+    return procs;
+  }
+
+  // 3. Fallback: servicos_permitidos_ids
+  if (plano.servicos_permitidos_ids && plano.servicos_permitidos_ids.length > 0) {
+    const sid = plano.servicos_permitidos_ids[0];
+    const s = todosServicos.find(serv => serv.id === sid);
+    procs.push({
+      servico_id: sid,
+      nome_servico: s?.nome || 'Procedimento VIP',
+      duracao_minutos: s?.duracao_minutos || 60
+    });
+    return procs;
+  }
+
+  return procs;
+};
+
+/**
+ * Calcula a duração exata em minutos de uma sessão do Clube VIP,
+ * respeitando atendimento simultâneo (em paralelo) se houver profissionais distintas.
+ */
+export const calcularDuracaoSessaoVip = (
+  plano?: PlanoAssinatura | null,
+  sessaoNumero: number = 1,
+  todosServicos: Servico[] = []
+): number => {
+  if (!plano) return 60;
+
+  const procs = obterConfiguracaoSessaoVip(plano, sessaoNumero, todosServicos);
+  if (procs.length === 0) {
+    return 60;
+  }
+
+  // Agrupa procedimentos por profissional para considerar trabalho simultâneo (4 mãos)
+  const porProf = new Map<string, number>();
+  procs.forEach(p => {
+    const profKey = p.profissional_id || 'padrao';
+    const durAtual = porProf.get(profKey) || 0;
+    porProf.set(profKey, durAtual + p.duracao_minutos);
+  });
+
+  const duracoes = Array.from(porProf.values());
+  const maxDur = Math.max(...duracoes);
+
+  return maxDur > 0 ? maxDur : 60;
+};
+
+/**
+ * Retorna os IDs dos serviços configurados para uma sessão específica do plano VIP
+ */
+export const obterServicosIdsSessaoVip = (
+  plano?: PlanoAssinatura | null,
+  sessaoNumero: number = 1,
+  todosServicos: Servico[] = []
+): string[] => {
+  const procs = obterConfiguracaoSessaoVip(plano, sessaoNumero, todosServicos);
+  const ids = procs.map(p => p.servico_id).filter(Boolean);
+  if (ids.length > 0) return ids;
+
+  return extrairServicosPlanoHelper(plano, null, todosServicos);
+};
+
+/**
+ * Retorna o resumo formatado da duração das sessões do plano para exibição nos cards e catálogo
+ */
+export const obterTextoResumoSessoesVip = (
+  plano?: PlanoAssinatura | null,
+  todosServicos: Servico[] = []
+): {
+  duracaoResumo: string;
+  detalhePorSessao: string;
+  duracoesPorSessao: { sessao: number; duracao: number; procedimentos: string }[];
+} => {
+  if (!plano) {
+    return {
+      duracaoResumo: '60 min / sessão',
+      detalhePorSessao: '',
+      duracoesPorSessao: []
+    };
+  }
+
+  const totalSessoes = plano.qtd_procedimentos_mes || 4;
+  const lista: { sessao: number; duracao: number; procedimentos: string }[] = [];
+
+  let numMaxSessoes = 4;
+  if (plano.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+    numMaxSessoes = Math.max(...plano.distribuicao_sessoes.map(d => d.sessao_numero));
+  } else if (plano.itens_servicos) {
+    const sessoesNosItens = plano.itens_servicos.flatMap(it => it.sessoes || []);
+    if (sessoesNosItens.length > 0) {
+      numMaxSessoes = Math.max(...sessoesNosItens);
+    } else {
+      numMaxSessoes = Math.max(1, Math.round(30 / (plano.frequencia_dias || 7)));
+    }
+  }
+
+  for (let s = 1; s <= numMaxSessoes; s++) {
+    const procs = obterConfiguracaoSessaoVip(plano, s, todosServicos);
+    if (procs.length > 0) {
+      const dur = calcularDuracaoSessaoVip(plano, s, todosServicos);
+      const nomes = procs.map(p => p.nome_servico).join(' + ');
+      lista.push({ sessao: s, duracao: dur, procedimentos: nomes });
+    }
+  }
+
+  if (lista.length === 0) {
+    return {
+      duracaoResumo: '60 min / sessão',
+      detalhePorSessao: '',
+      duracoesPorSessao: []
+    };
+  }
+
+  const todasDuracoes = lista.map(l => l.duracao);
+  const minDur = Math.min(...todasDuracoes);
+  const maxDur = Math.max(...todasDuracoes);
+
+  let duracaoResumo = `${minDur} min / sessão`;
+  if (minDur !== maxDur) {
+    duracaoResumo = `${minDur} a ${maxDur} min / sessão`;
+  }
+
+  const mapaDurSessoes = new Map<number, number[]>();
+  lista.forEach(item => {
+    const arr = mapaDurSessoes.get(item.duracao) || [];
+    arr.push(item.sessao);
+    mapaDurSessoes.set(item.duracao, arr);
+  });
+
+  const partesDetalhe: string[] = [];
+  mapaDurSessoes.forEach((sessoes, dur) => {
+    const sessoesStr = sessoes.length === 1 
+      ? `Sessão ${sessoes[0]}` 
+      : `Sessões ${sessoes.slice(0, -1).join(', ')} e ${sessoes[sessoes.length - 1]}`;
+    partesDetalhe.push(`${sessoesStr}: ${dur} min`);
+  });
+
+  return {
+    duracaoResumo,
+    detalhePorSessao: partesDetalhe.join(' • '),
+    duracoesPorSessao: lista
+  };
+};

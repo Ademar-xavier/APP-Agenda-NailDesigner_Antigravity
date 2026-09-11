@@ -27,6 +27,7 @@ import {
   salvarListaEsperaSupabase
 } from '../services/supabase';
 import { dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
+import { obterServicosIdsSessaoVip, calcularDuracaoSessaoVip, obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -139,14 +140,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     return (planosAssinatura || []).find(p => p.id === planoVipEscolhidoId) || null;
   }, [planoVipEscolhidoId, planosAssinatura]);
 
-  // Se o cliente acessou diretamente com um Plano VIP pré-selecionado, sincroniza um serviço representativo se vazio
+  // Se o cliente acessou diretamente com um Plano VIP pré-selecionado, sincroniza os serviços da 1ª sessão se vazio
   useEffect(() => {
     if (planoVipEscolhido && servicosSelecionados.length === 0) {
-      const sIds = (planoVipEscolhido.itens_servicos || []).map(i => i.servico_id).filter(Boolean);
+      const sIds = obterServicosIdsSessaoVip(planoVipEscolhido, 1, servicos);
       if (sIds.length > 0) {
         setServicosSelecionados(sIds);
-      } else if (planoVipEscolhido.servicos_permitidos_ids && planoVipEscolhido.servicos_permitidos_ids.length > 0) {
-        setServicosSelecionados([planoVipEscolhido.servicos_permitidos_ids[0]]);
       } else if (servicos.length > 0) {
         setServicosSelecionados([servicos[0].id]);
       }
@@ -235,24 +234,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   // Duração e Preço Totais
   const duracaoTotal = useMemo(() => {
     if (planoVipEscolhido) {
-      if (planoVipEscolhido.itens_servicos && planoVipEscolhido.itens_servicos.length > 0) {
-        const dur = planoVipEscolhido.itens_servicos.reduce((acc, it) => {
-          const s = servicos.find(item => item.id === it.servico_id);
-          return acc + (s?.duracao_minutos || 0);
-        }, 0);
-        const profs = Array.from(new Set(planoVipEscolhido.itens_servicos.map(it => it.profissional_id).filter(Boolean)));
-        if (profs.length > 1 && dur > 0) {
-          return Math.max(30, Math.round(dur / profs.length));
-        }
-        if (dur > 0) return dur;
-      }
-      if (planoVipEscolhido.servicos_permitidos_ids && planoVipEscolhido.servicos_permitidos_ids.length > 0) {
-        const dur = planoVipEscolhido.servicos_permitidos_ids.reduce((acc, sid) => {
-          const s = servicos.find(item => item.id === sid);
-          return acc + (s?.duracao_minutos || 0);
-        }, 0);
-        if (dur > 0) return dur;
-      }
+      const durS1 = calcularDuracaoSessaoVip(planoVipEscolhido, 1, servicos);
+      if (durS1 > 0) return durS1;
       return 60;
     }
     return servicosSelecionados.reduce((acc, id) => {
@@ -901,22 +884,20 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                                 })()}
                               </span>
                               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
-                                <Clock size={11} /> {(() => {
-                                  const dur = (p.itens_servicos && p.itens_servicos.length > 0)
-                                    ? p.itens_servicos.reduce((acc, it) => {
-                                        const s = servicos.find(serv => serv.id === it.servico_id);
-                                        return acc + (s?.duracao_minutos || 0);
-                                      }, 0)
-                                    : (p.servicos_permitidos_ids && p.servicos_permitidos_ids.length > 0)
-                                      ? p.servicos_permitidos_ids.reduce((acc, sid) => {
-                                          const s = servicos.find(serv => serv.id === sid);
-                                          return acc + (s?.duracao_minutos || 0);
-                                        }, 0)
-                                      : 60;
-                                  return `${dur} min / sessão`;
-                                })()}
+                                <Clock size={11} /> {obterTextoResumoSessoesVip(p, servicos).duracaoResumo}
                               </span>
                             </div>
+                            {(() => {
+                              const resumo = obterTextoResumoSessoesVip(p, servicos);
+                              if (resumo.detalhePorSessao && resumo.detalhePorSessao.includes('•')) {
+                                return (
+                                  <div className="text-[9.5px] text-amber-800 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200/50 mt-1">
+                                    {resumo.detalhePorSessao}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           <div className="text-right">
                             <span className="text-sm font-extrabold text-amber-900 block">
