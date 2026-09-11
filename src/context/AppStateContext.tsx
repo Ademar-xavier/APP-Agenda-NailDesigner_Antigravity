@@ -667,7 +667,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const saved = localStorage.getItem('nail_agendamentos');
       if (saved) {
         const parsed: Agendamento[] = JSON.parse(saved);
-        return parsed.filter(a => !/^a\d+$/.test(a.id) || !a.inicio.startsWith('2026-08'));
+        return parsed.filter(a => 
+          (!/^a\d+$/.test(a.id) || !a.inicio.startsWith('2026-08')) &&
+          !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') &&
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
+        );
       }
       return agendamentosIniciais;
     } catch (e) {
@@ -1110,8 +1114,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 2. Agendamentos da Nuvem
       if (dados.agendamentos && dados.agendamentos.length > 0) {
+        const agendamentosValidos = dados.agendamentos.filter((a: any) => 
+          !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') && 
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
+        );
+
         // Hidrata pago_com_clube, plano_id e reconcilia o valor do plano VIP na Sessão 1 se estiver zerado ou divergente
-        const agsFormatados = dados.agendamentos.map((a: any) => {
+        const agsFormatados = agendamentosValidos.map((a: any) => {
           const isVip = !!(a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑'));
           const isSessao1Vip = isVip && (a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:')) && !a.observacoes?.includes('Sessão 2') && !a.observacoes?.includes('Sessão 3') && !a.observacoes?.includes('Sessão 4');
 
@@ -1146,7 +1155,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         // Hidrata itensAgendamento a partir de itens_servicos de cada agendamento
         const novosItensAgendamento: { [key: string]: string[] } = {};
-        dados.agendamentos.forEach((a: any) => {
+        agendamentosValidos.forEach((a: any) => {
           if (a.itens_servicos && Array.isArray(a.itens_servicos) && a.itens_servicos.length > 0) {
             novosItensAgendamento[a.id] = a.itens_servicos;
           }
@@ -3115,7 +3124,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteAgendamento = (id: string) => {
     limparFocoAtivo();
-    setAgendamentos(prev => prev.filter(a => a.id !== id));
+    setAgendamentos(prev => {
+      const filtrados = prev.filter(a => a.id !== id);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(filtrados)); } catch (e) {}
+      return filtrados;
+    });
+    setItensAgendamento(prev => {
+      const copia = { ...prev };
+      delete copia[id];
+      try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(copia)); } catch (e) {}
+      return copia;
+    });
     deletarAgendamentoSupabase(id);
     marcarAvisoComoLido(id);
     mostrarNotificacaoGlobal('✅ Agendamento excluído e sincronizado com a nuvem!');

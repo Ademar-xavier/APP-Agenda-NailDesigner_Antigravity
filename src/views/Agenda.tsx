@@ -535,8 +535,12 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Filtrar e organizar agendamentos para o dia selecionado (incluindo horário de almoço das profissionais)
   const agendamentosDoDia = useMemo(() => {
-    // 1. Agendamentos reais desta data
-    const reais = agendamentos.filter(a => a.inicio.startsWith(dataSelecionada));
+    // 1. Agendamentos reais desta data (excluindo bloqueios cancelados e agendamentos excluídos)
+    const reais = agendamentos.filter(a => 
+      a.inicio.startsWith(dataSelecionada) &&
+      !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
+    );
 
     // 2. Blocos de almoço padrão (se não houver agendamento real de almoço ou cancelamento pontual nesta data)
     const blocosAlmocoVirtuais: Agendamento[] = [];
