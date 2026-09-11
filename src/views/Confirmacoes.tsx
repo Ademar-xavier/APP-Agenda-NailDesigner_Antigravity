@@ -386,14 +386,26 @@ export const Confirmacoes: React.FC = () => {
     }
   });
 
-  // Manutenções a Confirmar (apenas as que vencem nos próximos 7 dias ou atrasadas para não poluir os campos)
-  const manutencoesAConfirmar = useMemo(() => {
+  // Manutenções a Confirmar (com suporte a filtro de próximos 7 dias ou todas)
+  const [filtroManutencao, setFiltroManutencao] = useState<'proximos7dias' | 'todas'>('proximos7dias');
+
+  const todasManutencoes = useMemo(() => {
     const recs = obterRecomendacoesManutencao();
     return recs
       .filter(r => !dispensadosManutencao.includes(`${r.cliente.id}_${r.servico.id}`))
-      .filter(r => r.diasRestantes <= 7)
       .sort((a, b) => a.dataSugerida.localeCompare(b.dataSugerida));
   }, [obterRecomendacoesManutencao, dispensadosManutencao]);
+
+  const manutencoesAConfirmar = useMemo(() => {
+    if (filtroManutencao === 'todas') {
+      return todasManutencoes;
+    }
+    return todasManutencoes.filter(r => r.diasRestantes <= 7);
+  }, [todasManutencoes, filtroManutencao]);
+
+  const totalProximos7Dias = useMemo(() => {
+    return todasManutencoes.filter(r => r.diasRestantes <= 7).length;
+  }, [todasManutencoes]);
 
   const [confirmarManutencaoItem, setConfirmarManutencaoItem] = useState<{
     cliente: Cliente;
@@ -854,7 +866,7 @@ export const Confirmacoes: React.FC = () => {
         {[
           { id: 'a_confirmar', label: 'A confirmar', count: aConfirmar.length, icon: BellRing, temAviso: temAvisoAConfirmar },
           { id: 'confirmados', label: 'Confirmados', count: confirmados.length, icon: UserCheck, temAviso: temAvisoConfirmados },
-          { id: 'manutencao', label: 'Manutenção a confirmar', count: manutencoesAConfirmar.length, icon: RotateCcw, temAviso: false },
+          { id: 'manutencao', label: 'Manutenção a confirmar', count: totalProximos7Dias, icon: RotateCcw, temAviso: false },
           { id: 'lista_espera', label: 'Lista de espera', count: listaEsperaAtiva.length, icon: Users, temAviso: temAvisoEspera },
           { id: 'cancelados', label: 'Cancelados', count: cancelados.length, icon: XCircle, temAviso: temAvisoCancelados }
         ].map((tab) => {
@@ -1075,6 +1087,36 @@ export const Confirmacoes: React.FC = () => {
         {/* ABA: MANUTENÇÃO A CONFIRMAR */}
         {activeTab === 'manutencao' && (
           <>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3 bg-white p-2.5 rounded-xl border border-[#EFECE6] shadow-2xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setFiltroManutencao('proximos7dias')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    filtroManutencao === 'proximos7dias'
+                      ? 'bg-[#8C6D58] text-white shadow-2xs'
+                      : 'bg-[#FAF9F6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-stone-100 border border-[#EFECE6]'
+                  }`}
+                >
+                  ⚡ Próximos 7 dias & Atrasadas ({totalProximos7Dias})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroManutencao('todas')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    filtroManutencao === 'todas'
+                      ? 'bg-[#8C6D58] text-white shadow-2xs'
+                      : 'bg-[#FAF9F6] text-[#8C7A6B] hover:text-[#5A4535] hover:bg-stone-100 border border-[#EFECE6]'
+                  }`}
+                >
+                  📋 Todas as Recomendações ({todasManutencoes.length})
+                </button>
+              </div>
+              <span className="text-[11px] text-[#8C7A6B]">
+                Baseado em atendimentos já realizados
+              </span>
+            </div>
+
             {manutencoesAConfirmar.length === 0 ? (
               <div className="text-center py-12 text-[#8C7A6B] bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
                 <RotateCcw size={36} className="mx-auto text-[#E8DEC9] mb-3" />
