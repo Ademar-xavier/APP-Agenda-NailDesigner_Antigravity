@@ -778,6 +778,10 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     // 1. Validações preliminares de dados
     if (!isBloqueio) {
+      if (!profissionalId || profissionalId === 'todas') {
+        setErrorAgendamento('Selecione uma profissional específica para o atendimento.');
+        return;
+      }
       if (clienteExistente && !clienteId) {
         setErrorAgendamento('Selecione uma cliente.');
         return;
@@ -890,6 +894,48 @@ export const Agenda: React.FC<AgendaProps> = ({
     const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
     const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
     const obsFinal = `${prefixoVip}${obsAgendamento}`.trim() || (isBloqueio ? 'Bloqueio Pessoal' : '');
+
+    // Caso Especial: Bloqueio do Salão Completo (Todas as Profissionais)
+    if (isBloqueio && profissionalId === 'todas') {
+      const profissionaisAtivas = equipe.filter(u => u.ativo);
+      const profsToBlock = profissionaisAtivas.length > 0 ? profissionaisAtivas : equipe;
+      const obsBloqueioGeral = obsAgendamento ? `[Salão Completo] ${obsAgendamento}` : 'Bloqueio de Salão Completo';
+
+      profsToBlock.forEach(prof => {
+        addAgendamento({
+          cliente_id: 'bloqueado',
+          profissional_id: prof.id,
+          inicio: dataInicioStr,
+          fim: dataFimStr,
+          status: 'bloqueado',
+          valor_total: 0,
+          valor_sinal: 0,
+          pago_com_clube: false,
+          observacoes: obsBloqueioGeral,
+          origem: 'admin'
+        }, []);
+      });
+
+      // Limpar formulário
+      setClienteId('');
+      setNovoClienteNome('');
+      setNovoClienteFone('');
+      setServicosSelecionados([]);
+      setObsAgendamento('');
+      setIsBloqueio(false);
+      setBloqueioHoraFim('10:00');
+      setCobrarSinal(false);
+      setValorSinalManual('');
+      setAgendarComoVip(false);
+      setPlanoVipContratarId('');
+      setRecorrenciaAtiva(false);
+      setRecorrenciaTipo('quinzenal');
+      setRecorrenciaIntervaloDias(15);
+      setRecorrenciaRepeticoes(4);
+      setRecorrenciaCustomDias(15);
+      handleCloseLocalModal();
+      return;
+    }
 
     const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
       ? {
@@ -1294,7 +1340,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                   <input 
                     type="checkbox" 
                     checked={isBloqueio}
-                    onChange={(e) => setIsBloqueio(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsBloqueio(checked);
+                      if (!checked && profissionalId === 'todas') {
+                        setProfissionalId(currentUser?.id || equipe.find(u => u.ativo)?.id || '');
+                      }
+                    }}
                     className="rounded border-[#EFECE6] text-[#8C6D58] focus:ring-[#8C6D58] h-4 w-4"
                   />
                 </div>
@@ -1660,7 +1712,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     checked={selecionado}
                                     onChange={(e) => {
                                       if (e.target.checked) {
-                                        setServicosSelecionados(prev => [...prev, s.id]);
+                                        if (s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0) {
+                                          setServicosSelecionados(prev => [
+                                            ...prev.filter(id => !s.servicos_pacote!.includes(id)),
+                                            s.id
+                                          ]);
+                                        } else {
+                                          const combosQueContem = servicos
+                                            .filter(other => other.is_pacote && other.servicos_pacote?.includes(s.id))
+                                            .map(c => c.id);
+                                          setServicosSelecionados(prev => [
+                                            ...prev.filter(id => !combosQueContem.includes(id)),
+                                            s.id
+                                          ]);
+                                        }
                                       } else {
                                         setServicosSelecionados(prev => prev.filter(id => id !== s.id));
                                       }
@@ -1668,7 +1733,19 @@ export const Agenda: React.FC<AgendaProps> = ({
                                     className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
                                   />
                                   <div>
-                                    <span className="font-semibold block text-xs">{s.nome}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-semibold block text-xs">{s.nome}</span>
+                                      {s.is_pacote && (
+                                        <span className="text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 px-1 py-0.2 rounded-xs">
+                                          Combo
+                                        </span>
+                                      )}
+                                    </div>
+                                    {s.is_pacote && s.servicos_pacote && s.servicos_pacote.length > 0 && (
+                                      <span className="text-[9px] text-[#8C7A6B] block">
+                                        Inclui: {servicos.filter(sub => s.servicos_pacote?.includes(sub.id)).map(sub => sub.nome).join(' + ')}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <span className="font-bold text-[10px]">{formatarMoeda(s.preco)}</span>
@@ -1788,8 +1865,11 @@ export const Agenda: React.FC<AgendaProps> = ({
                         value={profissionalId}
                         onChange={(e) => setProfissionalId(e.target.value)}
                         disabled={currentUser?.perfil === 'profissional'}
-                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] disabled:opacity-75"
+                        className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] disabled:opacity-75 font-semibold"
                       >
+                        {currentUser?.perfil !== 'profissional' && (
+                          <option value="todas">🌟 Todas as Profissionais (Salão Completo)</option>
+                        )}
                         {equipe
                           .filter(u => u.ativo)
                           .map(u => (

@@ -168,7 +168,17 @@ export const salvarAgendamentoSupabase = async (
 ) => {
   try {
     // 1. Garante que o cliente existe no banco antes de inserir o agendamento (evita violar agendamentos_cliente_id_fkey)
-    if (agendamento.cliente_id && agendamento.cliente_id !== 'bloqueado') {
+    if (agendamento.cliente_id === 'bloqueado') {
+      const { data: bExistente } = await supabase.from('clientes').select('id').eq('id', 'bloqueado').maybeSingle();
+      if (!bExistente) {
+        await supabase.from('clientes').upsert({
+          id: 'bloqueado',
+          nome: 'Horário Bloqueado',
+          telefone: '00000000000',
+          consentimento_imagem: false
+        });
+      }
+    } else if (agendamento.cliente_id) {
       const { data: cliExistente } = await supabase.from('clientes').select('id').eq('id', agendamento.cliente_id).maybeSingle();
       if (!cliExistente) {
         let cliParaSalvar: any = clienteInfo;

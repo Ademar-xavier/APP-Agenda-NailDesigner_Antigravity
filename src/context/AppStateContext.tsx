@@ -2370,20 +2370,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ids = agend.itens_servicos;
       }
     }
-    const directServs = servicos.filter(s => ids.includes(s.id));
-    const expandedServs: Servico[] = [];
-    directServs.forEach(s => {
-      expandedServs.push(s);
-      if (s.is_pacote && s.servicos_pacote) {
-        s.servicos_pacote.forEach(subId => {
-          const subServ = servicos.find(sub => sub.id === subId);
-          if (subServ && !expandedServs.some(item => item.id === subId)) {
-            expandedServs.push(subServ);
-          }
-        });
-      }
-    });
-    return expandedServs;
+    return servicos.filter(s => ids.includes(s.id));
+  };
+
+  // --- Formatação Segura de Data/Hora Local (sem distorção UTC) ---
+  const formatarDataHoraLocal = (d: Date): string => {
+    const ano = d.getFullYear();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    const hora = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const seg = String(d.getSeconds()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
   };
 
   // --- Lógica de Conflitos (100% à prova de distorção de fuso horário UTC vs Local) ---
@@ -2464,15 +2462,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!fimStr) {
       const dataInicio = new Date(novoAgendamento.inicio);
       const dataFim = new Date(dataInicio.getTime() + duracaoTotal * 60 * 1000);
-      
-      // Formata em horário local (sem a distorção de fuso UTC do toISOString)
-      const ano = dataFim.getFullYear();
-      const mes = String(dataFim.getMonth() + 1).padStart(2, '0');
-      const dia = String(dataFim.getDate()).padStart(2, '0');
-      const hora = String(dataFim.getHours()).padStart(2, '0');
-      const min = String(dataFim.getMinutes()).padStart(2, '0');
-      const seg = String(dataFim.getSeconds()).padStart(2, '0');
-      fimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
+      fimStr = formatarDataHoraLocal(dataFim);
     }
     
     const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, novoAgendamento.profissional_id);
@@ -2556,13 +2546,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         const [hR, mR] = horaStrLimpa.split(':').map(Number);
         const dRepFim = new Date(anoRep, dRep.getMonth(), Number(diaRep), hR, mR + duracaoTotal);
-        const anoRepFim = dRepFim.getFullYear();
-        const mesRepFim = String(dRepFim.getMonth() + 1).padStart(2, '0');
-        const diaRepFim = String(dRepFim.getDate()).padStart(2, '0');
-        const hRepFim = String(dRepFim.getHours()).padStart(2, '0');
-        const mRepFim = String(dRepFim.getMinutes()).padStart(2, '0');
-        const sRepFim = String(dRepFim.getSeconds()).padStart(2, '0');
-        const fimRepStr = `${anoRepFim}-${mesRepFim}-${diaRepFim}T${hRepFim}:${mRepFim}:${sRepFim}`;
+        const fimRepStr = formatarDataHoraLocal(dRepFim);
 
         const idRep = gerarCodigoReserva();
         const obsRep = `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão ${rep + 1} de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes ? novoAgendamento.observacoes.replace(/\[🔁.*?\]\s*/g, '') : ''}`.trim();
@@ -2856,10 +2840,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const duracaoTotal = servicosEscolhidos.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
     const nomesServicosNovos = servicosEscolhidos.map(s => s.nome).join(' + ');
 
-    // Calcula novo horário de término preservando o fuso/data original de início
+    // Calcula novo horário de término preservando o fuso/data original de início no formato local
     const dInicio = new Date(ag.inicio);
     const dFim = new Date(dInicio.getTime() + duracaoTotal * 60000);
-    const fimStr = dFim.toISOString();
+    const fimStr = formatarDataHoraLocal(dFim);
+    const profEfetiva = novaProfissionalId || ag.profissional_id;
+
+    // 1. Validação estrita de conflito no agendamento atual
+    const conflitoAtual = checkConflitoHorario(ag.inicio, fimStr, profEfetiva, ag.id);
+    if (conflitoAtual) {
+      mostrarAlerta({
+        titulo: 'Conflito de Horário Detectado',
+        mensagem: 'A nova duração deste atendimento ultrapassa o tempo livre e colide com outro agendamento ativo desta profissional. A alteração não foi salva para evitar sobreposição.',
+        tipo: 'erro'
+      });
+      return;
+    }
 
     // Mantém isenção se for sessão recorrente VIP inclusa no plano
     const isSessaoVipInclusa = Boolean(ag.pago_com_clube && ag.valor_total === 0);
@@ -2875,7 +2871,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const atualizado: Agendamento = {
       ...ag,
-      profissional_id: novaProfissionalId || ag.profissional_id,
+      profissional_id: profEfetiva,
       fim: fimStr,
       valor_total: novoValorTotal,
       observacoes: obsAtualizada
@@ -2883,6 +2879,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Identifica agendamentos futuros da mesma série recorrente / plano VIP se solicitado
     const futurosAtualizados: { ag: Agendamento; servicosIds: string[] }[] = [];
+    const conflitosFuturosDatas: string[] = [];
 
     if (ajustarFuturos) {
       const isVip = !!(
@@ -2894,7 +2891,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       agendamentos.forEach(a => {
         if (a.id === agendamentoId) return;
-        if (a.status === 'cancelado' || a.status === 'concluido') return false;
+        if (a.status === 'cancelado' || a.status === 'concluido') return;
         if (new Date(a.inicio) <= new Date(ag.inicio)) return;
 
         let ehDaMesmaSerie = false;
@@ -2927,6 +2924,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (ehDaMesmaSerie) {
           const dIniFut = new Date(a.inicio);
           const dFimFut = new Date(dIniFut.getTime() + duracaoTotal * 60000);
+          const fimFutStr = formatarDataHoraLocal(dFimFut);
+
+          // Protege cada agendamento futuro contra conflitos de horário com outros clientes!
+          const temConflitoFuturo = checkConflitoHorario(a.inicio, fimFutStr, profEfetiva, a.id);
+          if (temConflitoFuturo) {
+            const dataFmt = new Date(a.inicio).toLocaleDateString('pt-BR');
+            conflitosFuturosDatas.push(dataFmt);
+            return; // Ignora apenas esta data conflitante para não sobrepor outro agendamento
+          }
+
           const isVipFutIncluso = Boolean(a.pago_com_clube && a.valor_total === 0);
           const novoValorFut = isVipFutIncluso ? 0 : novoValorTotal;
 
@@ -2938,8 +2945,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           futurosAtualizados.push({
             ag: {
               ...a,
-              profissional_id: novaProfissionalId || a.profissional_id,
-              fim: dFimFut.toISOString(),
+              profissional_id: profEfetiva,
+              fim: fimFutStr,
               valor_total: novoValorFut,
               observacoes: obsFut
             },
@@ -2974,7 +2981,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       salvarAgendamentoSupabase(item.ag, item.servicosIds);
     });
 
-    if (futurosAtualizados.length > 0) {
+    if (conflitosFuturosDatas.length > 0) {
+      mostrarAlerta({
+        titulo: 'Aviso de Recorrências Conflitantes',
+        mensagem: `O atendimento atual foi atualizado. Porém, ${conflitosFuturosDatas.length} sessão(ões) futura(s) nas datas (${conflitosFuturosDatas.join(', ')}) não puderam ser estendidas pois colidiriam com horários de outras clientes já agendadas!`,
+        tipo: 'aviso'
+      });
+    } else if (futurosAtualizados.length > 0) {
       mostrarNotificacaoGlobal(`✅ Agendamento atualizado e propagado para ${futurosAtualizados.length} agendamento(s) futuro(s)!`);
     } else {
       mostrarNotificacaoGlobal('✅ Procedimento e profissional atualizados com sucesso!');
