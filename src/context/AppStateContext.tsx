@@ -232,6 +232,18 @@ interface AppStateContextType {
   deleteMaterial: (id: string) => void;
 
   // Auxiliares
+  ajustarHorarioAlmoco: (params: {
+    data: string;
+    profissionalId: string;
+    inicio: string;
+    fim: string;
+    escopo: 'dia' | 'profissional' | 'salao';
+  }) => Promise<void>;
+  excluirOuLiberarAlmoco: (params: {
+    data: string;
+    profissionalId: string;
+    escopo: 'dia' | 'profissional' | 'salao';
+  }) => Promise<void>;
   checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string) => boolean;
   obterServicosDeAgendamento: (agendamentoId: string) => Servico[];
   obterRecomendacoesManutencao: () => { 
@@ -316,8 +328,8 @@ const clientesIniciais: Cliente[] = [
 
 // Equipe inicial com dados reais e senha padrão para comercialização
 const equipeInicial: Usuario[] = [
-  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', especialidade: 'Especialista Master', ativo: true, senha: 'admin' },
-  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', especialidade: 'Designer', ativo: true, senha: 'admin' }
+  { id: 'u1', nome: 'Sheila Santos', email: 'sheila@agenda.com', telefone: '35 99714-1856', perfil: 'admin', especialidade: 'Especialista Master', ativo: true, senha: 'admin', horario_almoco_ativo: true, horario_almoco_inicio: '12:00', horario_almoco_fim: '13:00' },
+  { id: 'u2', nome: 'Lurdinha', email: 'lurdinha@agenda.com', telefone: '35 99182-1220', perfil: 'profissional', especialidade: 'Designer', ativo: true, senha: 'admin', horario_almoco_ativo: true, horario_almoco_inicio: '12:00', horario_almoco_fim: '13:00' }
 ];
 
 // Agendamentos, pagamentos e lista de espera iniciam vazios (alimentados pelo banco de dados da nuvem)
@@ -1228,7 +1240,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return {
             ...u,
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
-            servicos_habilitados: servsHabilitados
+            servicos_habilitados: servsHabilitados,
+            horario_almoco_ativo: u.horario_almoco_ativo !== undefined ? u.horario_almoco_ativo : (salvoEmConfig?.horario_almoco_ativo !== undefined ? salvoEmConfig.horario_almoco_ativo : true),
+            horario_almoco_inicio: u.horario_almoco_inicio || salvoEmConfig?.horario_almoco_inicio || '12:00',
+            horario_almoco_fim: u.horario_almoco_fim || salvoEmConfig?.horario_almoco_fim || '13:00'
           };
         });
 
@@ -2020,6 +2035,254 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setEquipe(prev => prev.map(u => u.id === id ? { ...u, ativo: !u.ativo } : u));
   };
 
+  // --- Gestão de Horário de Almoço das Profissionais / Salão ---
+  const ajustarHorarioAlmoco = async (params: {
+    data: string; // YYYY-MM-DD
+    profissionalId: string; // ID da profissional ou 'todas'
+    inicio: string; // HH:mm ex: '12:00'
+    fim: string; // HH:mm ex: '13:00'
+    escopo: 'dia' | 'profissional' | 'salao';
+  }) => {
+    const { data, profissionalId, inicio, fim, escopo } = params;
+
+    if (escopo === 'dia') {
+      // Ajuste pontual apenas para o dia especificado
+      const profsAlvo = profissionalId === 'todas' 
+        ? equipe.filter(u => u.ativo) 
+        : equipe.filter(u => u.id === profissionalId);
+
+      const novosAgendamentos: Agendamento[] = [...agendamentos];
+
+      for (const p of profsAlvo) {
+        const inicioStr = `${data}T${inicio}:00`;
+        const fimStr = `${data}T${fim}:00`;
+
+        // Procura se já existe agendamento de almoço deste dia para esta profissional
+        const idxExistente = novosAgendamentos.findIndex(a => 
+          a.profissional_id === p.id && 
+          a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'))
+        );
+
+        if (idxExistente >= 0) {
+          const agExistente = novosAgendamentos[idxExistente];
+          novosAgendamentos[idxExistente] = {
+            ...agExistente,
+            inicio: inicioStr,
+            fim: fimStr,
+            status: 'bloqueado',
+            observacoes: `[Almoço] Horário de Almoço - ${p.nome}`
+          };
+          salvarAgendamentoSupabase(novosAgendamentos[idxExistente]).then();
+        } else {
+          const novoAlmoco: Agendamento = {
+            id: 'alm_' + gerarId(),
+            cliente_id: 'bloqueado',
+            profissional_id: p.id,
+            inicio: inicioStr,
+            fim: fimStr,
+            status: 'bloqueado',
+            valor_total: 0,
+            valor_sinal: 0,
+            observacoes: `[Almoço] Horário de Almoço - ${p.nome}`,
+            origem: 'admin',
+            criado_em: new Date().toISOString()
+          };
+          novosAgendamentos.push(novoAlmoco);
+          salvarAgendamentoSupabase(novoAlmoco).then();
+        }
+      }
+
+      setAgendamentos(novosAgendamentos);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(novosAgendamentos)); } catch (e) {}
+      mostrarNotificacaoGlobal(`✅ Horário de almoço de ${data} ajustado para ${inicio} às ${fim}!`);
+
+    } else if (escopo === 'profissional') {
+      // Atualiza o cadastro padrão da profissional
+      const nextEquipe = equipe.map(u => {
+        if (u.id === profissionalId) {
+          return {
+            ...u,
+            horario_almoco_ativo: true,
+            horario_almoco_inicio: inicio,
+            horario_almoco_fim: fim
+          };
+        }
+        return u;
+      });
+
+      setEquipe(nextEquipe);
+      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+      // Limpa qualquer cancelamento ou bloqueio pontual que estava nesta data para valer o novo padrão
+      const agsFiltrados = agendamentos.filter(a => {
+        const isPontualDesteDia = a.profissional_id === profissionalId && 
+          a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'));
+        if (isPontualDesteDia) {
+          try { supabase.from('agendamentos').delete().eq('id', a.id).then(); } catch (e) {}
+          return false;
+        }
+        return true;
+      });
+      setAgendamentos(agsFiltrados);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(agsFiltrados)); } catch (e) {}
+
+      const membro = nextEquipe.find(u => u.id === profissionalId);
+      if (membro) salvarUsuarioSupabase(membro).then();
+      await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+      mostrarNotificacaoGlobal(`✅ Horário de almoço padrão de ${membro?.nome || 'profissional'} atualizado para ${inicio} às ${fim}!`);
+
+    } else if (escopo === 'salao') {
+      // Atualiza todas as profissionais da equipe
+      const nextEquipe = equipe.map(u => ({
+        ...u,
+        horario_almoco_ativo: true,
+        horario_almoco_inicio: inicio,
+        horario_almoco_fim: fim
+      }));
+
+      setEquipe(nextEquipe);
+      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+      // Limpa bloqueios pontuais nesta data para valer o padrão de todo o salão
+      const agsFiltrados = agendamentos.filter(a => {
+        const isPontualDesteDia = a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'));
+        if (isPontualDesteDia) {
+          try { supabase.from('agendamentos').delete().eq('id', a.id).then(); } catch (e) {}
+          return false;
+        }
+        return true;
+      });
+      setAgendamentos(agsFiltrados);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(agsFiltrados)); } catch (e) {}
+
+      for (const m of nextEquipe) {
+        salvarUsuarioSupabase(m).then();
+      }
+      await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+      mostrarNotificacaoGlobal(`✅ Horário de almoço de todo o salão atualizado para ${inicio} às ${fim}!`);
+    }
+  };
+
+  const excluirOuLiberarAlmoco = async (params: {
+    data: string; // YYYY-MM-DD
+    profissionalId: string; // ID ou 'todas'
+    escopo: 'dia' | 'profissional' | 'salao';
+  }) => {
+    const { data, profissionalId, escopo } = params;
+
+    if (escopo === 'dia') {
+      // Liberar o horário de almoço apenas nesta data específica
+      const profsAlvo = profissionalId === 'todas' 
+        ? equipe.filter(u => u.ativo) 
+        : equipe.filter(u => u.id === profissionalId);
+
+      const novosAgendamentos: Agendamento[] = [...agendamentos];
+
+      for (const p of profsAlvo) {
+        const idxExistente = novosAgendamentos.findIndex(a => 
+          a.profissional_id === p.id && 
+          a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'))
+        );
+
+        if (idxExistente >= 0) {
+          novosAgendamentos[idxExistente] = {
+            ...novosAgendamentos[idxExistente],
+            status: 'cancelado',
+            observacoes: `[Almoço Cancelado] - Horário liberado para atendimentos (${p.nome})`
+          };
+          salvarAgendamentoSupabase(novosAgendamentos[idxExistente]).then();
+        } else {
+          // Cria o registro marcador com status cancelado para indicar que o almoço padrão foi dispensado hoje
+          const canceladoMarcador: Agendamento = {
+            id: 'alm_canc_' + gerarId(),
+            cliente_id: 'bloqueado',
+            profissional_id: p.id,
+            inicio: `${data}T${p.horario_almoco_inicio || '12:00'}:00`,
+            fim: `${data}T${p.horario_almoco_fim || '13:00'}:00`,
+            status: 'cancelado',
+            valor_total: 0,
+            valor_sinal: 0,
+            observacoes: `[Almoço Cancelado] - Horário liberado para atendimentos (${p.nome})`,
+            origem: 'admin',
+            criado_em: new Date().toISOString()
+          };
+          novosAgendamentos.push(canceladoMarcador);
+          salvarAgendamentoSupabase(canceladoMarcador).then();
+        }
+      }
+
+      setAgendamentos(novosAgendamentos);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(novosAgendamentos)); } catch (e) {}
+      mostrarNotificacaoGlobal(`✅ Horário de almoço do dia ${data} liberado para atendimentos!`);
+
+    } else if (escopo === 'profissional') {
+      // Desativa o almoço padrão no cadastro desta profissional
+      const nextEquipe = equipe.map(u => {
+        if (u.id === profissionalId) {
+          return {
+            ...u,
+            horario_almoco_ativo: false
+          };
+        }
+        return u;
+      });
+
+      setEquipe(nextEquipe);
+      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+      // Remove eventuais agendamentos pontuais de almoço nesta data
+      const agsFiltrados = agendamentos.filter(a => {
+        const isPontualDesteDia = a.profissional_id === profissionalId && 
+          a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'));
+        if (isPontualDesteDia) {
+          try { supabase.from('agendamentos').delete().eq('id', a.id).then(); } catch (e) {}
+          return false;
+        }
+        return true;
+      });
+      setAgendamentos(agsFiltrados);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(agsFiltrados)); } catch (e) {}
+
+      const membro = nextEquipe.find(u => u.id === profissionalId);
+      if (membro) salvarUsuarioSupabase(membro).then();
+      await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+      mostrarNotificacaoGlobal(`✅ Horário de almoço de ${membro?.nome || 'profissional'} desativado!`);
+
+    } else if (escopo === 'salao') {
+      // Desativa o almoço para todo o salão
+      const nextEquipe = equipe.map(u => ({
+        ...u,
+        horario_almoco_ativo: false
+      }));
+
+      setEquipe(nextEquipe);
+      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+
+      const agsFiltrados = agendamentos.filter(a => {
+        const isPontualDesteDia = a.inicio.startsWith(data) && 
+          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'));
+        if (isPontualDesteDia) {
+          try { supabase.from('agendamentos').delete().eq('id', a.id).then(); } catch (e) {}
+          return false;
+        }
+        return true;
+      });
+      setAgendamentos(agsFiltrados);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(agsFiltrados)); } catch (e) {}
+
+      for (const m of nextEquipe) {
+        salvarUsuarioSupabase(m).then();
+      }
+      await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
+      mostrarNotificacaoGlobal('✅ Horário de almoço desativado para todo o salão!');
+    }
+  };
+
   // --- Ações de Clientes ---
   const addCliente = (newCliente: Omit<Cliente, 'id' | 'criado_em'>) => {
     const cliente: Cliente = {
@@ -2402,7 +2665,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       fim = inicio + 30 * 60000;
     }
     
-    return agendamentos.some(a => {
+    // 1. Checa agendamentos reais existentes
+    const temConflitoAgendamento = agendamentos.some(a => {
       if (a.id === ignorarAgendamentoId) return false;
       if (a.status === 'cancelado' || a.status === 'falta') return false;
       if (a.profissional_id !== profissionalId) return false;
@@ -2417,6 +2681,55 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       
       return Math.max(inicio, aInicio) < Math.min(fim, aFim);
     });
+
+    if (temConflitoAgendamento) return true;
+
+    // 2. Checa colisão com Horário de Almoço padrão da profissional
+    const dataStr = inicioStr.split('T')[0];
+    if (!dataStr) return false;
+
+    // Se estiver testando ou ignorando um agendamento do próprio almoço, não checa almoço padrão
+    if (ignorarAgendamentoId && (ignorarAgendamentoId.startsWith('alm_') || ignorarAgendamentoId.startsWith('almoco_'))) {
+      return false;
+    }
+
+    const prof = equipe.find(u => u.id === profissionalId);
+    if (!prof || prof.horario_almoco_ativo === false) return false;
+
+    const almocoInicioStr = prof.horario_almoco_inicio || '12:00';
+    const almocoFimStr = prof.horario_almoco_fim || '13:00';
+
+    // Se houver cancelamento/liberação pontual de almoço para esta profissional nesta data, NÃO gera conflito com o almoço padrão
+    const almocoCanceladoNesteDia = agendamentos.some(a => 
+      a.profissional_id === profissionalId &&
+      a.inicio.startsWith(dataStr) &&
+      (a.status === 'cancelado' || a.status === 'falta') &&
+      (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
+    );
+    if (almocoCanceladoNesteDia) return false;
+
+    // Se já existe um agendamento ativo de almoço para esta data e profissional, ele já foi checado no passo 1
+    const almocoRealAtivoNesteDia = agendamentos.some(a =>
+      a.id !== ignorarAgendamentoId &&
+      a.profissional_id === profissionalId &&
+      a.inicio.startsWith(dataStr) &&
+      a.status !== 'cancelado' &&
+      a.status !== 'falta' &&
+      a.observacoes?.includes('[Almoço]')
+    );
+    if (almocoRealAtivoNesteDia) return false;
+
+    // Valida sobreposição com o almoço padrão
+    const almocoInicio = normalizarDataHora(`${dataStr}T${almocoInicioStr}:00`);
+    const almocoFim = normalizarDataHora(`${dataStr}T${almocoFimStr}:00`);
+
+    if (almocoInicio && almocoFim && almocoInicio < almocoFim) {
+      if (Math.max(inicio, almocoInicio) < Math.min(fim, almocoFim)) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   // --- Ações de Agendamento ---
@@ -4224,6 +4537,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updateListaEsperaStatus,
       atenderListaEspera,
       updateConfigSalao,
+      ajustarHorarioAlmoco,
+      excluirOuLiberarAlmoco,
       checkConflitoHorario,
       obterServicosDeAgendamento,
       obterRecomendacoesManutencao,
