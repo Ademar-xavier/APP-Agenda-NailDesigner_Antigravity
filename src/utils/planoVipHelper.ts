@@ -793,3 +793,43 @@ export const calcularValorServicoProfissional = (
   return Number(ag.valor_total) || 0;
 };
 
+/**
+ * Retorna todos os IDs das profissionais cadastradas/designadas para executar os serviços de um Plano VIP.
+ * Se o plano não possuir nenhuma profissional explicitada em suas sessões ou itens,
+ * o atendimento recai sobre a administradora padrão da equipe ('u1' / Sheila Santos).
+ */
+export const obterProfissionaisDoPlanoVip = (
+  plano?: PlanoAssinatura | null,
+  equipe: Usuario[] = []
+): string[] => {
+  if (!plano) return [];
+  const profsSet = new Set<string>();
+
+  // 1. Coleta das sessões detalhadas
+  if (plano.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
+    plano.distribuicao_sessoes.forEach(d => {
+      if (d.profissional_id) {
+        const idNorm = (d.profissional_id === 'u_yxnfmkow1' || d.profissional_id === 'u2') ? 'u2' : d.profissional_id;
+        profsSet.add(idNorm);
+      }
+    });
+  }
+
+  // 2. Coleta dos itens configurados
+  if (plano.itens_servicos && plano.itens_servicos.length > 0) {
+    plano.itens_servicos.forEach(it => {
+      if (it.profissional_id) {
+        const idNorm = (it.profissional_id === 'u_yxnfmkow1' || it.profissional_id === 'u2') ? 'u2' : it.profissional_id;
+        profsSet.add(idNorm);
+      }
+    });
+  }
+
+  // 3. Fallback: se nenhuma profissional foi definida explicitamente no plano, pertence à administradora
+  if (profsSet.size === 0) {
+    const adminId = equipe.find(e => e.perfil === 'admin')?.id || 'u1';
+    profsSet.add(adminId);
+  }
+
+  return Array.from(profsSet);
+};

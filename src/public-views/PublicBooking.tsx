@@ -32,7 +32,8 @@ import {
   calcularDuracaoSessaoVip, 
   obterTextoResumoSessoesVip, 
   obterTodasProfissionaisDosServicos,
-  obterConfiguracaoSessaoVip
+  obterConfiguracaoSessaoVip,
+  obterProfissionaisDoPlanoVip
 } from '../utils/planoVipHelper';
 
 interface PublicBookingProps {
@@ -189,6 +190,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const [profissionalId, setProfissionalId] = useState<string>(''); // Vazio = Qualquer profissional disponível
   const profissionaisAtivas = (equipe || []).filter(e => e.ativo !== false);
   const profissionaisAptas = useMemo(() => {
+    if (planoVipEscolhido) {
+      const profsDoPlano = obterProfissionaisDoPlanoVip(planoVipEscolhido, equipe);
+      const aptasVip = profissionaisAtivas.filter(p => profsDoPlano.includes(p.id));
+      if (aptasVip.length > 0) return aptasVip;
+    }
     if (servicosSelecionados.length === 0) return profissionaisAtivas;
     const aptas = profissionaisAtivas.filter(p => {
       if (p.perfil === 'admin') return true;
@@ -196,7 +202,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       return servicosSelecionados.every(sId => p.servicos_habilitados!.includes(sId));
     });
     return aptas.length > 0 ? aptas : profissionaisAtivas;
-  }, [profissionaisAtivas, servicosSelecionados]);
+  }, [profissionaisAtivas, servicosSelecionados, planoVipEscolhido, equipe]);
+
+  const profissionaisParaSelecaoStep1 = useMemo(() => {
+    if (!planoVipEscolhido) return profissionaisAtivas;
+    const profsDoPlano = obterProfissionaisDoPlanoVip(planoVipEscolhido, equipe);
+    const filtradas = profissionaisAtivas.filter(p => profsDoPlano.includes(p.id));
+    return filtradas.length > 0 ? filtradas : profissionaisAtivas;
+  }, [planoVipEscolhido, profissionaisAtivas, equipe]);
   
   // Cliente State
   const [nome, setNome] = useState<string>('');
@@ -236,6 +249,24 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       return profSelecionada.servicos_habilitados.includes(s.id);
     });
   }, [servicos, profSelecionada]);
+
+  // Planos VIP disponíveis para a profissional selecionada (ou todos se nenhuma estiver selecionada)
+  const planosDisponiveis = useMemo(() => {
+    return (planosAssinatura || []).filter(p => {
+      if (p.ativo === false) return false;
+      if (!profSelecionada) return true;
+      const profsDoPlano = obterProfissionaisDoPlanoVip(p, equipe);
+      return profsDoPlano.includes(profSelecionada.id);
+    });
+  }, [planosAssinatura, profSelecionada, equipe]);
+
+  // Se a profissional selecionada não atender a planos VIP, garante que a aba permaneça em 'servicos'
+  useEffect(() => {
+    if (subTabStep2 === 'planos_vip' && planosDisponiveis.length === 0) {
+      setSubTabStep2('servicos');
+      setPlanoVipEscolhidoId('');
+    }
+  }, [subTabStep2, planosDisponiveis.length]);
 
   // Duração e Preço Totais
   const duracaoTotal = useMemo(() => {
@@ -403,7 +434,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       if (todasProfsNecessarias.length > 1) {
         temVaga = todasProfsNecessarias.every(pId => !checkConflitoHorario(inicioAgend, fimAgend, pId));
       } else if (profissionalId) {
-        temVaga = !checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+        if (planoVipEscolhido && !profissionaisAptas.some(p => p.id === profissionalId)) {
+          temVaga = profissionaisAptas.some(p => !checkConflitoHorario(inicioAgend, fimAgend, p.id));
+        } else {
+          temVaga = !checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+        }
       } else {
         temVaga = profissionaisAptas.length === 0 
           ? !checkConflitoHorario(inicioAgend, fimAgend, 'u1')
@@ -500,12 +535,18 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     const dataFimStr = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
 
     let profFinalId = profissionalId;
-    if (!profFinalId) {
+    if (planoVipEscolhido) {
+      const profsDoPlano = obterProfissionaisDoPlanoVip(planoVipEscolhido, equipe);
+      if (!profFinalId || !profsDoPlano.includes(profFinalId)) {
+        const livre = profissionaisAptas.find(p => !checkConflitoHorario(dataInicioStr, dataFimStr, p.id));
+        profFinalId = livre ? livre.id : (profsDoPlano[0] || 'u1');
+      }
+    } else if (!profFinalId) {
       const livre = profissionaisAptas.find(p => !checkConflitoHorario(dataInicioStr, dataFimStr, p.id));
       profFinalId = livre ? livre.id : (profissionaisAptas[0]?.id || 'u1');
     }
 
-    const profNome = profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
+    const profNome = equipe.find(p => p.id === profFinalId)?.nome || profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
     const idPlanoEfetivo = planoVipEscolhido?.id || cliExistente?.assinatura?.plano_id;
     const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
     const nomePlanoVip = planoVipEscolhido?.nome || cliExistente?.assinatura?.nome_plano || 'Clube VIP';
@@ -796,7 +837,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               </button>
 
               {/* Lista das Profissionais da Equipe */}
-              {profissionaisAtivas.map(p => {
+              {profissionaisParaSelecaoStep1.map(p => {
                 const isSelected = profissionalId === p.id;
                 const totalProcedimentos = p.servicos_habilitados?.length;
                 return (
@@ -806,6 +847,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                     onClick={() => {
                       setProfissionalId(p.id);
                       setHorarioSelecionado('');
+                      if (planoVipEscolhido) {
+                        const profsDoPlano = obterProfissionaisDoPlanoVip(planoVipEscolhido, equipe);
+                        if (!profsDoPlano.includes(p.id)) {
+                          setPlanoVipEscolhidoId('');
+                        }
+                      }
                     }}
                     className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
                       isSelected
@@ -891,7 +938,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             )}
 
             {/* Seletor entre Procedimentos Avulsos e Planos do Clube VIP */}
-            {planosAssinatura && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (
+            {planosDisponiveis.length > 0 && (
               <div className="flex bg-[#FFF0F4] p-1 rounded-xl border border-[#FAD0DC]/50 mb-2">
                 <button
                   type="button"
@@ -937,7 +984,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </div>
 
                 <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
-                  {planosAssinatura.filter(p => p.ativo !== false).map(p => {
+                  {planosDisponiveis.map(p => {
                     const isSelected = planoVipEscolhidoId === p.id;
                     const servicosInclusos = (p.itens_servicos || [])
                       .map(item => {
@@ -1013,9 +1060,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         <button
                           type="button"
                           onClick={() => {
+                            const profsDoPlano = obterProfissionaisDoPlanoVip(p, equipe);
                             const sIds = (p.itens_servicos || []).map(i => i.servico_id);
                             setPlanoVipEscolhidoId(p.id);
                             setServicosSelecionados(sIds.length > 0 ? sIds : (servicos.length > 0 ? [servicos[0].id] : []));
+                            if (profissionalId && !profsDoPlano.includes(profissionalId)) {
+                              setProfissionalId(profsDoPlano.length === 1 ? profsDoPlano[0] : '');
+                            }
                             irParaStep(3);
                           }}
                           className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
@@ -1728,7 +1779,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 className="w-full border border-[#FAD0DC]/50 bg-white rounded-xl p-2.5 text-xs text-[#5A3F45] focus:outline-none focus:border-[#DB7093]"
               >
                 <option value="">Qualquer profissional disponível</option>
-                {profissionaisAtivas.map(p => (
+                {profissionaisParaSelecaoStep1.map(p => (
                   <option key={p.id} value={p.id}>💅 {p.nome} ({p.especialidade || (p.perfil === 'admin' ? 'Master' : 'Designer')})</option>
                 ))}
               </select>

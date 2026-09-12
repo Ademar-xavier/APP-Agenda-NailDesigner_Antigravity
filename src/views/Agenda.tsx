@@ -32,7 +32,8 @@ import {
   obterTextoResumoSessoesVip,
   obterProfissionaisDoServicoOuPacote,
   obterTodasProfissionaisDosServicos,
-  agendamentoEnvolveProfissional
+  agendamentoEnvolveProfissional,
+  obterProfissionaisDoPlanoVip
 } from '../utils/planoVipHelper';
 
 interface AgendaProps {
@@ -306,13 +307,36 @@ export const Agenda: React.FC<AgendaProps> = ({
     return extrairServicosPlano(planoAtivoModal, assCliente);
   }, [planoAtivoModal, assCliente]);
 
+  // Planos VIP elegíveis para contratação no modal da agenda
+  const planosVipDisponiveisModal = useMemo(() => {
+    return (planosAssinatura || []).filter(p => {
+      if (p.ativo === false) return false;
+      if (currentUser && currentUser.perfil !== 'admin') {
+        const profs = obterProfissionaisDoPlanoVip(p, equipe);
+        return profs.includes(currentUser.id);
+      }
+      if (profissionalId) {
+        const profObj = equipe.find(e => e.id === profissionalId);
+        if (profObj && profObj.perfil !== 'admin') {
+          const profs = obterProfissionaisDoPlanoVip(p, equipe);
+          return profs.includes(profissionalId);
+        }
+      }
+      return true;
+    });
+  }, [planosAssinatura, currentUser, profissionalId, equipe]);
+
   // Serviços habilitados da profissional selecionada
   const profSelecionada = equipe.find(u => u.id === profissionalId);
   const servicosHabilitadosProf = useMemo(() => {
     return servicos.filter(s => {
       if (!s.ativo) return false;
-      // Se for modo VIP e o serviço estiver no plano VIP, garante que ele SEMPRE seja exibido
-      if (isVipMode && servicosVipIds.includes(s.id)) return true;
+      // Se for modo VIP e o serviço estiver no plano VIP, só garante exibição se a profissional selecionada puder atender o plano
+      if (isVipMode && servicosVipIds.includes(s.id)) {
+        if (!profSelecionada || profSelecionada.perfil === 'admin') return true;
+        const profsDoPlano = obterProfissionaisDoPlanoVip(planoAtivoModal, equipe);
+        if (profsDoPlano.includes(profSelecionada.id)) return true;
+      }
       if (!profSelecionada) return true;
       if (profSelecionada.perfil === 'admin') return true;
       if (!profSelecionada.servicos_habilitados || profSelecionada.servicos_habilitados.length === 0) {
@@ -320,7 +344,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
       return profSelecionada.servicos_habilitados.includes(s.id);
     });
-  }, [servicos, profSelecionada, isVipMode, servicosVipIds]);
+  }, [servicos, profSelecionada, isVipMode, servicosVipIds, planoAtivoModal, equipe]);
 
   // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços da 1ª sessão e isenta de sinal
   useEffect(() => {
@@ -1943,7 +1967,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                     )}
 
                     {/* Opção para contratar Plano VIP na hora caso o cliente ainda não tenha */}
-                    {(!clienteSelecionadoObj || !hasVipAtivo) && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (
+                    {(!clienteSelecionadoObj || !hasVipAtivo) && planosVipDisponiveisModal.length > 0 && (
                       <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="flex items-center gap-1.5 text-xs font-bold text-[#5A4535]">
@@ -1991,7 +2015,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                           className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58]"
                         >
                           <option value="">Não vincular a Plano VIP (Agendamento Avulso)</option>
-                          {planosAssinatura.filter(p => p.ativo !== false).map(p => (
+                          {planosVipDisponiveisModal.map(p => (
                             <option key={p.id} value={p.id}>
                               👑 {p.nome} - R$ {p.preco_mensal.toFixed(2)}/mês ({p.qtd_procedimentos_mes} sessões)
                             </option>
