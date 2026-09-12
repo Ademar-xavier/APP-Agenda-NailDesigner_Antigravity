@@ -164,7 +164,9 @@ interface AppStateContextType {
     },
     planoVipId?: string
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
+  updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   remarcarAgendamento: (id: string, novoInicio: string, novoFim?: string, novaProfissionalId?: string, ajustarFuturos?: boolean) => { success: boolean; error?: string };
+  atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
   atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
@@ -2790,6 +2792,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     });
     return Array.from(ids);
+  };
+
+  const obterAgendamentosParceirosDupla = (agAlvo: Agendamento, todosAgs: Agendamento[]): Agendamento[] => {
+    const ids = obterIdsParceirosDupla(agAlvo, todosAgs);
+    return todosAgs.filter(a => ids.includes(a.id));
   };
 
   // --- Ações de Agendamento ---

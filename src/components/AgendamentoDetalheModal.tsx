@@ -175,12 +175,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const analiseHorariosRemarcacao = useMemo(() => {
     if (!dataRemarcacao || !profRemarcacaoId) return { livres: [], ocupados: [], fechado: false };
 
-    const diasSemanaMap = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-    const diaIndex = new Date(`${dataRemarcacao}T12:00:00`).getDay();
-    const diaNome = diasSemanaMap[diaIndex];
+    const diaSemana = new Date(dataRemarcacao + 'T12:00:00').getDay();
+    const expediente = configSalao?.horarios_trabalho?.[diaSemana];
 
-    const expediente = configSalao?.expediente?.[diaNome];
-    if (!expediente || !expediente.aberto) {
+    if (!expediente || !expediente.ativo) {
       return { livres: [], ocupados: [], fechado: true };
     }
 
