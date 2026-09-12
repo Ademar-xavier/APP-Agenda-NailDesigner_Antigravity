@@ -1327,7 +1327,14 @@ export const Agenda: React.FC<AgendaProps> = ({
           <div className="space-y-3">
             {agendamentosDoDia.map((a) => {
               const client = clientes.find(c => c.id === a.cliente_id);
-              const prof = equipe.find(u => u.id === a.profissional_id);
+              const prof = equipe.find(u => 
+                u.id === a.profissional_id || 
+                ((a.profissional_id === 'u2' || a.profissional_id === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+              );
+              const nomeProfissional = prof?.nome || (
+                (a.profissional_id === 'u2' || a.profissional_id === 'u_yxnfmkow1' || a.observacoes?.toLowerCase().includes('lurd')) ? 'Lurdinha' :
+                (a.profissional_id === 'u1' || a.observacoes?.toLowerCase().includes('sheila')) ? 'Sheila Santos' : ''
+              );
               const servText = a.cliente_id === 'bloqueado' ? 'Bloqueio' : 'Atendimento';
               const horaIn = a.inicio.split('T')[1].substring(0, 5);
               const horaFi = a.fim.split('T')[1].substring(0, 5);
@@ -1372,7 +1379,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                               <span>🍽️</span> Horário de Almoço
                             </h4>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white border border-[#E8DEC9] text-[#8C6D58]">
-                              {prof?.nome || 'Salão'}
+                              {nomeProfissional || 'Salão'}
                             </span>
                           </div>
                           <p className="text-xs text-[#8C7A6B] mt-0.5">
@@ -1436,11 +1443,27 @@ export const Agenda: React.FC<AgendaProps> = ({
                             </div>
                             <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1 flex-wrap">
                               <span>{servText}</span>
-                              {currentUser?.perfil === 'admin' && prof && (
-                                <span>· Profissional: {prof.nome}</span>
+                              {currentUser?.perfil === 'admin' && nomeProfissional && (
+                                <span>· Profissional: {nomeProfissional}</span>
                               )}
                               {(() => {
-                                const isDupla = a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || obterServicosDeAgendamento(a.id).some(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
+                                // Só mostrar a palavra 'Dupla' se forem serviços com profissionais diferentes no atendimento
+                                const servsDoAg = obterServicosDeAgendamento(a.id);
+                                const temPacoteComDuplaReal = servsDoAg.some(s => {
+                                  if (!s.is_pacote || !s.servicos_pacote_detalhes || s.servicos_pacote_detalhes.length <= 1) return false;
+                                  const profsDistintas = new Set(
+                                    s.servicos_pacote_detalhes
+                                      .map(d => (d.profissional_id === 'u_yxnfmkow1' ? 'u2' : d.profissional_id))
+                                      .filter(Boolean)
+                                  );
+                                  return profsDistintas.size > 1;
+                                });
+
+                                const isDupla = temPacoteComDuplaReal || (
+                                  (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('AG_PRINCIPAL:')) &&
+                                  !servsDoAg.some(s => s.id === 's_blmeapdgo')
+                                );
+
                                 if (isDupla) {
                                   return (
                                     <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
