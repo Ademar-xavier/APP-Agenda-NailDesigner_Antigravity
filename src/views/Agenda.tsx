@@ -1440,7 +1440,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 <span>· Profissional: {prof.nome}</span>
                               )}
                               {(() => {
-                                const isDupla = a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || servsObj.some(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
+                                const isDupla = a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || obterServicosDeAgendamento(a.id).some(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
                                 if (isDupla) {
                                   return (
                                     <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">

@@ -1,4 +1,4 @@
-import { PlanoAssinatura, AssinaturaCliente, Servico, Usuario } from '../types';
+import { PlanoAssinatura, AssinaturaCliente, Servico, Usuario, Agendamento } from '../types';
 
 /**
  * Normaliza strings para comparação flexível (remove acentos, pontuação e múltiplos espaços)
@@ -579,7 +579,7 @@ export const obterProfissionaisDoServicoOuPacote = (
 
   // 2. Serviço normal ou pacote executado por uma única profissional
   return [{
-    profissional_id: mapearProfId(serv.profissional_id || profissionalPadraoId),
+    profissional_id: mapearProfId((serv as any).profissional_id || profissionalPadraoId),
     servico_id: serv.id,
     nome_servico: serv.nome,
     duracao_minutos: serv.duracao_minutos || 60,
