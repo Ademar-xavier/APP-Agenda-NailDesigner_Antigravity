@@ -1173,12 +1173,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             fimEfetivo = calcularFimAgendamento(a.inicio, 60);
           }
 
+          // Extrair metadados de desconto se presentes em observações ou objeto
+          let descVal = a.desconto_valor !== undefined ? Number(a.desconto_valor) : undefined;
+          let descMot = a.desconto_motivo;
+          if ((descVal === undefined || descVal === 0) && a.observacoes?.includes('[DESCONTO:')) {
+            const descMatch = a.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+            if (descMatch) {
+              descVal = parseFloat(descMatch[1]) || 0;
+              descMot = descMatch[2]?.trim();
+            }
+          }
+
+          // Extrair produtos da comanda se presentes em observações ou objeto
+          let prods = a.produtos;
+          if ((!prods || prods.length === 0) && a.observacoes?.includes('[PRODUTOS:')) {
+            const prodMatch = a.observacoes.match(/\[PRODUTOS:\s*(\[.+?\])\s*\]/);
+            if (prodMatch) {
+              try {
+                prods = JSON.parse(prodMatch[1]);
+              } catch (e) {}
+            }
+          }
+
           return {
             ...a,
             fim: fimEfetivo,
             valor_total: valorEfetivo,
             pago_com_clube: isVip,
-            plano_id: planoIdFinal
+            plano_id: planoIdFinal,
+            desconto_valor: descVal,
+            desconto_motivo: descMot,
+            produtos: prods
           };
         });
 
@@ -3737,7 +3762,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             desconto_valor: valorDesconto > 0 ? valorDesconto : undefined,
             desconto_motivo: valorDesconto > 0 ? motivoDesconto : undefined
           };
-          salvarAgendamentoSupabase(atualizado);
+          const sIds = (itensAgendamento[a.id] && itensAgendamento[a.id].length > 0) 
+            ? itensAgendamento[a.id] 
+            : obterServicosDeAgendamento(a.id).map(s => s.id);
+          salvarAgendamentoSupabase(atualizado, sIds);
           return atualizado;
         }
 
@@ -3747,7 +3775,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             status: 'concluido',
             pago_com_clube: pagoComClube
           };
-          salvarAgendamentoSupabase(parcAtualizado);
+          const parcSids = (itensAgendamento[a.id] && itensAgendamento[a.id].length > 0)
+            ? itensAgendamento[a.id]
+            : obterServicosDeAgendamento(a.id).map(s => s.id);
+          salvarAgendamentoSupabase(parcAtualizado, parcSids);
           return parcAtualizado;
         }
 
