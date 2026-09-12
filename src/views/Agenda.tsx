@@ -1518,7 +1518,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                                         <Sparkles size={9} /> Dupla
                                       </span>
                                     )}
-                                    {descVal > 0 && (
+                                    {!isVipCard && descVal > 0 && (
                                       <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-200">
                                         <Tag size={9} /> {descMot ? `Desc: ${descMot}` : `-${formatarMoeda(descVal)}`}
                                       </span>
@@ -1555,12 +1555,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                           !servsDoAg.some(s => s.id === 's_blmeapdgo')
                         );
                         let descVal = a.desconto_valor || 0;
-                        let descMot = a.desconto_motivo || 'Cortesia';
+                        let descMot = a.desconto_motivo || '';
                         if (!descVal && a.observacoes?.includes('[DESCONTO:')) {
                           const m = a.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
                           if (m) {
                             descVal = parseFloat(m[1]) || 0;
-                            descMot = m[2]?.trim() || 'Cortesia';
+                            descMot = m[2]?.trim() || '';
                           }
                         }
                         const isVipCard = !!(a.pago_com_clube || a.plano_id || a.observacoes?.includes('👑') || a.observacoes?.includes('Clube VIP'));
@@ -1571,8 +1571,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                             descMot = a.desconto_motivo || (a.valor_total === 0 ? 'Cortesia' : 'Desconto Concedido');
                           }
                         }
-                        const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
-                        const isCortesiaTotal = a.valor_total === 0 && (descVal > 0 || descMot.toLowerCase().includes('cortesia') || a.desconto_motivo?.toLowerCase().includes('cortesia'));
+                        const isVipIncluso = isVipCard && a.valor_total === 0;
+                        const isCortesiaTotal = !isVipCard && a.valor_total === 0 && (descVal > 0 || descMot.toLowerCase().includes('cortesia') || a.desconto_motivo?.toLowerCase().includes('cortesia'));
                         const valorCard = isVipIncluso ? 0 : (isDupla ? (servsDoAg[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
 
                         if (a.status === 'cancelado') {
@@ -1585,14 +1585,14 @@ export const Agenda: React.FC<AgendaProps> = ({
                             <span className="text-xs font-semibold line-through text-stone-400">{formatarMoeda(valorCard)}</span>
                           );
                         }
-                        if (isCortesiaTotal) {
-                          return (
-                            <span className="text-xs font-extrabold text-emerald-700">R$ 0,00 ({descMot.toLowerCase().includes('cortesia') ? 'Cortesia' : descMot})</span>
-                          );
-                        }
                         if (isVipIncluso) {
                           return (
                             <span className="text-xs font-extrabold text-amber-800">R$ 0,00 (VIP)</span>
+                          );
+                        }
+                        if (isCortesiaTotal) {
+                          return (
+                            <span className="text-xs font-extrabold text-emerald-700">R$ 0,00 ({descMot.toLowerCase().includes('cortesia') ? 'Cortesia' : (descMot || 'Cortesia')})</span>
                           );
                         }
                         return (

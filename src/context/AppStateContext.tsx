@@ -3761,7 +3761,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let motivoDesconto = desconto?.motivo?.trim() || 'Desconto Concedido';
 
     // Se o desconto não foi passado explicitamente, mas o valor recebido for menor que o esperado (e não for VIP isento)
-    const isVipIsento = pagoComClube && (!agAlvo || agAlvo.valor_total === 0);
+    const isVipIsento = Boolean(pagoComClube || agAlvo?.pago_com_clube || agAlvo?.plano_id || agAlvo?.observacoes?.includes('👑') || agAlvo?.observacoes?.includes('Clube VIP'));
     if (!isVipIsento && valorDesconto <= 0 && valorRestante < baseEsperada) {
       valorDesconto = Math.max(0, baseEsperada - valorRestante);
       motivoDesconto = valorRestante === 0 ? 'Cortesia' : 'Desconto Concedido';
@@ -3903,6 +3903,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       diasAtraso: number;
       diasRestantes: number;
       statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
+      profissional_id?: string;
+      ultimoAgendamento?: Agendamento;
     }[] = [];
 
     // Expande combos e pacotes para que os sub-serviços com ciclo de retorno sejam avaliados

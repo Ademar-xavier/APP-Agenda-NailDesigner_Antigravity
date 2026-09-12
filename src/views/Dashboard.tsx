@@ -22,7 +22,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Cliente, REGRA_DEVOLUCAO_PADRAO, AvisoCliente } from '../types';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
-import { agendamentoEnvolveProfissional } from '../utils/planoVipHelper';
+import { agendamentoEnvolveProfissional, calcularValorServicoProfissional } from '../utils/planoVipHelper';
 
 interface DashboardProps {
   setCurrentView: (view: string) => void;
@@ -54,6 +54,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   } = useAppState();
 
   const [avisoSelecionadoModal, setAvisoSelecionadoModal] = useState<AvisoCliente | null>(null);
+
+  const isAdminRole = currentUser?.perfil === 'admin';
 
   const dataBaseStr = new Date().toLocaleDateString('en-CA'); // Data de hoje em tempo real (YYYY-MM-DD)
   const mesAtualStr = dataBaseStr.slice(0, 7); // Mês atual em tempo real (YYYY-MM)
@@ -171,19 +173,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       const realCalculado = agsConcluidos.reduce((acc, a) => {
         const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
-        const isDupla = sIds.some(s => s.id === 's3') || (
+        const isDupla = sIds.some(s => s === 's3') || (
           (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
-          !sIds.some(s => s.id === 's_blmeapdgo')
+          !sIds.some(s => s === 's_blmeapdgo')
         );
+        if (!isAdminRole && currentUser?.id) {
+          return acc + calcularValorServicoProfissional(a, currentUser.id, servicos, equipe, sIds);
+        }
         return acc + (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : (Number(a.valor_total) || 0));
       }, 0);
 
       const prevCalculado = agsDoDia.reduce((acc, a) => {
         const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
-        const isDupla = sIds.some(s => s.id === 's3') || (
+        const isDupla = sIds.some(s => s === 's3') || (
           (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
-          !sIds.some(s => s.id === 's_blmeapdgo')
+          !sIds.some(s => s === 's_blmeapdgo')
         );
+        if (!isAdminRole && currentUser?.id) {
+          return acc + calcularValorServicoProfissional(a, currentUser.id, servicos, equipe, sIds);
+        }
         return acc + (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : (Number(a.valor_total) || 0));
       }, 0);
 
@@ -229,7 +237,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       mediaRealizadaDiaria,
       periodoSemanaStr: `${primeiraDataStr} a ${ultimaDataStr}`
     };
-  }, [agendamentosFiltrados, dataBaseStr, obterServicosDeAgendamento]);
+  }, [agendamentosFiltrados, dataBaseStr, obterServicosDeAgendamento, isAdminRole, currentUser, servicos, equipe]);
 
   const aguardandoConfirmacao = atendimentosHoje.filter(a => a.status === 'pendente');
 
@@ -355,8 +363,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     window.open(url, '_blank');
   };
-
-  const isAdminRole = currentUser?.perfil === 'admin';
 
   return (
     <div className="flex-1 p-6 md:p-10 space-y-8 overflow-y-auto pb-24 md:pb-10 bg-[#FAF9F6]">
@@ -666,9 +672,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             )}
           </div>
 
-          {/* Weekly Performance Bar Chart SVG (Apenas Admin) */}
-          {isAdminRole && (
-            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 md:p-6 shadow-sm flex flex-col justify-between relative">
+          {/* Weekly Performance Bar Chart SVG (Admin e Profissional) */}
+          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 md:p-6 shadow-sm flex flex-col justify-between relative">
               {/* Header do Gráfico com Indicadores Dinâmicos Padronizados */}
               <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-[#FAF9F6] pb-3 mb-4">
                 <div className="min-w-0">
@@ -862,7 +867,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </span>
               </div>
             </div>
-          )}
         </div>
 
         {/* Right Column: Confirmations / Maintenance / Waitlist (Visível para todos os perfis) */}

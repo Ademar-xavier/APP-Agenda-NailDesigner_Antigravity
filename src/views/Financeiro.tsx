@@ -212,9 +212,9 @@ export const Financeiro: React.FC = () => {
 
       if (profissionalFiltro === 'todas') {
         // Visão consolidada do Salão
-        const isDupla = sIds.some(s => s.id === 's3') || (
+        const isDupla = sIds.some(s => s === 's3') || (
           (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
-          !sIds.some(s => s.id === 's_blmeapdgo')
+          !sIds.some(s => s === 's_blmeapdgo')
         );
         const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
         const valTotal = isVipIncluso ? 0 : (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
@@ -297,9 +297,9 @@ export const Financeiro: React.FC = () => {
       agsDoDia.forEach(a => {
         const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
         if (profissionalFiltro === 'todas') {
-          const isDupla = sIds.some(s => s.id === 's3') || (
+          const isDupla = sIds.some(s => s === 's3') || (
             (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
-            !sIds.some(s => s.id === 's_blmeapdgo')
+            !sIds.some(s => s === 's_blmeapdgo')
           );
           const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
           valorDia += isVipIncluso ? 0 : (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
