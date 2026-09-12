@@ -759,6 +759,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (parsed && parsed.length > 0) {
           return parsed.map(u => ({ 
             ...u, 
+            id: (u.id === 'u_yxnfmkow1' || (u.nome?.toLowerCase().includes('lurd') && u.id !== 'u1')) ? 'u2' : u.id,
             especialidade: u.especialidade || (u.perfil === 'admin' ? 'Especialista Master' : 'Designer'),
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin') 
           }));
@@ -1280,8 +1281,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ? u.servicos_habilitados
             : (salvoEmConfig?.servicos_habilitados || []);
 
+          const idNormalizado = (u.id === 'u_yxnfmkow1' || (u.nome?.toLowerCase().includes('lurd') && u.id !== 'u1')) ? 'u2' : u.id;
           return {
             ...u,
+            id: idNormalizado,
             senha: u.senha || (u.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin'),
             servicos_habilitados: servsHabilitados,
             horario_almoco_ativo: u.horario_almoco_ativo !== undefined ? u.horario_almoco_ativo : (salvoEmConfig?.horario_almoco_ativo !== undefined ? salvoEmConfig.horario_almoco_ativo : true),

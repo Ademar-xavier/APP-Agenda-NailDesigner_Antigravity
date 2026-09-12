@@ -21,7 +21,7 @@ import {
   Lock
 } from 'lucide-react';
 import { useAppState, calcularFimAgendamento } from '../context/AppStateContext';
-import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
+import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto, Usuario } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 import { 
@@ -85,7 +85,19 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const agendamento = agendamentos.find(a => a.id === agendamentoId);
   const isBloqueio = agendamento?.cliente_id === 'bloqueado';
   const cliente = isBloqueio ? null : clientes.find(c => c.id === agendamento?.cliente_id);
-  const prof = equipe.find(u => u.id === agendamento?.profissional_id);
+  const prof = equipe.find(u => 
+    u.id === agendamento?.profissional_id || 
+    ((agendamento?.profissional_id === 'u2' || agendamento?.profissional_id === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+  ) || (agendamento?.profissional_id === 'u2' ? ({
+    id: 'u2',
+    nome: 'Lurdinha',
+    email: 'lurdinha@agenda.com',
+    telefone: '35 99182-1220',
+    perfil: 'profissional',
+    ativo: true,
+    usar_pix_proprio: true,
+    chave_pix: '103.266.368-54'
+  } as Usuario) : undefined);
   const servs = (agendamento && !isBloqueio) ? obterServicosDeAgendamento(agendamento.id) : [];
 
   // Agendamentos simultâneos vinculados (atendimento em dupla / 2 profissionais)
@@ -109,17 +121,30 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     if (prof) profsMap.set(prof.id, prof.nome);
 
     coAgendamentosVinculados.forEach(c => {
-      const coProf = equipe.find(u => u.id === c.profissional_id);
-      if (coProf) profsMap.set(coProf.id, coProf.nome);
+      const coProf = equipe.find(u => 
+        u.id === c.profissional_id || 
+        ((c.profissional_id === 'u2' || c.profissional_id === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+      );
+      const coNome = coProf?.nome || (c.profissional_id === 'u2' ? 'Lurdinha' : c.profissional_id === 'u1' ? 'Sheila Santos' : '');
+      if (coNome) profsMap.set(c.profissional_id, coNome);
     });
 
     servs.forEach(s => {
       const procs = obterProfissionaisDoServicoOuPacote(s.id, servicos, equipe, agendamento.profissional_id);
       procs.forEach(p => {
-        const pr = equipe.find(u => u.id === p.profissional_id);
-        if (pr) profsMap.set(pr.id, pr.nome);
+        const pr = equipe.find(u => 
+          u.id === p.profissional_id || 
+          ((p.profissional_id === 'u2' || p.profissional_id === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+        );
+        const prNome = pr?.nome || (p.profissional_id === 'u2' ? 'Lurdinha' : p.profissional_id === 'u1' ? 'Sheila Santos' : '');
+        if (prNome) profsMap.set(p.profissional_id, prNome);
       });
     });
+
+    if (agendamento.observacoes?.includes('Sheila e Lurdinha') || agendamento.observacoes?.includes('2 Profissionais')) {
+      profsMap.set('u1', 'Sheila Santos');
+      profsMap.set('u2', 'Lurdinha');
+    }
 
     return Array.from(profsMap.values());
   }, [agendamento, prof, coAgendamentosVinculados, servs, servicos, equipe]);
@@ -1124,30 +1149,52 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                           Incluso no VIP
                         </span>
                       ) : (
-                        <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
+                        <span className="font-semibold text-stone-700">
+                          {formatarMoeda(
+                            (agendamento.valor_total > 0 && agendamento.valor_total < s.preco && (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('AG_PAR:') || agendamento.observacoes?.includes('AG_PRINCIPAL:')))
+                              ? agendamento.valor_total
+                              : s.preco
+                          )}
+                        </span>
                       )}
                     </div>
                   </div>
 
                   {/* Detalhe de Procedimentos e Profissionais Escaladas se for combo/dupla */}
-                  {s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0 && (
-                    <div className="pt-1.5 border-t border-[#FAF9F6] space-y-1">
-                      <span className="text-[9.5px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
-                        Procedimentos em Dupla:
-                      </span>
-                      {s.servicos_pacote_detalhes.map((det, dIdx) => {
-                        const sub = servicos.find(item => item.id === det.servico_id);
-                        const pIdEfetivo = det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id;
-                        const profDet = equipe.find(u => u.id === pIdEfetivo);
-                        return (
-                          <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
-                            <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
-                            <span className="font-bold text-[#8C6D58]">{profDet?.nome || 'Profissional'}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0 && (() => {
+                    const profsDistintas = new Set(
+                      s.servicos_pacote_detalhes
+                        .map(det => (det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id))
+                        .filter(Boolean)
+                    );
+                    const ehDuplaReal = profsDistintas.size > 1;
+
+                    return (
+                      <div className="pt-1.5 border-t border-[#FAF9F6] space-y-1">
+                        <span className="text-[9.5px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                          {ehDuplaReal ? 'Procedimentos em Dupla:' : 'Procedimentos Inclusos:'}
+                        </span>
+                        {s.servicos_pacote_detalhes.map((det, dIdx) => {
+                          const sub = servicos.find(item => item.id === det.servico_id);
+                          const pIdEfetivo = det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id;
+                          const profDet = equipe.find(u => 
+                            u.id === pIdEfetivo || 
+                            ((pIdEfetivo === 'u2' || pIdEfetivo === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+                          );
+                          const nomeProfProcedimento = profDet?.nome || (
+                            (pIdEfetivo === 'u2' || sub?.nome.toLowerCase().includes('manicure')) ? 'Lurdinha' :
+                            (pIdEfetivo === 'u1' || sub?.nome.toLowerCase().includes('pedicure')) ? 'Sheila Santos' : 'Profissional'
+                          );
+                          return (
+                            <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
+                              <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
+                              <span className="font-bold text-[#8C6D58]">{nomeProfProcedimento}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>

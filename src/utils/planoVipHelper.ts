@@ -531,9 +531,10 @@ export const obterProfissionaisDoServicoOuPacote = (
     if (!pIdRaw) return profissionalPadraoId || 'u1';
     const direto = equipe.find(u => u.id === pIdRaw);
     if (direto) return direto.id;
-    if (pIdRaw === 'u_yxnfmkow1' || pIdRaw.toLowerCase().includes('lurd')) {
-      const lurd = equipe.find(u => u.nome.toLowerCase().includes('lurd'));
+    if (pIdRaw === 'u_yxnfmkow1' || pIdRaw === 'u2' || pIdRaw.toLowerCase().includes('lurd')) {
+      const lurd = equipe.find(u => u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome.toLowerCase().includes('lurd'));
       if (lurd) return lurd.id;
+      return 'u2';
     }
     return profissionalPadraoId || 'u1';
   };
