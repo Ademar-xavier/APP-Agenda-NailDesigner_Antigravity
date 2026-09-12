@@ -27,7 +27,13 @@ import {
   salvarListaEsperaSupabase
 } from '../services/supabase';
 import { dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
-import { obterServicosIdsSessaoVip, calcularDuracaoSessaoVip, obterTextoResumoSessoesVip, obterTodasProfissionaisDosServicos } from '../utils/planoVipHelper';
+import { 
+  obterServicosIdsSessaoVip, 
+  calcularDuracaoSessaoVip, 
+  obterTextoResumoSessoesVip, 
+  obterTodasProfissionaisDosServicos,
+  obterConfiguracaoSessaoVip
+} from '../utils/planoVipHelper';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -265,6 +271,79 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       return acc;
     }, 0);
   }, [planoVipEscolhido, servicosSelecionados, servicos]);
+
+  // Formatação amigável de minutos para exibição (ex: "2h (120 min)", "1h 30min (90 min)")
+  const formatarDuracaoMinutos = (min: number) => {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h > 0 && m > 0) return `${h}h ${m}min (${min} min)`;
+    if (h > 0) return `${h}h (${min} min)`;
+    return `${min} min`;
+  };
+
+  const calcularHorarioFinal = (inicioStr: string, duracaoMin: number) => {
+    if (!inicioStr) return '';
+    const [h, m] = inicioStr.split(':').map(Number);
+    const totalM = (h || 0) * 60 + (m || 0) + duracaoMin;
+    const hF = String(Math.floor(totalM / 60)).padStart(2, '0');
+    const mF = String(totalM % 60).padStart(2, '0');
+    return `${hF}:${mF}`;
+  };
+
+  // Detalhamento discriminado das sessões do Plano VIP (1ª sessão e próximas sessões)
+  const detalhesSessoesPlano = useMemo(() => {
+    if (!planoVipEscolhido) return null;
+    const totalSessoes = planoVipEscolhido.qtd_procedimentos_mes || 4;
+    const listaSessoes: {
+      sessao: number;
+      procedimentos: string;
+      duracao: number;
+    }[] = [];
+
+    for (let s = 1; s <= totalSessoes; s++) {
+      const procs = obterConfiguracaoSessaoVip(planoVipEscolhido, s, servicos);
+      const dur = calcularDuracaoSessaoVip(planoVipEscolhido, s, servicos);
+      const nomes = procs.map(p => p.nome_servico).join(' + ') || 'Procedimento VIP';
+      listaSessoes.push({
+        sessao: s,
+        procedimentos: nomes,
+        duracao: dur > 0 ? dur : 60
+      });
+    }
+
+    const sessao1 = listaSessoes[0] || { sessao: 1, procedimentos: 'Atendimento VIP', duracao: 60 };
+    const proximasSessoes = listaSessoes.slice(1);
+
+    // Agrupamento inteligente das próximas sessões por procedimento e duração idênticos
+    const mapa = new Map<string, { sessoes: number[]; procedimentos: string; duracao: number }>();
+    proximasSessoes.forEach(s => {
+      const chave = `${s.procedimentos}___${s.duracao}`;
+      if (!mapa.has(chave)) {
+        mapa.set(chave, { sessoes: [s.sessao], procedimentos: s.procedimentos, duracao: s.duracao });
+      } else {
+        mapa.get(chave)!.sessoes.push(s.sessao);
+      }
+    });
+
+    const gruposProximas = Array.from(mapa.values()).map(g => {
+      const sessoesTexto = g.sessoes.length === 1
+        ? `Sessão ${g.sessoes[0]}`
+        : `Sessões ${g.sessoes.slice(0, -1).join(', ')} e ${g.sessoes[g.sessoes.length - 1]}`;
+      return {
+        titulo: sessoesTexto,
+        sessoes: g.sessoes,
+        procedimentos: g.procedimentos,
+        duracao: g.duracao
+      };
+    });
+
+    return {
+      sessao1,
+      proximasSessoes,
+      gruposProximas,
+      totalSessoes
+    };
+  }, [planoVipEscolhido, servicos]);
 
   // Cálculo inteligente de horários disponíveis para o dia selecionado
   const obterHorariosDisponiveis = (): string[] => {
@@ -1146,63 +1225,108 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               )}
             </div>
 
-            {/* Card de Resumo de Duração, Horário e Retorno (Igual Foto 3) */}
+            {/* Card de Resumo de Duração, Horário e Retorno */}
             {horarioSelecionado && (
-              <div className="bg-[#FFF5F7] border border-[#FAD0DC] rounded-2xl p-3.5 space-y-2.5 shadow-sm text-left animate-in fade-in duration-200 mt-2">
-                <div className="flex items-center justify-between text-xs text-[#5A3F45] border-b border-[#FAD0DC]/60 pb-2">
-                  <span className="flex items-center gap-1.5 font-bold text-[#A88690] uppercase text-[10px]">
-                    <Clock size={14} className="text-[#DB7093]" />
-                    Tempo e Duração do Atendimento
-                  </span>
-                  <span className="font-extrabold text-[#C71585]">
-                    {Math.floor(duracaoTotal / 60) > 0 ? `${Math.floor(duracaoTotal / 60)}h ` : ''}{duracaoTotal % 60 > 0 ? `${duracaoTotal % 60}min ` : ''}({duracaoTotal} min)
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#5A3F45]">
-                  <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
-                    <Clock size={14} className="text-[#DB7093] shrink-0" />
-                    <div>
-                      <span className="text-[#A88690] block text-[9px] uppercase font-bold">Horário de Atendimento</span>
-                      <strong className="text-xs text-[#5A3F45]">
-                        {horarioSelecionado} às {(() => {
-                          const [h, m] = horarioSelecionado.split(':').map(Number);
-                          const totalM = h * 60 + m + duracaoTotal;
-                          const hF = String(Math.floor(totalM / 60)).padStart(2, '0');
-                          const mF = String(totalM % 60).padStart(2, '0');
-                          return `${hF}:${mF}`;
-                        })()}
-                      </strong>
-                    </div>
+              planoVipEscolhido && detalhesSessoesPlano ? (
+                <div className="bg-[#FFF5F7] border border-[#FAD0DC] rounded-2xl p-4 space-y-3 shadow-sm text-left animate-in fade-in duration-200 mt-2">
+                  <div className="flex items-center justify-between text-xs text-[#5A3F45] border-b border-[#FAD0DC]/60 pb-2">
+                    <span className="flex items-center gap-1.5 font-bold text-amber-900 uppercase text-[10px]">
+                      <Crown size={14} className="text-amber-600" />
+                      Tempo e Duração do Atendimento • {planoVipEscolhido.nome}
+                    </span>
+                    <span className="font-extrabold text-[11px] text-amber-950 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
+                      👑 {detalhesSessoesPlano.totalSessoes} Sessões no Mês
+                    </span>
                   </div>
 
-                  {planoVipEscolhido ? (
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-orange-50 p-2.5 rounded-xl border border-amber-300">
-                      <Crown size={15} className="text-amber-600 shrink-0" />
-                      <div>
-                        <span className="text-amber-800 block text-[9px] uppercase font-bold">
-                          {(() => {
-                            const f = planoVipEscolhido.frequencia_dias || 7;
-                            const fNorm = Math.max(7, Math.round(f / 7) * 7);
-                            if (fNorm === 14) return 'Retorno Quinzenal VIP';
-                            if (fNorm === 21) return 'Retorno VIP (a cada 3 semanas)';
-                            if (fNorm === 28) return 'Retorno Mensal VIP';
-                            return 'Retorno Semanal VIP';
-                          })()}
+                  {/* Detalhamento das Sessões */}
+                  <div className="space-y-2">
+                    {/* 1ª Sessão (Data e Horário Selecionados) */}
+                    <div className="bg-white p-3 rounded-xl border border-amber-300 shadow-2xs">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-200">
+                          📌 1ª Sessão (Data Selecionada)
                         </span>
-                        <strong className="text-xs text-amber-950">
-                          {(() => {
-                            const f = planoVipEscolhido.frequencia_dias || 7;
-                            const fNorm = Math.max(7, Math.round(f / 7) * 7);
-                            if (fNorm === 14) return 'Sessões garantidas a cada 14 dias no mesmo dia e horário';
-                            if (fNorm === 21) return 'Sessões garantidas a cada 3 semanas no mesmo dia e horário';
-                            if (fNorm === 28) return 'Sessões garantidas a cada 4 semanas no mesmo dia e horário';
-                            return 'Sessões garantidas toda semana no mesmo dia e horário';
-                          })()}
+                        <span className="font-extrabold text-xs text-amber-950">
+                          ⏱️ {formatarDuracaoMinutos(detalhesSessoesPlano.sessao1.duracao)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[#5A3F45] mt-1 space-y-0.5">
+                        <p className="font-bold text-[#5A3F45]">{detalhesSessoesPlano.sessao1.procedimentos}</p>
+                        <p className="text-[11px] text-[#8C7A6B]">
+                          Horário marcado: <strong className="text-[#C71585]">{horarioSelecionado} às {calcularHorarioFinal(horarioSelecionado, detalhesSessoesPlano.sessao1.duracao)}</strong> ({formatarDataLocal(dataSelecionada)})
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Próximas Sessões */}
+                    {detalhesSessoesPlano.gruposProximas.length > 0 && (
+                      <div className="bg-gradient-to-r from-pink-50/70 to-rose-50/70 p-3 rounded-xl border border-[#FAD0DC]/80 shadow-2xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide bg-[#FFF0F4] text-[#C71585] px-2 py-0.5 rounded-full border border-[#FAD0DC]">
+                            🔁 Próximas Sessões ({detalhesSessoesPlano.proximasSessoes.length} sessões restantes)
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-1.5">
+                          {detalhesSessoesPlano.gruposProximas.map((g, idx) => (
+                            <div key={idx} className="bg-white/90 p-2.5 rounded-lg border border-[#FAD0DC]/50 text-xs text-[#5A3F45]">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-[#5A3F45]">
+                                  {g.titulo}: <span className="font-medium text-[#8C6D58]">{g.procedimentos}</span>
+                                </span>
+                                <span className="font-extrabold text-[#C71585] text-[11px] shrink-0">
+                                  ⏱️ {formatarDuracaoMinutos(g.duracao)}
+                                </span>
+                              </div>
+                              <p className="text-[10.5px] text-[#8C7A6B] mt-0.5">
+                                Horário previsto na agenda: <strong className="text-[#5A3F45]">{horarioSelecionado} às {calcularHorarioFinal(horarioSelecionado, g.duracao)}</strong>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Informação sobre a Frequência e Garantia de Vaga */}
+                    <div className="flex items-center gap-2 bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-[11px]">
+                      <Crown size={14} className="text-amber-600 shrink-0" />
+                      <p className="text-amber-900 leading-snug">
+                        <strong>Horário VIP Garantido:</strong> {(() => {
+                          const f = planoVipEscolhido.frequencia_dias || 7;
+                          const fNorm = Math.max(7, Math.round(f / 7) * 7);
+                          if (fNorm === 14) return 'Suas sessões ocorrem a cada 14 dias sempre no mesmo dia da semana e horário reservado.';
+                          if (fNorm === 21) return 'Suas sessões ocorrem a cada 3 semanas sempre no mesmo dia da semana e horário reservado.';
+                          if (fNorm === 28) return 'Suas sessões ocorrem a cada 4 semanas sempre no mesmo dia da semana e horário reservado.';
+                          return 'Suas sessões ocorrem toda semana sempre no mesmo dia da semana e horário reservado.';
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-[#FFF5F7] border border-[#FAD0DC] rounded-2xl p-3.5 space-y-2.5 shadow-sm text-left animate-in fade-in duration-200 mt-2">
+                  <div className="flex items-center justify-between text-xs text-[#5A3F45] border-b border-[#FAD0DC]/60 pb-2">
+                    <span className="flex items-center gap-1.5 font-bold text-[#A88690] uppercase text-[10px]">
+                      <Clock size={14} className="text-[#DB7093]" />
+                      Tempo e Duração do Atendimento
+                    </span>
+                    <span className="font-extrabold text-[#C71585]">
+                      {Math.floor(duracaoTotal / 60) > 0 ? `${Math.floor(duracaoTotal / 60)}h ` : ''}{duracaoTotal % 60 > 0 ? `${duracaoTotal % 60}min ` : ''}({duracaoTotal} min)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-[#5A3F45]">
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
+                      <Clock size={14} className="text-[#DB7093] shrink-0" />
+                      <div>
+                        <span className="text-[#A88690] block text-[9px] uppercase font-bold">Horário de Atendimento</span>
+                        <strong className="text-xs text-[#5A3F45]">
+                          {horarioSelecionado} às {calcularHorarioFinal(horarioSelecionado, duracaoTotal)}
                         </strong>
                       </div>
                     </div>
-                  ) : (
+
                     <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-[#FAD0DC]/50">
                       <RotateCcw size={14} className="text-[#DB7093] shrink-0" />
                       <div>
@@ -1227,9 +1351,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         </strong>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+              )
             )}
 
             {horariosDisponiveis.length > 0 && (
@@ -1416,10 +1540,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   {servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).join(' + ')}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#A88690]">Duração Prevista:</span>
-                <span className="font-bold">{duracaoTotal} minutos</span>
-              </div>
+              {planoVipEscolhido && detalhesSessoesPlano ? (
+                <div className="space-y-1 py-1.5 border-t border-b border-[#FAD0DC]/50 my-1 text-xs">
+                  <div className="flex justify-between text-amber-950 font-bold">
+                    <span>⏱️ Duração 1ª Sessão ({detalhesSessoesPlano.sessao1.procedimentos}):</span>
+                    <span>{formatarDuracaoMinutos(detalhesSessoesPlano.sessao1.duracao)}</span>
+                  </div>
+                  {detalhesSessoesPlano.gruposProximas.map((g, idx) => (
+                    <div key={idx} className="flex justify-between text-[11px] text-[#5A3F45]">
+                      <span className="text-[#8C7A6B]">🔁 Duração {g.titulo} ({g.procedimentos}):</span>
+                      <span className="font-semibold">{formatarDuracaoMinutos(g.duracao)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex justify-between">
+                  <span className="text-[#A88690]">Duração Prevista:</span>
+                  <span className="font-bold">{duracaoTotal} minutos</span>
+                </div>
+              )}
               {planoVipEscolhido ? (
                 <div className="flex justify-between text-amber-800 pt-1">
                   <span className="font-semibold flex items-center gap-1">

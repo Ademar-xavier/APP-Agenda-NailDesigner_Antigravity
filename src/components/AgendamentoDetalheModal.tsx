@@ -887,7 +887,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     let finalDescMotivo = (descontoMotivo || '').trim() || 'Desconto Concedido';
 
     // Se o valor recebido for menor que o esperado e não for VIP isento, calcula o desconto automaticamente
-    const isVipIsento = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
+    const isVipIsento = isVip || usarSaldoClube;
     if (!isVipIsento && finalDescValor <= 0 && valorRecebido < baseEsperada) {
       finalDescValor = Math.max(0, baseEsperada - valorRecebido);
       finalDescMotivo = valorRecebido === 0 ? 'Cortesia' : (descontoMotivo || 'Desconto Concedido');
@@ -1367,8 +1367,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               );
             })()}
 
-            {/* Desconto Concedido e Motivo (Histórico) */}
-            {(() => {
+            {/* Desconto Concedido e Motivo (Histórico - Exclusivo para não-VIP) */}
+            {!isVip && (() => {
               let descVal = agendamento.desconto_valor || 0;
               let descMot = agendamento.desconto_motivo || 'Desconto Concedido';
               if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
@@ -1412,36 +1412,36 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               <span>{isVip ? 'Valor cobrado nesta sessão' : 'Total'}</span>
               <div className="text-right">
                 {(() => {
-                  let descVal = agendamento.desconto_valor || 0;
-                  let descMot = agendamento.desconto_motivo || 'Cortesia';
-                  if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
-                    const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
-                    if (m) {
-                      descVal = parseFloat(m[1]) || 0;
-                      descMot = m[2]?.trim() || 'Cortesia';
-                    }
-                  }
-                  const valorOriginalServs = servs.reduce((acc, s) => acc + (s.preco || 0), 0);
-                  if (!descVal && agendamento.status === 'concluido' && !isVip && valorOriginalServs > agendamento.valor_total) {
-                    descVal = valorOriginalServs - agendamento.valor_total;
-                    descMot = agendamento.desconto_motivo || (agendamento.valor_total === 0 ? 'Cortesia' : 'Desconto Concedido');
-                  }
-                  const isCortesiaTotal = agendamento.valor_total === 0 && ((descVal >= valorOriginalServs && valorOriginalServs > 0) || descMot.toLowerCase().includes('cortesia') || agendamento.desconto_motivo?.toLowerCase().includes('cortesia'));
-
-                  if (isCortesiaTotal) {
+                  if (isVip) {
                     return (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-xs shadow-2xs">
-                        R$ 0,00 (100% {descMot.toLowerCase().includes('cortesia') ? 'Cortesia' : descMot})
+                      <span className="font-extrabold text-xs text-amber-900 bg-amber-100 px-2.5 py-1 rounded-md border border-amber-200 shadow-2xs">
+                        {agendamento.valor_total > 0
+                          ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)`
+                          : 'R$ 0,00 (Incluso no VIP)'}
                       </span>
                     );
                   }
 
-                  if (isVip) {
+                  let descVal = agendamento.desconto_valor || 0;
+                  let descMot = agendamento.desconto_motivo || '';
+                  if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
+                    const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+                    if (m) {
+                      descVal = parseFloat(m[1]) || 0;
+                      descMot = m[2]?.trim() || '';
+                    }
+                  }
+                  const valorOriginalServs = servs.reduce((acc, s) => acc + (s.preco || 0), 0);
+                  if (!descVal && agendamento.status === 'concluido' && valorOriginalServs > agendamento.valor_total) {
+                    descVal = valorOriginalServs - agendamento.valor_total;
+                    descMot = agendamento.desconto_motivo || (agendamento.valor_total === 0 ? 'Cortesia' : 'Desconto Concedido');
+                  }
+                  const isCortesiaTotal = !isVip && agendamento.valor_total === 0 && ((descVal >= valorOriginalServs && valorOriginalServs > 0) || descMot.toLowerCase().includes('cortesia') || agendamento.desconto_motivo?.toLowerCase().includes('cortesia'));
+
+                  if (isCortesiaTotal) {
                     return (
-                      <span className="font-extrabold text-xs">
-                        {agendamento.valor_total > 0
-                          ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)`
-                          : 'R$ 0,00 (Incluso no VIP)'}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-xs shadow-2xs">
+                        R$ 0,00 (100% {descMot.toLowerCase().includes('cortesia') ? 'Cortesia' : (descMot || 'Cortesia')})
                       </span>
                     );
                   }
@@ -2418,7 +2418,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     const totalProdsComanda = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
                     const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda;
 
-                    const isSessaoIsentaClube = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
+                    const isSessaoIsentaClube = (isVip || usarSaldoClube) && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
                     if (!isSessaoIsentaClube && baseParaCalculo > novoVal) {
                       setDescontoValor(Math.max(0, baseParaCalculo - novoVal));
                       if (!descontoMotivo || descontoMotivo === 'Desconto acordado') {
