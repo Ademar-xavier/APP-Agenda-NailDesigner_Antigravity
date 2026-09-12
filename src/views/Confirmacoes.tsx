@@ -18,6 +18,8 @@ import { Agendamento, ListaEspera, Cliente, Servico, REGRA_DEVOLUCAO_PADRAO } fr
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
 
+import { agendamentoEnvolveProfissional } from '../utils/planoVipHelper';
+
 type AbaConfirmacao = 'a_confirmar' | 'confirmados' | 'manutencao' | 'lista_espera' | 'cancelados';
 
 export const Confirmacoes: React.FC = () => {
@@ -79,7 +81,8 @@ export const Confirmacoes: React.FC = () => {
     const dataLimiteStr = dataLimite.toISOString().split('T')[0] + 'T23:59:59';
     
     const filtrados = agendamentos.filter(a => {
-      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      if (a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+      if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) return false;
       return a.inicio >= hoje && a.inicio <= dataLimiteStr && (a.status === 'pendente' || a.status === 'confirmado');
     });
 
@@ -348,7 +351,8 @@ export const Confirmacoes: React.FC = () => {
   // A confirmar: pendentes e futuros (ordenados por data e hora do menor para o maior)
   const aConfirmar = agendamentos
     .filter(a => {
-      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      if (a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+      if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) return false;
       return a.status === 'pendente' && a.inicio >= hoje;
     })
     .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
@@ -356,24 +360,50 @@ export const Confirmacoes: React.FC = () => {
   // Confirmados: futuros confirmados (ordenados por data e hora do menor para o maior)
   const confirmados = agendamentos
     .filter(a => {
-      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      if (a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+      if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) return false;
       return a.status === 'confirmado' && a.inicio >= hoje;
     })
     .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
 
   // Lista de espera: ativa (aguardando) (ordenada por data preferida e hora do menor para o maior)
-  const listaEsperaAtiva = listaEspera
-    .filter(w => w.status === 'aguardando')
-    .sort((a, b) => {
-      const cmp = a.data_preferida.localeCompare(b.data_preferida);
-      if (cmp !== 0) return cmp;
-      return new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime();
-    });
+  const listaEsperaAtiva = useMemo(() => {
+    return listaEspera
+      .filter(w => {
+        if (w.status !== 'aguardando') return false;
+        if (currentUser?.perfil === 'profissional') {
+          if (w.profissional_id) {
+            const pIdTarget = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+            const wProfTarget = (w.profissional_id === 'u_yxnfmkow1' || w.profissional_id === 'u2') ? 'u2' : w.profissional_id;
+            if (pIdTarget !== wProfTarget && w.servico_id !== 's3') {
+              return false;
+            }
+          } else if (w.servico_id) {
+            const serv = servicos.find(s => s.id === w.servico_id);
+            if (serv?.is_pacote && serv.servicos_pacote_detalhes) {
+              const envolve = serv.servicos_pacote_detalhes.some(d => {
+                const dProf = (d.profissional_id === 'u_yxnfmkow1' || d.profissional_id === 'u2') ? 'u2' : d.profissional_id;
+                const cProf = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+                return dProf === cProf;
+              });
+              if (!envolve && serv.id !== 's3') return false;
+            }
+          }
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const cmp = a.data_preferida.localeCompare(b.data_preferida);
+        if (cmp !== 0) return cmp;
+        return new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime();
+      });
+  }, [listaEspera, currentUser, servicos]);
 
   // Cancelados: histórico de cancelamentos (ordenados por data e hora do menor para o maior)
   const cancelados = agendamentos
     .filter(a => {
-      if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) return false;
+      if (a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+      if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) return false;
       return a.status === 'cancelado';
     })
     .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
@@ -395,8 +425,20 @@ export const Confirmacoes: React.FC = () => {
     const recs = obterRecomendacoesManutencao();
     return recs
       .filter(r => !dispensadosManutencao.includes(`${r.cliente.id}_${r.servico.id}`))
+      .filter(r => {
+        if (currentUser?.perfil === 'profissional') {
+          if (r.ultimoAgendamento && agendamentoEnvolveProfissional(r.ultimoAgendamento, currentUser.id, servicos)) {
+            return true;
+          }
+          const pIdTarget = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+          const rProfTarget = (r.profissional_id === 'u_yxnfmkow1' || r.profissional_id === 'u2') ? 'u2' : r.profissional_id;
+          if (pIdTarget === rProfTarget) return true;
+          return false;
+        }
+        return true;
+      })
       .sort((a, b) => a.dataSugerida.localeCompare(b.dataSugerida));
-  }, [obterRecomendacoesManutencao, dispensadosManutencao]);
+  }, [obterRecomendacoesManutencao, dispensadosManutencao, currentUser, servicos]);
 
   const manutencoesAConfirmar = useMemo(() => {
     if (filtroManutencao === 'todas') {

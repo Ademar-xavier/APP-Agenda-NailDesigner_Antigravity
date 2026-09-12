@@ -15,11 +15,14 @@ import {
   CheckCircle2,
   X,
   Check,
-  ExternalLink
+  ExternalLink,
+  BarChart3,
+  Crown
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Cliente, REGRA_DEVOLUCAO_PADRAO, AvisoCliente } from '../types';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
+import { agendamentoEnvolveProfissional } from '../utils/planoVipHelper';
 
 interface DashboardProps {
   setCurrentView: (view: string) => void;
@@ -98,7 +101,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // 1. Filtrar agendamentos do profissional se não for administrador
   const agendamentosFiltrados = agendamentos.filter(a => {
-    if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
+    if (a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+    if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) {
       return false;
     }
     return true;
@@ -136,14 +140,144 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }, 0);
   const taxaOcupacao = Math.min(100, Math.round((minutosAgendadosHoje / minutosTotaisExpediente) * 100));
 
+  // --- GRÁFICO PREMIUM: Desempenho da Semana (Previsto vs Realizado) ---
+  const [diaSemanaHover, setDiaSemanaHover] = useState<any | null>(null);
+
+  const dadosDesempenhoSemana = useMemo(() => {
+    const nomesCurtos = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    const nomesCompletos = ['Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+
+    const agora = new Date();
+    const diaSemanaHojeIndex = agora.getDay(); // 0 = Dom, 1 = Seg, ..., 6 = Sáb
+    const diffParaSegunda = diaSemanaHojeIndex === 0 ? -6 : 1 - diaSemanaHojeIndex;
+    const segundaDate = new Date(agora);
+    segundaDate.setDate(agora.getDate() + diffParaSegunda);
+
+    const dias = nomesCurtos.map((diaCurto, i) => {
+      const d = new Date(segundaDate);
+      d.setDate(segundaDate.getDate() + i);
+      const dataStr = d.toLocaleDateString('en-CA');
+      const dataExibicao = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const isHoje = dataStr === dataBaseStr;
+
+      const agsDoDia = agendamentosFiltrados.filter(a => 
+        a.inicio.startsWith(dataStr) && 
+        a.status !== 'cancelado' && 
+        a.status !== 'falta' &&
+        !a.observacoes?.includes('[AG_PRINCIPAL:')
+      );
+
+      const agsConcluidos = agsDoDia.filter(a => a.status === 'concluido');
+
+      const realCalculado = agsConcluidos.reduce((acc, a) => {
+        const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+        const isDupla = sIds.some(s => s.id === 's3') || (
+          (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
+          !sIds.some(s => s.id === 's_blmeapdgo')
+        );
+        return acc + (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : (Number(a.valor_total) || 0));
+      }, 0);
+
+      const prevCalculado = agsDoDia.reduce((acc, a) => {
+        const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+        const isDupla = sIds.some(s => s.id === 's3') || (
+          (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
+          !sIds.some(s => s.id === 's_blmeapdgo')
+        );
+        return acc + (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : (Number(a.valor_total) || 0));
+      }, 0);
+
+      // 100% dados reais dos agendamentos
+      const valorPrevisto = prevCalculado;
+      const valorRealizado = realCalculado;
+      const taxaConversao = valorPrevisto > 0 ? Math.round((valorRealizado / valorPrevisto) * 100) : 0;
+
+      return {
+        dia: diaCurto,
+        diaCompleto: nomesCompletos[i],
+        dataStr,
+        dataExibicao,
+        isHoje,
+        valor: valorPrevisto,
+        real: valorRealizado,
+        taxaConversao,
+        qtdAtendimentos: agsDoDia.length,
+        atendimentos: agsDoDia
+      };
+    });
+
+    const maxVal = Math.max(...dias.map(d => Math.max(d.valor, d.real)), 200);
+    const diasComReal = dias.filter(d => d.real > 0);
+    const diaPico = diasComReal.length > 0 
+      ? dias.reduce((max, d) => (d.real > max.real ? d : max), dias[0])
+      : null;
+    const totalPrevistoSemana = dias.reduce((acc, d) => acc + d.valor, 0);
+    const totalRealizadoSemana = dias.reduce((acc, d) => acc + d.real, 0);
+    const taxaConversaoTotal = totalPrevistoSemana > 0 ? Math.round((totalRealizadoSemana / totalPrevistoSemana) * 100) : 0;
+    const mediaRealizadaDiaria = diasComReal.length > 0 ? Math.round(totalRealizadoSemana / diasComReal.length) : 0;
+
+    const primeiraDataStr = dias[0].dataExibicao;
+    const ultimaDataStr = dias[dias.length - 1].dataExibicao;
+
+    return {
+      dias,
+      maxVal,
+      diaPico,
+      totalPrevistoSemana,
+      totalRealizadoSemana,
+      taxaConversaoTotal,
+      mediaRealizadaDiaria,
+      periodoSemanaStr: `${primeiraDataStr} a ${ultimaDataStr}`
+    };
+  }, [agendamentosFiltrados, dataBaseStr, obterServicosDeAgendamento]);
+
   const aguardandoConfirmacao = atendimentosHoje.filter(a => a.status === 'pendente');
-  // Exibe apenas manutenções a vencer nos próximos 7 dias (1 semana) ou já atrasadas para não poluir
-  const recomendacoesManutencao = obterRecomendacoesManutencao()
-    .filter(r => r.diasRestantes <= 7)
-    .slice(0, 4);
+
+  // Exibe apenas manutenções a vencer nos próximos 7 dias vinculadas à profissional logada (ou salão se admin)
+  const recomendacoesManutencao = useMemo(() => {
+    const recs = obterRecomendacoesManutencao();
+    return recs
+      .filter(r => {
+        if (currentUser?.perfil === 'profissional') {
+          if (r.ultimoAgendamento && agendamentoEnvolveProfissional(r.ultimoAgendamento, currentUser.id, servicos)) {
+            return true;
+          }
+          const pIdTarget = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+          const rProfTarget = (r.profissional_id === 'u_yxnfmkow1' || r.profissional_id === 'u2') ? 'u2' : r.profissional_id;
+          if (pIdTarget === rProfTarget) return true;
+          return false;
+        }
+        return true;
+      })
+      .filter(r => r.diasRestantes <= 7)
+      .slice(0, 4);
+  }, [obterRecomendacoesManutencao, currentUser, servicos]);
+
   const listaEsperaAtiva = useMemo(() => {
-    return (listaEspera || []).filter(item => item.status === 'aguardando');
-  }, [listaEspera]);
+    return (listaEspera || []).filter(item => {
+      if (item.status !== 'aguardando') return false;
+      if (currentUser?.perfil === 'profissional') {
+        if (item.profissional_id) {
+          const pIdTarget = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+          const wProfTarget = (item.profissional_id === 'u_yxnfmkow1' || item.profissional_id === 'u2') ? 'u2' : item.profissional_id;
+          if (pIdTarget !== wProfTarget && item.servico_id !== 's3') {
+            return false;
+          }
+        } else if (item.servico_id) {
+          const serv = servicos.find(s => s.id === item.servico_id);
+          if (serv?.is_pacote && serv.servicos_pacote_detalhes) {
+            const envolve = serv.servicos_pacote_detalhes.some(d => {
+              const dProf = (d.profissional_id === 'u_yxnfmkow1' || d.profissional_id === 'u2') ? 'u2' : d.profissional_id;
+              const cProf = (currentUser.id === 'u_yxnfmkow1' || currentUser.id === 'u2') ? 'u2' : currentUser.id;
+              return dProf === cProf;
+            });
+            if (!envolve && serv.id !== 's3') return false;
+          }
+        }
+      }
+      return true;
+    });
+  }, [listaEspera, currentUser, servicos]);
 
   const formatarMoeda = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -534,48 +668,198 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Weekly Performance Bar Chart SVG (Apenas Admin) */}
           {isAdminRole && (
-            <div className="bg-white rounded-2xl border border-[#EFECE6] p-6 shadow-sm">
-              <h3 className="font-serif font-bold text-lg text-[#5A4535] mb-4">Desempenho da Semana</h3>
-              <div className="h-48 flex items-end justify-between gap-2 pt-6">
-                {[
-                  { dia: 'Seg', valor: 350, real: 350 },
-                  { dia: 'Ter', valor: 480, real: 480 },
-                  { dia: 'Qua', valor: 650, real: 650 },
-                  { dia: 'Qui', valor: 850, real: 750 },
-                  { dia: 'Sex', valor: 1200, real: 1050 },
-                  { dia: 'Sáb', valor: faturamentoPrevistoHoje, real: faturamentoRealizadoHoje }
-                ].map((item, idx) => {
-                  const maxVal = 1300;
-                  const prevHeight = (item.valor / maxVal) * 100;
-                  const realHeight = (item.real / maxVal) * 100;
-                  return (
-                    <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-                      <div className="w-full flex justify-center gap-1 items-end h-32 relative">
-                        <div 
-                          style={{ height: `${prevHeight}%` }} 
-                          className="w-3 bg-[#E8DEC9] rounded-t-sm transition-all"
-                          title={`Previsto: ${formatarMoeda(item.valor)}`}
-                        ></div>
-                        <div 
-                          style={{ height: `${realHeight}%` }} 
-                          className="w-3 bg-[#8C6D58] rounded-t-sm transition-all"
-                          title={`Realizado: ${formatarMoeda(item.real)}`}
-                        ></div>
-                      </div>
-                      <span className="text-xs font-semibold text-[#8C7A6B]">{item.dia}</span>
+            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 md:p-6 shadow-sm flex flex-col justify-between relative">
+              {/* Header do Gráfico com Indicadores Dinâmicos Padronizados */}
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-[#FAF9F6] pb-3 mb-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <BarChart3 size={18} className="text-[#8C6D58] shrink-0" />
+                    <h3 className="font-serif font-bold text-base md:text-lg text-[#5A4535]">Desempenho da Semana</h3>
+                  </div>
+                  <p className="text-[11px] text-[#8C7A6B] mt-0.5">
+                    Comparativo semanal de faturamento previsto vs. realizado ({dadosDesempenhoSemana.periodoSemanaStr})
+                  </p>
+                </div>
+
+                {/* Badges de Resumo e Destaque Executivo 100% Uniformes em Linha Única */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                  {dadosDesempenhoSemana.diaPico && dadosDesempenhoSemana.diaPico.real > 0 && (
+                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                      <Crown size={13} className="text-[#C9A227] shrink-0" />
+                      <span>Pico: <strong className="font-bold">{dadosDesempenhoSemana.diaPico.dia} ({formatarMoeda(dadosDesempenhoSemana.diaPico.real)})</strong></span>
                     </div>
-                  );
-                })}
+                  )}
+                  {dadosDesempenhoSemana.mediaRealizadaDiaria > 0 && (
+                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                      <BarChart3 size={13} className="text-[#8C6D58] shrink-0" />
+                      <span>Média: <strong className="font-bold">{formatarMoeda(dadosDesempenhoSemana.mediaRealizadaDiaria)}/dia</strong></span>
+                    </div>
+                  )}
+                  <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F2F8F4] border border-[#DCEFE3] text-[#2B7A4B] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                    <TrendingUp size={13} className="text-[#4FA97A] shrink-0" />
+                    <span>Conversão: <strong className="font-bold">{dadosDesempenhoSemana.taxaConversaoTotal}%</strong></span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-4 justify-center mt-4 pt-3 border-t border-[#EFECE6]">
-                <div className="flex items-center gap-1.5 text-xs text-[#8C7A6B]">
-                  <div className="w-3 h-3 bg-[#E8DEC9] rounded-sm"></div>
-                  <span>Faturamento Previsto</span>
+
+              {/* Corpo do Gráfico com Eixo Y e Plot Separados */}
+              <div className="flex gap-2 pt-4 pb-1">
+                {/* Coluna do Eixo Y */}
+                <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between text-right pr-2 select-none h-44 md:h-52">
+                  <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(dadosDesempenhoSemana.maxVal)}</span>
+                  <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(dadosDesempenhoSemana.maxVal * 0.5)}</span>
+                  <span className="text-[9px] font-mono text-[#A39284] leading-none">R$ 0,00</span>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-[#8C7A6B]">
-                  <div className="w-3 h-3 bg-[#8C6D58] rounded-sm"></div>
-                  <span>Faturamento Realizado</span>
+
+                {/* Área de Plotagem (Grid + Barras + Eixo X) */}
+                <div className="flex-1 min-w-0 flex flex-col">
+                  {/* Container das Barras e Linhas Guias */}
+                  <div className="relative h-44 md:h-52 flex items-end">
+                    {/* Linhas de Grade Horizontais */}
+                    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between">
+                      <div className="border-t border-[#FAF2EB] w-full"></div>
+                      <div className="border-t border-[#FAF2EB] border-dashed w-full"></div>
+                      <div className="border-b border-[#EFECE6] w-full"></div>
+                    </div>
+
+                    {/* Linha pontilhada da média */}
+                    {dadosDesempenhoSemana.mediaRealizadaDiaria > 0 && dadosDesempenhoSemana.maxVal > 0 && (
+                      <div 
+                        style={{ bottom: `${Math.min(92, Math.max(4, (dadosDesempenhoSemana.mediaRealizadaDiaria / dadosDesempenhoSemana.maxVal) * 100))}%` }}
+                        className="absolute inset-x-0 border-t border-amber-500/50 border-dashed pointer-events-none z-0"
+                        title={`Média diária realizada: ${formatarMoeda(dadosDesempenhoSemana.mediaRealizadaDiaria)}`}
+                      />
+                    )}
+
+                    {/* Pares de Barras (Previsto e Realizado) */}
+                    <div className="flex items-end justify-between gap-2 md:gap-4 w-full h-full relative z-10 px-2">
+                      {dadosDesempenhoSemana.dias.map((item, idx) => {
+                        const prevHeight = (item.valor / dadosDesempenhoSemana.maxVal) * 100;
+                        const realHeight = (item.real / dadosDesempenhoSemana.maxVal) * 100;
+                        const isPico = item.real > 0 && item.real === dadosDesempenhoSemana.diaPico?.real;
+                        const isHovered = diaSemanaHover?.dia === item.dia;
+
+                        return (
+                          <div 
+                            key={idx} 
+                            className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                            onMouseEnter={() => setDiaSemanaHover(item)}
+                            onMouseLeave={() => setDiaSemanaHover(null)}
+                            onClick={() => setDiaSemanaHover(diaSemanaHover?.dia === item.dia ? null : item)}
+                          >
+                            <div className="w-full flex justify-center gap-1.5 items-end h-full relative">
+                              {/* Tooltip Interativo Premium Ampliado */}
+                              {isHovered && (
+                                <div className={`absolute bottom-full mb-2.5 bg-[#2D221A] text-white p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[210px] md:min-w-[230px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
+                                  idx >= 4 ? 'right-0' : idx === 0 ? 'left-0' : 'left-1/2 -translate-x-1/2'
+                                }`}>
+                                  <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+                                    <span className="text-[11px] text-[#EFE7D8] font-bold">{item.diaCompleto}</span>
+                                    <span className="text-[10px] font-mono text-amber-300 font-bold">{item.dataExibicao}</span>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs font-bold text-emerald-400">
+                                      <span className="text-[10px] text-stone-300 font-normal">Realizado:</span>
+                                      <span className="font-mono text-sm">{formatarMoeda(item.real)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs font-semibold text-[#E8DEC9]">
+                                      <span className="text-[10px] text-stone-300 font-normal">Previsto:</span>
+                                      <span className="font-mono">{formatarMoeda(item.valor)}</span>
+                                    </div>
+                                    <div className="pt-1 border-t border-white/10 flex items-center justify-between text-[10px]">
+                                      <span className="text-stone-300">Atingido:</span>
+                                      <span className="font-bold text-amber-300 font-mono">{item.taxaConversao}%</span>
+                                    </div>
+                                  </div>
+                                  {isPico && (
+                                    <div className="mt-1.5 inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-300 bg-amber-950/70 border border-amber-700/50 px-2 py-0.5 rounded-md">
+                                      <span>★ Pico da semana</span>
+                                    </div>
+                                  )}
+                                  {item.isHoje && (
+                                    <div className="mt-1.5 pt-1 text-[8px] text-center font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/60 rounded py-0.5">
+                                      • Hoje em Andamento •
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Barra 1: Previsto */}
+                              <div 
+                                style={{ height: `${item.valor > 0 ? Math.max(prevHeight, 6) : 0}%` }} 
+                                className={`w-3 md:w-3.5 rounded-t-md transition-all duration-300 bg-gradient-to-t from-[#DDD3C1] to-[#EFE7D8] border-t border-x border-[#D5C9B3] ${
+                                  isHovered ? 'scale-x-110 brightness-105' : 'group-hover:brightness-105'
+                                }`}
+                              ></div>
+
+                              {/* Barra 2: Realizado */}
+                              <div 
+                                style={{ height: `${item.real > 0 ? Math.max(realHeight, 6) : 0}%` }} 
+                                className={`w-3 md:w-3.5 rounded-t-md transition-all duration-300 ${
+                                  isPico
+                                    ? 'bg-gradient-to-t from-[#946F4B] via-[#C9A227] to-[#E8CD82] shadow-[0_0_8px_rgba(232,205,130,0.5)] group-hover:brightness-110'
+                                    : item.real > 0
+                                    ? 'bg-gradient-to-t from-[#8C6D58] to-[#AA8B75] group-hover:from-[#725743] group-hover:to-[#967761]'
+                                    : 'bg-transparent'
+                                } ${isHovered ? 'scale-x-110 brightness-110 ring-2 ring-[#8C6D58]/40' : ''}`}
+                              >
+                                {isPico && (
+                                  <div className="w-full flex justify-center -mt-2">
+                                    <span className="text-[7px] text-[#C9A227]">★</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rótulo do Dia no Eixo X (Abaixo da linha de base!) */}
+                  <div className="flex justify-between gap-2 md:gap-4 w-full pt-1.5 px-2">
+                    {dadosDesempenhoSemana.dias.map((item, idx) => {
+                      const isPico = item.real > 0 && item.real === dadosDesempenhoSemana.diaPico?.real;
+                      return (
+                        <div key={idx} className="flex-1 flex flex-col items-center">
+                          <span className={`text-[11px] font-bold tracking-tight ${
+                            item.isHoje 
+                              ? 'text-[#8C6D58] font-black underline decoration-2 decoration-[#8C6D58]' 
+                              : isPico 
+                              ? 'text-[#8A6218]' 
+                              : 'text-[#8C7A6B]'
+                          }`}>
+                            {item.dia}
+                          </span>
+                          <span className="text-[8px] text-[#B8A89A] font-mono">
+                            {item.dataExibicao}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
+              </div>
+
+              {/* Legenda e Rodapé Informativo */}
+              <div className="flex flex-wrap items-center justify-between text-xs text-[#8C7A6B] pt-4 border-t border-[#FAF9F6] mt-3 gap-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 bg-gradient-to-t from-[#DDD3C1] to-[#EFE7D8] rounded-xs border border-[#D5C9B3]"></div>
+                    <span className="text-[11px] font-semibold text-[#5A4535]">
+                      Previsto ({formatarMoeda(dadosDesempenhoSemana.totalPrevistoSemana)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 bg-gradient-to-t from-[#8C6D58] to-[#AA8B75] rounded-xs"></div>
+                    <span className="text-[11px] font-semibold text-[#5A4535]">
+                      Realizado ({formatarMoeda(dadosDesempenhoSemana.totalRealizadoSemana)})
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[10px] text-[#8C7A6B] italic">
+                  Passe o mouse sobre as barras para ver detalhes
+                </span>
               </div>
             </div>
           )}
@@ -583,9 +867,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Right Column: Confirmations / Maintenance / Waitlist (Visível para todos os perfis) */}
         <div className="space-y-6">
-            {/* Actionable Confirmations */}
-            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
-              <h3 className="font-serif font-bold text-base text-[#5A4535] mb-3 flex items-center gap-2">
+          {/* Profissional view: Dicas do Salão no TOPO da 1ª paginação */}
+          {!isAdminRole && (
+            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
+              <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-1.5 border-b border-[#FAF9F6] pb-2">
+                <Sparkles size={18} className="text-[#8C6D58]" />
+                <span>Dicas do Salão</span>
+              </h3>
+              <p className="text-xs text-[#8C7A6B] leading-relaxed">
+                Olá, <strong>{currentUser?.nome || 'Profissional'}</strong>! Lembre-se de sempre marcar seus atendimentos finalizados como <strong>Concluído</strong> na aba <strong>Agenda</strong> para registrar a próxima sugestão de manutenção da cliente.
+              </p>
+              <div className={`p-3 rounded-xl border text-xs font-semibold ${
+                infoExpediente.abertoHoje 
+                  ? 'bg-[#F2F8F4] border-[#D1E7D8] text-[#2D6A4F]' 
+                  : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
+              }`}>
+                {infoExpediente.texto}
+              </div>
+            </div>
+          )}
+
+          {/* Actionable Confirmations */}
+          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
+            <h3 className="font-serif font-bold text-base text-[#5A4535] mb-3 flex items-center gap-2">
                 <UserCheck size={18} className="text-[#8C6D58]" />
                 <span>Aguardando Confirmação ({aguardandoConfirmacao.length})</span>
               </h3>
@@ -658,55 +962,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            {/* Maintenance Alerter */}
-            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
-              <h3 className="font-serif font-bold text-base text-[#5A4535] mb-3 flex items-center gap-2">
-                <AlertCircle size={18} className="text-[#D37F64]" />
-                <span>Retorno de Manutenção</span>
-              </h3>
-
-              {recomendacoesManutencao.length === 0 ? (
-                <p className="text-xs text-[#8C7A6B] py-3 text-center">Nenhum cliente com manutenção pendente para os próximos 7 dias.</p>
-              ) : (
-                <div className="space-y-3">
-                  {recomendacoesManutencao.map((rec, idx) => (
-                    <div key={idx} className="p-3 border border-[#EFECE6] rounded-xl flex items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-xs font-bold text-[#5A4535]">{rec.cliente.nome}</h4>
-                        <p className="text-[10px] text-[#8C7A6B] mt-0.5">
-                          {rec.servico.nome} ({rec.servico.intervalo_manutencao_dias}d)
-                        </p>
-                        <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 ${
-                          rec.diasRestantes < 0
-                            ? 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]'
-                            : rec.diasRestantes === 0
-                              ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]'
-                              : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
-                        }`}>
-                          {rec.diasRestantes < 0
-                            ? `Atrasada há ${rec.diasAtraso}d`
-                            : rec.diasRestantes === 0
-                              ? 'Vence hoje'
-                              : `Vence em ${rec.diasRestantes}d`}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => handleEnviarMensagemWhatsApp(rec.cliente, 'retorno_manutencao', {
-                          servico: rec.servico.nome,
-                          dias: rec.servico.intervalo_manutencao_dias + rec.diasAtraso
-                        })}
-                        className="p-2 bg-[#E2F5EC] hover:bg-[#c9ebd9] text-[#4FA97A] rounded-full transition-colors"
-                        title="Enviar convite de retorno no WhatsApp"
-                      >
-                        <MessageCircle size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             {/* Card Lista de Espera */}
             <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
               <div className="flex justify-between items-center mb-3">
@@ -769,25 +1024,54 @@ export const Dashboard: React.FC<DashboardProps> = ({
               )}
             </div>
 
-            {/* Profissional view side panel: Dicas do Salão */}
-            {!isAdminRole && (
-              <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
-                <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-1.5 border-b border-[#FAF9F6] pb-2">
-                  <Sparkles size={18} className="text-[#8C6D58]" />
-                  <span>Dicas do Salão</span>
-                </h3>
-                <p className="text-xs text-[#8C7A6B] leading-relaxed">
-                  Olá, <strong>{currentUser?.nome || 'Profissional'}</strong>! Lembre-se de sempre marcar seus atendimentos finalizados como <strong>Concluído</strong> na aba <strong>Agenda</strong> para registrar a próxima sugestão de manutenção da cliente.
-                </p>
-                <div className={`p-3 rounded-xl border text-xs font-semibold ${
-                  infoExpediente.abertoHoje 
-                    ? 'bg-[#F2F8F4] border-[#D1E7D8] text-[#2D6A4F]' 
-                    : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
-                }`}>
-                  {infoExpediente.texto}
+            {/* Maintenance Alerter */}
+            <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm">
+              <h3 className="font-serif font-bold text-base text-[#5A4535] mb-3 flex items-center gap-2">
+                <AlertCircle size={18} className="text-[#D37F64]" />
+                <span>Retorno de Manutenção</span>
+              </h3>
+
+              {recomendacoesManutencao.length === 0 ? (
+                <p className="text-xs text-[#8C7A6B] py-3 text-center">Nenhum cliente com manutenção pendente para os próximos 7 dias.</p>
+              ) : (
+                <div className="space-y-3">
+                  {recomendacoesManutencao.map((rec, idx) => (
+                    <div key={idx} className="p-3 border border-[#EFECE6] rounded-xl flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-bold text-[#5A4535]">{rec.cliente.nome}</h4>
+                        <p className="text-[10px] text-[#8C7A6B] mt-0.5">
+                          {rec.servico.nome} ({rec.servico.intervalo_manutencao_dias}d)
+                        </p>
+                        <span className={`inline-block text-[9px] font-bold px-1.5 py-0.5 rounded mt-1 ${
+                          rec.diasRestantes < 0
+                            ? 'bg-[#FDF2F2] text-[#D32F2F] border border-[#FFCDD2]'
+                            : rec.diasRestantes === 0
+                              ? 'bg-[#FFF9E6] text-[#B78103] border border-[#FFECB3]'
+                              : 'bg-[#EFF6FF] text-[#1D4ED8] border border-[#BFDBFE]'
+                        }`}>
+                          {rec.diasRestantes < 0
+                            ? `Atrasada há ${rec.diasAtraso}d`
+                            : rec.diasRestantes === 0
+                              ? 'Vence hoje'
+                              : `Vence em ${rec.diasRestantes}d`}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleEnviarMensagemWhatsApp(rec.cliente, 'retorno_manutencao', {
+                          servico: rec.servico.nome,
+                          dias: rec.servico.intervalo_manutencao_dias + rec.diasAtraso
+                        })}
+                        className="p-2 bg-[#E2F5EC] hover:bg-[#c9ebd9] text-[#4FA97A] rounded-full transition-colors"
+                        title="Enviar convite de retorno no WhatsApp"
+                      >
+                        <MessageCircle size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
       </div>
 

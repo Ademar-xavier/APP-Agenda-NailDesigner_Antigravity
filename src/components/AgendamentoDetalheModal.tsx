@@ -196,9 +196,26 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     }
   }, [agendamento]);
 
+  const isAtendimentoDupla = useMemo(() => {
+    if (!agendamento) return false;
+    if (nomesProfissionaisCompletos.length > 1) return true;
+    const servsDoAg = servs;
+    const temPacoteDupla = servsDoAg.some(s => {
+      if (!s.is_pacote || !s.servicos_pacote_detalhes || s.servicos_pacote_detalhes.length <= 1) return false;
+      const profsDistintas = new Set(
+        s.servicos_pacote_detalhes.map(d => (d.profissional_id === 'u_yxnfmkow1' ? 'u2' : d.profissional_id)).filter(Boolean)
+      );
+      return profsDistintas.size > 1;
+    });
+    return servsDoAg.some(s => s.id === 's3') || temPacoteDupla || (
+      (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais') || agendamento.observacoes?.includes('AG_PAR:') || agendamento.observacoes?.includes('AG_PRINCIPAL:') || agendamento.observacoes?.includes('Dupla')) &&
+      !servsDoAg.some(s => s.id === 's_blmeapdgo')
+    );
+  }, [agendamento, nomesProfissionaisCompletos, servs]);
+
   // Análise de horários disponíveis para a data e profissional selecionados
   const analiseHorariosRemarcacao = useMemo(() => {
-    if (!dataRemarcacao || !profRemarcacaoId) return { livres: [], ocupados: [], fechado: false };
+    if (!dataRemarcacao || (!profRemarcacaoId && !isAtendimentoDupla)) return { livres: [], ocupados: [], fechado: false };
 
     const diaSemana = new Date(dataRemarcacao + 'T12:00:00').getDay();
     const expediente = configSalao?.horarios_trabalho?.[diaSemana];
@@ -224,7 +241,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       const inicioAgend = `${dataRemarcacao}T${slot}:00`;
       const fimAgend = calcularFimAgendamento(inicioAgend, duracao);
 
-      const conflito = checkConflitoHorario(inicioAgend, fimAgend, profRemarcacaoId, agendamento?.id);
+      let conflito = false;
+      if (isAtendimentoDupla) {
+        // Valida disponibilidade simultânea de Sheila (u1) e Lurdinha (u2)
+        const conflitoSheila = checkConflitoHorario(inicioAgend, fimAgend, 'u1', agendamento?.id);
+        const conflitoLurdinha = checkConflitoHorario(inicioAgend, fimAgend, 'u2', agendamento?.id);
+        conflito = conflitoSheila || conflitoLurdinha;
+      } else {
+        conflito = checkConflitoHorario(inicioAgend, fimAgend, profRemarcacaoId, agendamento?.id);
+      }
 
       if (!conflito) {
         livres.push(slot);
@@ -234,7 +259,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     }
 
     return { livres, ocupados, fechado: false };
-  }, [dataRemarcacao, profRemarcacaoId, duracaoMinutosAgendamento, configSalao, checkConflitoHorario, agendamento?.id]);
+  }, [dataRemarcacao, profRemarcacaoId, duracaoMinutosAgendamento, configSalao, checkConflitoHorario, agendamento?.id, isAtendimentoDupla]);
 
   useEffect(() => {
     if (analiseHorariosRemarcacao.livres.length > 0 && !analiseHorariosRemarcacao.livres.includes(horaRemarcacao)) {
@@ -270,7 +295,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       const dataFormatada = `${dia}/${mes}/${ano}`;
       const diasSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
       const diaNome = diasSemana[new Date(`${dataRemarcacao}T12:00:00`).getDay()];
-      const profNome = equipe.find(u => u.id === profRemarcacaoId)?.nome || prof?.nome || 'Sheila';
+      const profNome = isAtendimentoDupla
+        ? 'Sheila Santos e Lurdinha (Atendimento em Dupla)'
+        : (equipe.find(u => u.id === profRemarcacaoId)?.nome || prof?.nome || 'Sheila');
       const nomesServicos = servs.map(s => s.nome).join(' + ') || 'Atendimento';
 
       const textoWhats = `Olá, ${cliente.nome}! 💅\nSeu agendamento foi remarcado com sucesso.\n\n📅 *Nova Data:* ${dataFormatada} (${diaNome})\n⏰ *Novo Horário:* ${horaRemarcacao}\n👩‍🎨 *Profissional:* ${profNome}\n✨ *Procedimento:* ${nomesServicos}\n\nQualquer dúvida ou imprevisto, é só nos avisar por aqui! 🥰`;
@@ -421,8 +448,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       // Calcula o valor total a receber considerando sinal, clube vip, desconto e produtos de balcão
       const jaPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
       const totalProdutos = produtosComanda.reduce((acc, p) => acc + p.subtotal, 0);
+      const precoContratado = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+        ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
+        : agendamento.valor_total;
       const descVal = Math.max(0, Number(descontoValor) || 0);
-      const valorBase = Math.max(0, agendamento.valor_total - jaPago);
+      const valorBase = Math.max(0, precoContratado - jaPago);
       const valorServicoComDesconto = Math.max(0, valorBase - descVal);
 
       // Na 1ª Sessão com valor_total > 0, o valor cobrado é a mensalidade do plano VIP (não é isenta)
@@ -1150,11 +1180,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         </span>
                       ) : (
                         <span className="font-semibold text-stone-700">
-                          {formatarMoeda(
-                            (agendamento.valor_total > 0 && agendamento.valor_total < s.preco && (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('AG_PAR:') || agendamento.observacoes?.includes('AG_PRINCIPAL:')))
-                              ? agendamento.valor_total
-                              : s.preco
-                          )}
+                          {formatarMoeda(s.preco)}
                         </span>
                       )}
                     </div>
@@ -1185,10 +1211,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                             (pIdEfetivo === 'u2' || sub?.nome.toLowerCase().includes('manicure')) ? 'Lurdinha' :
                             (pIdEfetivo === 'u1' || sub?.nome.toLowerCase().includes('pedicure')) ? 'Sheila Santos' : 'Profissional'
                           );
+                          const cotaProcedimento = ehDuplaReal && s.preco === 80 ? ' (R$ 40,00)' : '';
                           return (
                             <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
                               <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
-                              <span className="font-bold text-[#8C6D58]">{nomeProfProcedimento}</span>
+                              <span className="font-bold text-[#8C6D58]">{nomeProfProcedimento}{cotaProcedimento}</span>
                             </div>
                           );
                         })}
@@ -1208,7 +1235,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 ) : (
                   agendamento.pago_com_clube
                     ? (agendamento.valor_total > 0 ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)` : 'R$ 0,00 (Plano VIP)')
-                    : formatarMoeda(agendamento.valor_total)
+                    : formatarMoeda(
+                        (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+                          ? (servs[0]?.preco || agendamento.valor_total)
+                          : agendamento.valor_total
+                      )
                 )}
               </span>
             </div>
@@ -1619,22 +1650,29 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
               <div>
                 <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
-                  Profissional
+                  {isAtendimentoDupla ? 'Profissionais (Atendimento em Dupla)' : 'Profissional'}
                 </label>
-                <select
-                  value={profRemarcacaoId}
-                  onChange={(e) => {
-                    setProfRemarcacaoId(e.target.value);
-                    setErrorRemarcacao('');
-                  }}
-                  className="w-full border border-[#EFECE6] rounded-xl p-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
-                >
-                  {equipe.filter(u => u.ativo).map(u => (
-                    <option key={u.id} value={u.id}>
-                      {u.nome} ({u.especialidade || (u.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
-                    </option>
-                  ))}
-                </select>
+                {isAtendimentoDupla ? (
+                  <div className="p-2 border border-[#E8DEC9] bg-[#FAF4ED] rounded-xl text-xs font-bold text-[#8C6D58] flex items-center gap-2 min-h-[38px]">
+                    <Sparkles size={14} className="text-[#8C6D58] shrink-0" />
+                    <span>Sheila Santos e Lurdinha (Simultâneo)</span>
+                  </div>
+                ) : (
+                  <select
+                    value={profRemarcacaoId}
+                    onChange={(e) => {
+                      setProfRemarcacaoId(e.target.value);
+                      setErrorRemarcacao('');
+                    }}
+                    className="w-full border border-[#EFECE6] rounded-xl p-2 text-xs font-bold text-[#5A4535] bg-white focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 min-h-[38px]"
+                  >
+                    {equipe.filter(u => u.ativo).map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.nome} ({u.especialidade || (u.perfil === 'admin' ? 'Proprietária' : 'Profissional')})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
@@ -1985,7 +2023,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         <span className="text-[10px] text-[#8C7A6B] block">R$ {item.preco_unitario.toFixed(2)} un</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-[#5A4535] font-serif">R$ {item.subtotal.toFixed(2)}</span>
+                        <span className="font-bold text-[#5A4535]">R$ {item.subtotal.toFixed(2)}</span>
                         <button
                           type="button"
                           onClick={() => handleRemoverProdutoComanda(item.produto_id)}
@@ -2059,7 +2097,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               <div className="flex justify-between text-[#8C7A6B]">
                 <span>{isPrimeiraSessaoVip && agendamento.valor_total > 0 ? 'Mensalidade do Clube VIP:' : 'Serviço realizado:'}</span>
                 <span className={((!isPrimeiraSessaoVip || agendamento.valor_total === 0) && (usarSaldoClube || isVipAgendamento)) ? 'line-through text-gray-400' : 'font-semibold text-[#5A4535]'}>
-                  {formatarMoeda(agendamento.valor_total)}
+                  {formatarMoeda((agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais')) ? Math.max(agendamento.valor_total, servs[0]?.preco || 0) : agendamento.valor_total)}
                 </span>
               </div>
               {((!isPrimeiraSessaoVip || agendamento.valor_total === 0) && (usarSaldoClube || (agendamento.valor_total === 0 && isVipAgendamento))) && (
@@ -2088,7 +2126,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
               <div className="flex justify-between border-t border-[#EFECE6] pt-1.5 text-xs font-bold text-[#5A4535]">
                 <span>Total a receber:</span>
-                <span className="font-serif text-sm text-[#8C6D58]">{formatarMoeda(valorRecebido)}</span>
+                <span className="font-extrabold text-sm text-[#8C6D58]">{formatarMoeda(valorRecebido)}</span>
               </div>
             </div>
 
@@ -2120,7 +2158,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     const v = e.target.value;
                     setValorRecebido(v === '' ? 0 : Math.max(0, parseFloat(v) || 0));
                   }}
-                  className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 bg-white text-[#5A4535] font-bold font-serif"
+                  className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 bg-white text-[#5A4535] font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
                 />
               </div>
             </div>
