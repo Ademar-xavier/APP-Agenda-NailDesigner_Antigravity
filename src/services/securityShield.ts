@@ -1,7 +1,7 @@
 // Escudo de Segurança Cibernética & Proteção Anti-Clonagem
 // Protege: Código-fonte, Chaves de Acesso, Licenças, Dados dos Clientes e Ataques Externos
 
-const APP_INTEGRITY_SALT = (import.meta.env.VITE_SECURITY_SALT || (typeof window !== 'undefined' ? window.location.hostname : 'nail_shield')).trim();
+const APP_INTEGRITY_SALT = (import.meta.env.VITE_SECURITY_SALT || 'nail_app_security_v1').trim();
 
 // 1. Função de Hashing Criptográfico Rápido (FNV-1a 64-bit extendido com salt)
 export const gerarHashSeguro = (dados: string): string => {

@@ -18,8 +18,14 @@ const STORAGE_KEY = 'nail_app_licenca_ativa_v1';
 const ENV_KEY_VITALICIO = (import.meta.env.VITE_LICENSE_KEY_VITALICIO || '').trim().toUpperCase();
 const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || '').trim().toUpperCase();
 
-// Dicionário de chaves ativas configuradas via variáveis de ambiente
-const CHAVES_CONFIGURADAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {};
+// Dicionário de chaves ativas (oficiais de fábrica e/ou configuradas via variáveis de ambiente)
+const CHAVES_CONFIGURADAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
+  'SHEILA-VIP-2026': { tipo: 'vitalicio', titular: 'Sheila Santos' },
+  'SHEILA-VITALICIO-2026': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
+  'ADEMAR-ADMIN-VITA': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
+  'NAIL-PRO-VITALICIO': { tipo: 'vitalicio', titular: 'Licença Vitalícia Profissional' },
+  'NAIL-MENSAL-30': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 }
+};
 if (ENV_KEY_VITALICIO) {
   CHAVES_CONFIGURADAS[ENV_KEY_VITALICIO] = { tipo: 'vitalicio', titular: 'Sheila Santos' };
 }
