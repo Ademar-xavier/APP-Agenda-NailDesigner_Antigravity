@@ -14,35 +14,11 @@ export interface LicencaInfo {
 
 const STORAGE_KEY = 'nail_app_licenca_ativa_v1';
 
-// Chaves de Licença configuradas no arquivo de ambiente
+// Chaves de Licença configuradas opcionalmente via arquivo de ambiente (.env) para testes locais
 const ENV_KEY_VITALICIO = (import.meta.env.VITE_LICENSE_KEY_VITALICIO || '').trim().toUpperCase();
 const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || '').trim().toUpperCase();
 
-// Dicionário de chaves ativas (oficiais de fábrica e/ou configuradas via variáveis de ambiente)
-const CHAVES_CONFIGURADAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
-  'SHEILA-VIP-2026': { tipo: 'vitalicio', titular: 'Sheila Santos' },
-  'SHEILA-VITALICIO-2026': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
-  'ADEMAR-ADMIN-VITA': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
-  'NAIL-PRO-VITALICIO': { tipo: 'vitalicio', titular: 'Licença Vitalícia Profissional' },
-  'NAIL-MENSAL-30': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 }
-};
-if (ENV_KEY_VITALICIO) {
-  CHAVES_CONFIGURADAS[ENV_KEY_VITALICIO] = { tipo: 'vitalicio', titular: 'Sheila Santos' };
-}
-if (ENV_KEY_MENSAL) {
-  CHAVES_CONFIGURADAS[ENV_KEY_MENSAL] = { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 };
-}
-
-// Hashes criptográficos unidirecionais para chaves de fábrica offline (protegendo chaves contra extração estática)
-const HASHES_AUTORIZADOS_OFFLINE: { [hash: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
-  '2DXJBAO8CGB': { tipo: 'vitalicio', titular: 'Sheila Santos' },
-  'PYC5KFHLS6': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
-  '1I4GL543LPW': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
-  '21Z6JTFJI4Q': { tipo: 'vitalicio', titular: 'Licença Vitalícia Profissional' },
-  '1D5IDYCWNSL': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 }
-};
-
-// Gera assinatura de integridade para a licença
+// Gera assinatura de integridade criptográfica para a licença salva no aparelho (anti-tampering)
 const assinarLicenca = (info: LicencaInfo): string => {
   return gerarHashSeguro(`${info.chave}#${info.tipo}#${info.titular}#${info.dataAtivacao}#${info.dataExpiracao || 'none'}`);
 };
@@ -175,86 +151,30 @@ export const ativarChaveLicenca = async (
     }
   } catch (e) {}
 
-  // 2. Verifica se é uma chave configurada no .env ou autorizada de fábrica via hash
-  const hashChave = gerarHashSeguro(chaveLimpa);
-  const mestre = CHAVES_CONFIGURADAS[chaveLimpa] || HASHES_AUTORIZADOS_OFFLINE[hashChave];
-  const agora = new Date();
-
-  if (mestre) {
-    let dataExpiracao: string | null = null;
-    if (mestre.diasValidade) {
-      const exp = new Date();
-      exp.setDate(exp.getDate() + mestre.diasValidade);
-      dataExpiracao = exp.toISOString();
-    }
-
+  // 2. Ambiente de Desenvolvimento Local (apenas se configurado explicitamente no .env)
+  if (ENV_KEY_VITALICIO && chaveLimpa === ENV_KEY_VITALICIO) {
+    const agora = new Date();
     const novaLicenca: LicencaInfo = {
       ativa: true,
-      tipo: mestre.tipo,
+      tipo: 'vitalicio',
       chave: chaveLimpa,
-      titular: nomeTitular?.trim() || mestre.titular,
+      titular: nomeTitular?.trim() || 'Desenvolvedor / Administrador',
       dataAtivacao: agora.toISOString(),
-      dataExpiracao,
-      diasRestantes: mestre.diasValidade || undefined
+      dataExpiracao: null
     };
 
     novaLicenca.sig = assinarLicenca(novaLicenca);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(novaLicenca));
     return {
       sucesso: true,
-      mensagem: mestre.tipo === 'vitalicio'
-        ? 'Licença Vitalícia ativada com sucesso! Acesso ilimitado liberado.'
-        : `Assinatura ativada com sucesso! Válida por ${mestre.diasValidade} dias.`,
+      mensagem: 'Licença de desenvolvimento ativada com sucesso!',
       licenca: novaLicenca
     };
   }
 
-  // 3. Validação Criptográfica de Chaves Geradas:
-  // Formato: PREFIXO-CORPO-CHECKSUM (onde CHECKSUM é a assinatura criptográfica do corpo)
-  const partes = chaveLimpa.split('-');
-  if (partes.length >= 3) {
-    const prefixo = partes[0];
-    const checksumFornecido = partes[partes.length - 1];
-    const corpo = partes.slice(0, partes.length - 1).join('-');
-    const checksumCalculado = gerarHashSeguro(corpo).substring(0, 4);
-
-    if (checksumFornecido === checksumCalculado) {
-      const isVitalicio = prefixo === 'VITA' || prefixo === 'VIP';
-      const dias = isVitalicio ? undefined : 30;
-      let expIso: string | null = null;
-
-      if (!isVitalicio) {
-        const exp = new Date();
-        exp.setDate(exp.getDate() + 30);
-        expIso = exp.toISOString();
-      }
-
-      const novaLicenca: LicencaInfo = {
-        ativa: true,
-        tipo: isVitalicio ? 'vitalicio' : 'mensal',
-        chave: chaveLimpa,
-        titular: nomeTitular?.trim() || (isVitalicio ? 'Licença Vitalícia' : 'Assinatura Mensal'),
-        dataAtivacao: agora.toISOString(),
-        dataExpiracao: expIso,
-        diasRestantes: dias
-      };
-
-      novaLicenca.sig = assinarLicenca(novaLicenca);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(novaLicenca));
-
-      return {
-        sucesso: true,
-        mensagem: isVitalicio
-          ? 'Chave Vitalícia verificada e autenticada com sucesso!'
-          : 'Assinatura Mensal de 30 dias ativada com sucesso!',
-        licenca: novaLicenca
-      };
-    }
-  }
-
   return {
     sucesso: false,
-    mensagem: 'Chave de licença inválida ou inexistente. Verifique se digitou corretamente ou entre em contato com o suporte.'
+    mensagem: 'Chave de licença inválida ou não encontrada no sistema. Verifique a digitação ou entre em contato com o suporte.'
   };
 };
 
