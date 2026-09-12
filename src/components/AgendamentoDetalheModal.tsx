@@ -875,6 +875,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   const handleConcluir = () => {
+    // Calcula a base esperada dos serviços + produtos menos sinal
+    const precoOriginal = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+      ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
+      : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
+    const totalProdutos = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
+    const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
+    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalProdutos;
+
+    let finalDescValor = Math.max(0, Number(descontoValor) || 0);
+    let finalDescMotivo = (descontoMotivo || '').trim() || 'Desconto Concedido';
+
+    // Se o valor recebido for menor que o esperado e não for VIP isento, calcula o desconto automaticamente
+    const isVipIsento = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
+    if (!isVipIsento && finalDescValor <= 0 && valorRecebido < baseEsperada) {
+      finalDescValor = Math.max(0, baseEsperada - valorRecebido);
+      finalDescMotivo = valorRecebido === 0 ? 'Cortesia' : (descontoMotivo || 'Desconto Concedido');
+    }
+
     concluirAtendimento(
       agendamento.id, 
       valorRecebido, 
@@ -883,7 +901,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       produtosComanda.length > 0 ? produtosComanda : undefined, 
       usarSaldoClube,
       usarSaldoClube ? servicoAbaterId : undefined,
-      descontoValor > 0 ? { valor: Number(descontoValor), motivo: descontoMotivo } : undefined
+      finalDescValor > 0 ? { valor: finalDescValor, motivo: finalDescMotivo } : undefined
     );
     setAcao(null);
     onClose();
@@ -1352,12 +1370,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             {/* Desconto Concedido e Motivo (Histórico) */}
             {(() => {
               let descVal = agendamento.desconto_valor || 0;
-              let descMot = agendamento.desconto_motivo || 'Cortesia';
+              let descMot = agendamento.desconto_motivo || 'Desconto Concedido';
               if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
                 const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
                 if (m) {
                   descVal = parseFloat(m[1]) || 0;
-                  descMot = m[2]?.trim() || 'Cortesia';
+                  descMot = m[2]?.trim() || 'Desconto Concedido';
+                }
+              }
+              // Resiliência caso o agendamento esteja concluído com valor menor que a tabela (e não é VIP)
+              if (!descVal && agendamento.status === 'concluido' && !isVip) {
+                const valorOriginalServs = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+                  ? (servs[0]?.preco || 0)
+                  : servs.reduce((acc, s) => acc + (s.preco || 0), 0);
+                const prodsTotal = (agendamento.produtos || []).reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
+                const totalEsperado = valorOriginalServs + prodsTotal;
+                if (totalEsperado > agendamento.valor_total) {
+                  descVal = totalEsperado - agendamento.valor_total;
+                  descMot = agendamento.desconto_motivo || (agendamento.valor_total === 0 ? 'Cortesia' : 'Desconto Concedido');
                 }
               }
               if (descVal <= 0 && descontoValor > 0 && acao === 'concluir') {
@@ -1383,17 +1413,25 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               <div className="text-right">
                 {(() => {
                   let descVal = agendamento.desconto_valor || 0;
+                  let descMot = agendamento.desconto_motivo || 'Cortesia';
                   if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
                     const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
-                    if (m) descVal = parseFloat(m[1]) || 0;
+                    if (m) {
+                      descVal = parseFloat(m[1]) || 0;
+                      descMot = m[2]?.trim() || 'Cortesia';
+                    }
                   }
                   const valorOriginalServs = servs.reduce((acc, s) => acc + (s.preco || 0), 0);
-                  const isCortesiaTotal = agendamento.valor_total === 0 && ((descVal >= valorOriginalServs && valorOriginalServs > 0) || agendamento.desconto_motivo?.toLowerCase().includes('cortesia'));
+                  if (!descVal && agendamento.status === 'concluido' && !isVip && valorOriginalServs > agendamento.valor_total) {
+                    descVal = valorOriginalServs - agendamento.valor_total;
+                    descMot = agendamento.desconto_motivo || (agendamento.valor_total === 0 ? 'Cortesia' : 'Desconto Concedido');
+                  }
+                  const isCortesiaTotal = agendamento.valor_total === 0 && ((descVal >= valorOriginalServs && valorOriginalServs > 0) || descMot.toLowerCase().includes('cortesia') || agendamento.desconto_motivo?.toLowerCase().includes('cortesia'));
 
                   if (isCortesiaTotal) {
                     return (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-xs shadow-2xs">
-                        R$ 0,00 (100% Cortesia)
+                        R$ 0,00 (100% {descMot.toLowerCase().includes('cortesia') ? 'Cortesia' : descMot})
                       </span>
                     );
                   }
@@ -2233,57 +2271,78 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </div>
 
             {/* Campo de Desconto na Comanda (Negociação no Fechamento) */}
-            <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles size={13} className="text-emerald-600" />
-                  <label className="block text-[10px] font-bold text-[#8C6D58] uppercase">
-                    Desconto no Fechamento
-                  </label>
-                </div>
-                <span className="text-[10px] text-[#8C7A6B]">Negociação com a cliente</span>
-              </div>
+            {(() => {
+              const precoOriginalServ = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+                ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
+                : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
+              const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
+              const totalProdsComanda = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
+              const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda;
 
-              {/* Botões rápidos de motivo */}
-              <div className="flex flex-wrap gap-1">
-                {['Negociado', 'Cortesia', 'Fidelidade', 'Promoção'].map(mot => (
-                  <button
-                    key={mot}
-                    type="button"
-                    onClick={() => setDescontoMotivo(mot)}
-                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${
-                      descontoMotivo === mot
-                        ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                        : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
-                    }`}
-                  >
-                    {mot}
-                  </button>
-                ))}
-              </div>
+              return (
+                <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={13} className="text-emerald-600" />
+                      <label className="block text-[10px] font-bold text-[#8C6D58] uppercase">
+                        Desconto no Fechamento
+                      </label>
+                    </div>
+                    <span className="text-[10px] text-[#8C7A6B]">Negociação com a cliente</span>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={descontoValor === 0 ? '' : descontoValor}
-                    onChange={(e) => setDescontoValor(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="w-full pl-8 pr-2 py-1.5 border border-[#EFECE6] rounded-lg text-xs font-bold text-emerald-800 bg-[#FAF9F6] focus:outline-none focus:border-emerald-500"
-                  />
+                  {/* Botões rápidos de motivo */}
+                  <div className="flex flex-wrap gap-1">
+                    {['Negociado', 'Cortesia', 'Fidelidade', 'Promoção'].map(mot => (
+                      <button
+                        key={mot}
+                        type="button"
+                        onClick={() => {
+                          setDescontoMotivo(mot);
+                          if (mot === 'Cortesia' && (!descontoValor || descontoValor === 0)) {
+                            setDescontoValor(baseParaCalculo);
+                            setValorRecebido(0);
+                          }
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded-md border transition-all ${
+                          descontoMotivo === mot
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                        }`}
+                      >
+                        {mot}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="relative">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">R$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0,00"
+                        value={descontoValor === 0 ? '' : descontoValor}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseFloat(e.target.value) || 0);
+                          setDescontoValor(val);
+                          setValorRecebido(Math.max(0, baseParaCalculo - val));
+                        }}
+                        className="w-full pl-8 pr-2 py-1.5 border border-[#EFECE6] rounded-lg text-xs font-bold text-emerald-800 bg-[#FAF9F6] focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Motivo (ex: Amiga da casa)"
+                      value={descontoMotivo}
+                      onChange={(e) => setDescontoMotivo(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-[#EFECE6] rounded-lg text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                    />
+                  </div>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Motivo (ex: Amiga da casa)"
-                  value={descontoMotivo}
-                  onChange={(e) => setDescontoMotivo(e.target.value)}
-                  className="w-full px-2.5 py-1.5 border border-[#EFECE6] rounded-lg text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
-                />
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Resumo da Comanda */}
             <div className="bg-white/80 p-2.5 rounded-xl border border-[#EFECE6] space-y-1 text-xs">
@@ -2349,7 +2408,25 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setValorRecebido(v === '' ? 0 : Math.max(0, parseFloat(v) || 0));
+                    const novoVal = v === '' ? 0 : Math.max(0, parseFloat(v) || 0);
+                    setValorRecebido(novoVal);
+
+                    const precoOriginalServ = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+                      ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
+                      : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
+                    const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
+                    const totalProdsComanda = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
+                    const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda;
+
+                    const isSessaoIsentaClube = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
+                    if (!isSessaoIsentaClube && baseParaCalculo > novoVal) {
+                      setDescontoValor(Math.max(0, baseParaCalculo - novoVal));
+                      if (!descontoMotivo || descontoMotivo === 'Desconto acordado') {
+                        setDescontoMotivo(novoVal === 0 ? 'Cortesia' : 'Negociado');
+                      }
+                    } else if (novoVal >= baseParaCalculo) {
+                      setDescontoValor(0);
+                    }
                   }}
                   className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 bg-white text-[#5A4535] font-extrabold text-sm focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
                 />

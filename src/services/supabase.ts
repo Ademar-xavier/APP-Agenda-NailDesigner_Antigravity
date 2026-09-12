@@ -205,13 +205,15 @@ export const salvarAgendamentoSupabase = async (
 
     // Serializar metadados de histórico em observações para integridade na nuvem
     let obsFinal = agendamento.observacoes || '';
-    if (agendamento.desconto_valor && agendamento.desconto_valor > 0 && !obsFinal.includes('[DESCONTO:')) {
-      const motivo = agendamento.desconto_motivo || 'Desconto concedido';
-      obsFinal = `${obsFinal} [DESCONTO:${agendamento.desconto_valor}|${motivo}]`.trim();
+    if (agendamento.desconto_valor && Number(agendamento.desconto_valor) > 0) {
+      const motivo = agendamento.desconto_motivo || 'Desconto Concedido';
+      obsFinal = obsFinal.replace(/\[DESCONTO:\s*[\d.]+\s*\|\s*[^\]]+\]/gi, '').trim();
+      obsFinal = `${obsFinal} [DESCONTO:${Number(agendamento.desconto_valor).toFixed(2)}|${motivo}]`.trim();
     }
-    if (agendamento.produtos && agendamento.produtos.length > 0 && !obsFinal.includes('[PRODUTOS:')) {
+    if (agendamento.produtos && agendamento.produtos.length > 0) {
       try {
         const prodJson = JSON.stringify(agendamento.produtos);
+        obsFinal = obsFinal.replace(/\[PRODUTOS:\s*\[.*?\]\s*\]/gi, '').trim();
         obsFinal = `${obsFinal} [PRODUTOS:${prodJson}]`.trim();
       } catch (e) {}
     }

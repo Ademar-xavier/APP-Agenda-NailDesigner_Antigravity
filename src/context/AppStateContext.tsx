@@ -1184,6 +1184,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
 
+          // Inferência resiliente de histórico: se está concluído e o valor cobrado foi menor que o da tabela (e não é VIP)
+          if ((descVal === undefined || descVal === 0) && a.status === 'concluido' && !isVip) {
+            const sIds = (a.itens_servicos && Array.isArray(a.itens_servicos)) ? a.itens_servicos : [];
+            const servsListaRef = (dados.servicos && Array.isArray(dados.servicos) && dados.servicos.length > 0) ? dados.servicos : servicos;
+            const servsDoAg = servsListaRef.filter((s: any) => sIds.includes(s.id));
+            const somaTabela = servsDoAg.reduce((acc: number, s: any) => acc + (Number(s.preco) || 0), 0);
+            if (somaTabela > 0 && valorEfetivo < somaTabela) {
+              descVal = somaTabela - valorEfetivo;
+              descMot = descMot || (valorEfetivo === 0 ? 'Cortesia' : 'Desconto Concedido');
+            }
+          }
+
           // Extrair produtos da comanda se presentes em observações ou objeto
           let prods = a.produtos;
           if ((!prods || prods.length === 0) && a.observacoes?.includes('[PRODUTOS:')) {
@@ -3735,10 +3747,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     servicoAbaterId?: string,
     desconto?: { valor: number; motivo?: string }
   ) => {
-    const valorDesconto = Math.max(0, Number(desconto?.valor) || 0);
-    const motivoDesconto = desconto?.motivo?.trim() || 'Desconto concedido';
-
     const agAlvo = agendamentos.find(a => a.id === agendamentoId);
+    const servsDoAg = obterServicosDeAgendamento(agendamentoId);
+    const totalServicos = servsDoAg.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+    const totalAdicionalProdutos = produtosVendidos ? produtosVendidos.reduce((acc, p) => acc + p.subtotal, 0) : 0;
+    const sinalPago = (agAlvo && agAlvo.status === 'confirmado') ? (Number(agAlvo.valor_sinal) || 0) : 0;
+    const precoOriginal = (agAlvo?.observacoes?.includes('Co-atendimento') || agAlvo?.observacoes?.includes('2 Profissionais'))
+      ? Math.max(agAlvo.valor_total, servsDoAg[0]?.preco || 0)
+      : Math.max(agAlvo?.valor_total || 0, totalServicos);
+    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalAdicionalProdutos;
+
+    let valorDesconto = Math.max(0, Number(desconto?.valor) || 0);
+    let motivoDesconto = desconto?.motivo?.trim() || 'Desconto Concedido';
+
+    // Se o desconto não foi passado explicitamente, mas o valor recebido for menor que o esperado (e não for VIP isento)
+    const isVipIsento = pagoComClube && (!agAlvo || agAlvo.valor_total === 0);
+    if (!isVipIsento && valorDesconto <= 0 && valorRestante < baseEsperada) {
+      valorDesconto = Math.max(0, baseEsperada - valorRestante);
+      motivoDesconto = valorRestante === 0 ? 'Cortesia' : 'Desconto Concedido';
+    }
+
     const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
     const parceirosIds = parceiros.map(p => p.id);
 
@@ -3746,12 +3774,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAgendamentos(prev => {
       const atualizados = prev.map(a => {
         if (a.id === agendamentoId) {
-          const totalAdicionalProdutos = produtosVendidos ? produtosVendidos.reduce((acc, p) => acc + p.subtotal, 0) : 0;
           // Se a sessão VIP possui valor_total (mensalidade cobrada na 1ª sessão), preserva o valor recebido
           const isMensalidadeVipCobrada = a.valor_total > 0 && valorRestante > 0;
           const novoValorTotal = (pagoComClube && !isMensalidadeVipCobrada)
             ? totalAdicionalProdutos 
-            : Math.max(0, (a.valor_total - valorDesconto) + totalAdicionalProdutos);
+            : valorRestante;
 
           const atualizado: Agendamento = {
             ...a,
