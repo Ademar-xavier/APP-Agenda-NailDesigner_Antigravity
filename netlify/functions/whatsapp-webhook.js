@@ -1,9 +1,9 @@
 // Netlify Serverless Function: Webhook Oficial da Meta Cloud API (WhatsApp Business)
 // Recebe as respostas de cliques dos botões enviados para as clientes e atualiza o Supabase em tempo real!
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://skdvaxezhskfsfhmvajt.supabase.co';
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_sdzeLBdQeUgfY-7sHwPW5g_2UqZ3Rap';
-const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'sheila_nail_webhook_secret';
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
+const VERIFY_TOKEN = (process.env.META_VERIFY_TOKEN || '').trim();
 
 const supabaseRest = async (path, options = {}) => {
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
@@ -105,7 +105,7 @@ export const handler = async (event) => {
       console.error('Erro no processamento do webhook Meta:', e);
       return {
         statusCode: 200,
-        body: JSON.stringify({ status: 'ERROR_LOGGED', error: e.message })
+        body: JSON.stringify({ status: 'ERROR_LOGGED' })
       };
     }
   }

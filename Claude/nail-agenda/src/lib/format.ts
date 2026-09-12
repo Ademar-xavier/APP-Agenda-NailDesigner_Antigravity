@@ -59,10 +59,18 @@ export function onlyDigits(value: string): string {
 export function gerarCodigoReserva(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let code = ''
-  for (let i = 0; i < 4; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)]
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const buf = new Uint8Array(4);
+    crypto.getRandomValues(buf);
+    for (let i = 0; i < 4; i++) {
+      code += chars[buf[i] % chars.length];
+    }
+  } else {
+    for (let i = 0; i < 4; i++) {
+      code += chars[(Date.now() + i) % chars.length];
+    }
   }
-  return `NB-${code}`
+  return `NB-${code}`;
 }
 
 export function initials(nome: string): string {

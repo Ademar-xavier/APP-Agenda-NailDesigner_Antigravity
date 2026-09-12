@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { salvarTokenFcmSupabase } from './supabase';
+import { gerarIdSeguro, gerarNumeroAleatorioSeguro } from '../utils/cryptoHelper';
 
 let canalInicializado = false;
 let fcmInicializado = false;
@@ -142,7 +143,7 @@ export const dispararNotificacaoBarraStatus = async (
       await LocalNotifications.schedule({
         notifications: [
           {
-            id: Math.floor(Math.random() * 899999) + 100000,
+            id: gerarNumeroAleatorioSeguro(100000, 999999),
             title: titulo,
             body: corpo,
             channelId: 'agendamentos_nail_v2',
@@ -195,7 +196,7 @@ export const dispararNotificacaoBarraStatus = async (
             icon: './logo.png?v=3',
             badge: './logo.png?v=3',
             vibrate: [250, 100, 250],
-            tag: 'nail_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+            tag: gerarIdSeguro('nail_'),
             renotify: true,
             data: {
               agendamentoId,

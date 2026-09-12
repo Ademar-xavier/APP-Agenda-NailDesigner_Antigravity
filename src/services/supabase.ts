@@ -1,10 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { Cliente, Agendamento, ListaEspera, Servico } from '../types';
+import { gerarIdSeguro } from '../utils/cryptoHelper';
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://skdvaxezhskfsfhmvajt.supabase.co';
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_sdzeLBdQeUgfY-7sHwPW5g_2UqZ3Rap';
+export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+export const supabase = createClient(
+  SUPABASE_URL || 'https://placeholder.supabase.co',
+  SUPABASE_ANON_KEY || 'placeholder-anon-key'
+);
 
 // Tenant padrão para isolamento multi-tenant (SaaS)
 export const CURRENT_SALAO_ID = 'salao_principal';
@@ -833,7 +837,7 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
 
     const horaAgora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const novoAviso = {
-      id: 'aviso_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      id: gerarIdSeguro('aviso_'),
       criadoEm: new Date().toISOString(),
       lido: false,
       hora: horaAgora,

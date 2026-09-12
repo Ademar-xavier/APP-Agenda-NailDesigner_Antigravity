@@ -271,7 +271,7 @@ function AppContent() {
             window.focus();
           }, 50);
         } catch (e) {
-          console.error(e);
+          console.error('Erro ao acordar cursor:', e);
         }
       }, 100);
     };

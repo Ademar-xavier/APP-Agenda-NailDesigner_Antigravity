@@ -6,6 +6,7 @@
  */
 
 import { dbGetAll, dbSetItem, dbDeleteItem, STORES } from './dbStorage';
+import { gerarIdSeguro } from '../utils/cryptoHelper';
 import { 
   salvarClienteSupabase, 
   deletarClienteSupabase, 
@@ -81,7 +82,7 @@ export async function obterQuantidadeTarefasPendentes(): Promise<number> {
  */
 export async function enfileirarTarefaSync(acao: SyncActionType, payload: any): Promise<void> {
   const task: SyncTask = {
-    id: `sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    id: gerarIdSeguro('sync_'),
     acao,
     payload,
     tentativas: 0,
