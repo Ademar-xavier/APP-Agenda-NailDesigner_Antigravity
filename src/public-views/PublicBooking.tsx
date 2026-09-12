@@ -27,7 +27,7 @@ import {
   salvarListaEsperaSupabase
 } from '../services/supabase';
 import { dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
-import { obterServicosIdsSessaoVip, calcularDuracaoSessaoVip, obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
+import { obterServicosIdsSessaoVip, calcularDuracaoSessaoVip, obterTextoResumoSessoesVip, obterTodasProfissionaisDosServicos } from '../utils/planoVipHelper';
 
 interface PublicBookingProps {
   setIsAdmin: (isAdmin: boolean) => void;
@@ -311,9 +311,19 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       const segF = String(dateFim.getSeconds()).padStart(2, '0');
       const fimAgend = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
 
-      // Verifica se há vaga para a profissional selecionada ou se qualquer uma está livre
+      // Verifica se o serviço requer múltiplas profissionais (ex: Manicure + Pedicure 2 Profissionais)
+      const todasProfsNecessarias = obterTodasProfissionaisDosServicos(
+        servicosSelecionados,
+        servicos,
+        equipe,
+        profissionalId || undefined
+      );
+
+      // Verifica se há vaga para a profissional selecionada ou se todas as profissionais necessárias estão livres
       let temVaga = false;
-      if (profissionalId) {
+      if (todasProfsNecessarias.length > 1) {
+        temVaga = todasProfsNecessarias.every(pId => !checkConflitoHorario(inicioAgend, fimAgend, pId));
+      } else if (profissionalId) {
         temVaga = !checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
       } else {
         temVaga = profissionaisAptas.length === 0 

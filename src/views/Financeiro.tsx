@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { MetodoPagamento } from '../types';
+import { calcularValorServicoProfissional } from '../utils/planoVipHelper';
 
 export const Financeiro: React.FC = () => {
   const { 
@@ -301,7 +302,11 @@ export const Financeiro: React.FC = () => {
         (a.status === 'concluido' || a.status === 'confirmado') && 
         a.inicio.startsWith(mesSelecionadoStr)
       );
-      const faturamentoBruto = ags.reduce((acc, a) => acc + (a.valor_total || 0), 0);
+      const faturamentoBruto = ags.reduce((acc, a) => {
+        const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+        const valorEfetivo = calcularValorServicoProfissional(a, prof.id, servicos, equipe, sIds);
+        return acc + valorEfetivo;
+      }, 0);
       const taxaPct = prof.comissao_padrao_porcentagem !== undefined ? prof.comissao_padrao_porcentagem : 50;
       const valorComissaoBruta = (faturamentoBruto * taxaPct) / 100;
       const cotaSalao = faturamentoBruto - valorComissaoBruta;

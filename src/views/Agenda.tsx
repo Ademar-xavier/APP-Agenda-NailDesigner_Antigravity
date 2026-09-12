@@ -27,7 +27,9 @@ import {
   obterConfiguracaoSessaoVip,
   calcularDuracaoSessaoVip,
   obterServicosIdsSessaoVip,
-  obterTextoResumoSessoesVip
+  obterTextoResumoSessoesVip,
+  obterProfissionaisDoServicoOuPacote,
+  obterTodasProfissionaisDosServicos
 } from '../utils/planoVipHelper';
 
 interface AgendaProps {
@@ -142,16 +144,29 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [calendarViewDate, setCalendarViewDate] = useState<Date>(() => new Date());
 
   // Mapa de dias com atendimento (para marcar com pontinho no calendário)
+  // Desconsidera intervalos de almoço e bloqueios, exibindo apenas clientes reais
   const mapaDiasComAtendimento = useMemo(() => {
     const mapa: { [dataStr: string]: number } = {};
     agendamentos.forEach(a => {
-      if (a.status !== 'cancelado') {
+      if (
+        a.status !== 'cancelado' &&
+        a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
+        a.cliente_id !== 'bloqueado' &&
+        !a.observacoes?.includes('[Almoço]') &&
+        !a.observacoes?.includes('[Almoço Cancelado]') &&
+        !a.observacoes?.includes('[Almoço Liberado]') &&
+        !a.observacoes?.includes('[Bloqueio]')
+      ) {
+        // Se visualizando como profissional, contabiliza apenas os próprios atendimentos
+        if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
+          return;
+        }
         const dia = a.inicio.split('T')[0];
         mapa[dia] = (mapa[dia] || 0) + 1;
       }
     });
     return mapa;
-  }, [agendamentos]);
+  }, [agendamentos, currentUser]);
 
   // Auxiliar para gerar os dias da grade mensal
   const gerarDiasDoMes = (dataBase: Date) => {
@@ -656,39 +671,15 @@ export const Agenda: React.FC<AgendaProps> = ({
       let motivoConflito = '';
 
       if (!isBloqueio) {
-        conflito = checkConflitoHorario(inicioAgend, fimAgend, profissionalId);
+        const profsChecar = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
 
-        if (conflito) {
-          const normalizarDataHora = (str: string): number => {
-            if (!str) return 0;
-            const limpo = str.replace('Z', '').split('+')[0];
-            const [dStr, tStr] = limpo.split('T');
-            if (!dStr || !tStr) return 0;
-            const [ano, mes, dia] = dStr.split('-').map(Number);
-            const [h, min] = (tStr || '00:00').split(':').map(Number);
-            return Date.UTC(ano, mes - 1, dia, h || 0, min || 0, 0);
-          };
-
-          const testIni = normalizarDataHora(inicioAgend);
-          const testFim = normalizarDataHora(fimAgend);
-
-          const agConflitante = agendamentos.find(a => {
-            if (a.status === 'cancelado' || a.status === 'falta') return false;
-            if (a.profissional_id !== profissionalId) return false;
-            const aIni = normalizarDataHora(a.inicio);
-            const aFim = normalizarDataHora(a.fim);
-            return Math.max(testIni, aIni) < Math.min(testFim, aFim);
-          });
-
-          if (agConflitante) {
-            if (agConflitante.cliente_id === 'bloqueado') {
-              motivoConflito = `Bloqueio: ${agConflitante.observacoes || 'Pessoal'}`;
-            } else {
-              const cli = clientes.find(c => c.id === agConflitante.cliente_id);
-              motivoConflito = cli?.nome ? `Agendado: ${cli.nome}` : 'Horário Ocupado';
-            }
-          } else {
-            motivoConflito = 'Horário Ocupado';
+        for (const pId of profsChecar) {
+          const conflitoProf = checkConflitoHorario(inicioAgend, fimAgend, pId);
+          if (conflitoProf) {
+            conflito = true;
+            const pNome = equipe.find(u => u.id === pId)?.nome || 'Profissional';
+            motivoConflito = profsChecar.length > 1 ? `Ocupado (${pNome})` : 'Horário Ocupado';
+            break;
           }
         }
       }
@@ -955,10 +946,16 @@ export const Agenda: React.FC<AgendaProps> = ({
       dataFimStr = `${ano}-${mes}-${dia}T${hora}:${min}:${seg}`;
     }
 
-    // 3. Avaliar conflito de horário em primeiro lugar (não cadastra cliente se conflitar)
-    if (!isBloqueio && checkConflitoHorario(dataInicioStr, dataFimStr, profissionalId)) {
-      setErrorAgendamento('O horário selecionado conflita com outro agendamento ativo desta profissional. Por favor, escolha outro horário.');
-      return;
+    // 3. Avaliar conflito de horário em primeiro lugar para todas as profissionais envolvidas
+    if (!isBloqueio) {
+      const profsParaChecar = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
+      for (const pId of profsParaChecar) {
+        if (checkConflitoHorario(dataInicioStr, dataFimStr, pId)) {
+          const pNome = equipe.find(u => u.id === pId)?.nome || 'profissional selecionada';
+          setErrorAgendamento(`O horário selecionado conflita com outro agendamento ativo de ${pNome}. Por favor, escolha outro horário.`);
+          return;
+        }
+      }
     }
 
     // 4. Se a disponibilidade foi aprovada, definir o cliente (reutilizando existente por telefone para evitar duplicatas)
@@ -1437,8 +1434,22 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs opacity-90 mt-0.5">
-                              {servText} {currentUser?.perfil === 'admin' && prof && `· Profissional: ${prof.nome}`}
+                            <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1 flex-wrap">
+                              <span>{servText}</span>
+                              {currentUser?.perfil === 'admin' && prof && (
+                                <span>· Profissional: {prof.nome}</span>
+                              )}
+                              {(() => {
+                                const isDupla = a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || servsObj.some(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
+                                if (isDupla) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
+                                      <Sparkles size={9} /> Dupla
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })()}
                             </p>
                           </>
                         )}
@@ -1932,6 +1943,27 @@ export const Agenda: React.FC<AgendaProps> = ({
                           })
                         )}
                       </div>
+
+                      {/* Informações de Atendimento em Dupla / 2 Profissionais */}
+                      {(() => {
+                        const profsNecessarias = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
+                        if (profsNecessarias.length <= 1) return null;
+                        const nomesDupla = profsNecessarias.map(pid => equipe.find(u => u.id === pid)?.nome || pid).join(' e ');
+                        return (
+                          <div className="mt-2.5 p-3 bg-gradient-to-r from-[#FAF4ED] via-[#F6ECE8] to-[#FFF0F5] border border-[#E8DEC9] rounded-xl text-xs space-y-1.5 animate-in fade-in duration-150">
+                            <div className="flex items-center gap-1.5 font-bold text-[#5A4535]">
+                              <Sparkles size={14} className="text-[#8C6D58]" />
+                              <span>Atendimento Realizado em Dupla ({profsNecessarias.length} Profissionais)</span>
+                            </div>
+                            <div className="text-[11px] text-[#8C7A6B]">
+                              <span>Profissionais escaladas: <strong className="text-[#5A4535]">{nomesDupla}</strong></span>
+                            </div>
+                            <p className="text-[10px] text-amber-950 bg-amber-50/90 p-1.5 rounded-lg border border-amber-200/60 leading-tight">
+                              ✨ Ao confirmar, o horário será reservado e bloqueado simultaneamente na agenda de todas as profissionais!
+                            </p>
+                          </div>
+                        );
+                      })()}
 
                       {/* Painel Informativo de Tempo e Retorno do Agendamento */}
                       {resumoServicosSelecionados.selecionados.length > 0 && (
@@ -2603,39 +2635,38 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
               </div>
 
-              {/* Botões de Ação */}
-              <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-[#EFECE6]">
+              {/* Botões de Ação Uniformes */}
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#EFECE6] w-full">
                 <button
                   type="button"
                   onClick={handleExcluirOuLiberarAlmoco}
                   disabled={salvandoAlmoco}
-                  className="px-3 py-2 border border-rose-200 text-rose-700 hover:bg-rose-50 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+                  className="h-10 px-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-[11px] sm:text-xs font-bold rounded-xl transition-all flex items-center justify-center text-center gap-1 leading-tight"
                   title="Liberar o horário de almoço para que clientes possam agendar neste período"
                 >
-                  <AlertTriangle size={14} />
-                  <span>
-                    {almocoEscopo === 'dia' ? 'Liberar Almoço Hoje' : 'Desativar Almoço'}
+                  <AlertTriangle size={13} className="shrink-0" />
+                  <span className="truncate">
+                    {almocoEscopo === 'dia' ? 'Liberar Almoço' : 'Desativar'}
                   </span>
                 </button>
 
-                <div className="flex-1 flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setIsAlmocoModalOpen(false)}
-                    disabled={salvandoAlmoco}
-                    className="px-3 py-2 border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6] rounded-xl text-xs font-bold transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={salvandoAlmoco}
-                    className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
-                  >
-                    <CheckCircle size={14} />
-                    <span>{salvandoAlmoco ? 'Salvando...' : 'Salvar Horário'}</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAlmocoModalOpen(false)}
+                  disabled={salvandoAlmoco}
+                  className="h-10 px-2 border border-[#EFECE6] text-[#8C7A6B] hover:bg-[#FAF9F6] text-xs font-bold rounded-xl transition-colors flex items-center justify-center text-center"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={salvandoAlmoco}
+                  className="h-10 px-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center text-center gap-1.5"
+                >
+                  <CheckCircle size={14} className="shrink-0" />
+                  <span>{salvandoAlmoco ? 'Salvando...' : 'Salvar Horário'}</span>
+                </button>
               </div>
             </form>
           </div>
