@@ -18,7 +18,8 @@ import {
   Plus,
   Trash2,
   Repeat,
-  Lock
+  Lock,
+  Tag
 } from 'lucide-react';
 import { useAppState, calcularFimAgendamento } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto, Usuario } from '../types';
@@ -79,6 +80,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   const [acao, setAcao] = useState<Acao>(null);
   const [motivoCancelamento, setMotivoCancelamento] = useState(MOTIVO_CANCELAMENTO_PADRAO);
+  const [motivoFalta, setMotivoFalta] = useState('Não compareceu e não atendeu');
   const [metodoPgto, setMetodoPgto] = useState<MetodoPagamento>('pix');
   const [valorRecebido, setValorRecebido] = useState(0);
 
@@ -409,8 +411,32 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   useEffect(() => {
     if (agendamento) {
       setProfissionalEditadaId(agendamento.profissional_id);
-      setDescontoValor(agendamento.desconto_valor || 0);
-      setDescontoMotivo(agendamento.desconto_motivo || 'Desconto acordado');
+      
+      let descVal = agendamento.desconto_valor !== undefined ? Number(agendamento.desconto_valor) : 0;
+      let descMot = agendamento.desconto_motivo || 'Desconto acordado';
+      if ((!descVal || descVal === 0) && agendamento.observacoes?.includes('[DESCONTO:')) {
+        const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+        if (m) {
+          descVal = parseFloat(m[1]) || 0;
+          descMot = m[2]?.trim() || 'Desconto acordado';
+        }
+      }
+      setDescontoValor(descVal);
+      setDescontoMotivo(descMot);
+
+      let prods = agendamento.produtos || [];
+      if (prods.length === 0 && agendamento.observacoes?.includes('[PRODUTOS:')) {
+        const prodMatch = agendamento.observacoes.match(/\[PRODUTOS:\s*(\[.+?\])\s*\]/);
+        if (prodMatch) {
+          try { prods = JSON.parse(prodMatch[1]); } catch (e) {}
+        }
+      }
+      setProdutosComanda(prods);
+
+      if (agendamento.status === 'falta' && agendamento.motivo_cancelamento) {
+        setMotivoFalta(agendamento.motivo_cancelamento);
+      }
+
       if (Number(agendamento.valor_sinal) > 0) {
         setValorSinalCobrar(Number(agendamento.valor_sinal));
       } else if (servs && servs.length > 0) {
@@ -424,7 +450,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         }
       }
     }
-  }, [agendamento?.id, agendamento?.valor_sinal, agendamento?.profissional_id, agendamento?.desconto_valor, servs.length]);
+  }, [agendamento?.id, agendamento?.valor_sinal, agendamento?.profissional_id, agendamento?.desconto_valor, agendamento?.observacoes, servs.length]);
 
   useEffect(() => {
     if (servs && servs.length > 0) {
@@ -769,7 +795,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   const handleFalta = () => {
-    updateAgendamentoStatus(agendamento.id, 'falta');
+    const motivoFinal = motivoFalta.trim() || 'Não compareceu e não atendeu';
+    updateAgendamentoStatus(agendamento.id, 'falta', 'admin', motivoFinal);
     setAcao(null);
     onClose();
   };
@@ -1090,13 +1117,61 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           </div>
         ) : (
           <>
+            {/* Banner de Cancelamento */}
+            {agendamento.status === 'cancelado' && (
+              <div className="p-3 bg-red-50/90 border border-red-200 rounded-xl mb-4 text-xs text-red-900 space-y-1.5 animate-in fade-in duration-150 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-red-800">
+                    <XCircle size={15} className="text-red-600 shrink-0" />
+                    <span>Atendimento Cancelado</span>
+                  </span>
+                  <span className="text-[10px] font-bold bg-red-100/90 text-red-800 px-2 py-0.5 rounded-full border border-red-200">
+                    Cancelado por: {agendamento.cancelado_por === 'cliente' ? 'Cliente' : 'Salão / Admin'}
+                  </span>
+                </div>
+                <div className="bg-white/90 p-2 rounded-lg border border-red-200/70">
+                  <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block">Motivo do Cancelamento:</span>
+                  <p className="text-red-900 font-medium mt-0.5 whitespace-pre-line">
+                    {agendamento.motivo_cancelamento || 'Imprevisto / Cancelado sem motivo informado'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Banner de Falta (No-Show) */}
+            {agendamento.status === 'falta' && (
+              <div className="p-3 bg-amber-50/90 border border-amber-300/80 rounded-xl mb-4 text-xs text-amber-950 space-y-1.5 animate-in fade-in duration-150 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-900">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                    <span>Falta Registrada (No-Show)</span>
+                  </span>
+                  <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full border border-amber-300">
+                    Ausência sem Atendimento
+                  </span>
+                </div>
+                <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Motivo / Registro da Falta:</span>
+                  <p className="text-amber-950 font-medium mt-0.5 whitespace-pre-line">
+                    {agendamento.motivo_cancelamento || 'Cliente não compareceu ao horário agendado'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Services Box & Edição de Serviço / Profissional */}
             {!editandoServicosEProf ? (
               <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">Serviços & Profissional</p>
-              {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && (
-                <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">
+                {agendamento.status === 'concluido' ? 'Extrato do Atendimento' : (
+                  (agendamento.status === 'cancelado' || agendamento.status === 'falta') 
+                    ? 'Procedimento Programado' 
+                    : 'Serviços & Profissional'
+                )}
+              </p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1111,28 +1186,29 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     <Calendar size={12} className="text-[#8C6D58]" />
                     <span>Remarcar Horário / Dia</span>
                   </button>
+                )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      let initialIds = servs.map(s => s.id);
-                      const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
-                      if (combosPresentes.length > 0) {
-                        const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
-                        initialIds = initialIds.filter(id => !subIds.includes(id));
-                      }
-                      setServicosEditadosIds(initialIds);
-                      setProfissionalEditadaId(agendamento.profissional_id);
-                      setEditandoServicosEProf(true);
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
-                    title="Trocar procedimentos ou alterar a profissional responsável"
-                  >
-                    <Sparkles size={12} className="text-amber-500" />
-                    <span>Trocar Serviço / Profissional</span>
-                  </button>
-                </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    let initialIds = servs.map(s => s.id);
+                    const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
+                    if (combosPresentes.length > 0) {
+                      const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
+                      initialIds = initialIds.filter(id => !subIds.includes(id));
+                    }
+                    if (initialIds.length === 0) initialIds = ['s1'];
+                    setServicosEditadosIds(initialIds);
+                    setProfissionalEditadaId(agendamento.profissional_id);
+                    setEditandoServicosEProf(true);
+                  }}
+                  className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
+                  title="Trocar procedimentos ou alterar a profissional responsável"
+                >
+                  <Sparkles size={12} className="text-amber-500" />
+                  <span>{servs.length === 0 ? '+ Adicionar Serviço' : 'Trocar Serviço / Profissional'}</span>
+                </button>
+              </div>
             </div>
 
             {isVip && (
@@ -1162,91 +1238,208 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
             )}
 
-            <div className="space-y-1.5 text-xs text-[#5A4535]">
-              {servs.map((s) => (
-                <div key={s.id} className="p-2.5 rounded-xl bg-white border border-[#EFECE6] shadow-2xs space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-semibold text-stone-800 flex items-center gap-1.5">
-                        {s.nome}
-                        {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
-                      </span>
-                      <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
-                    </div>
-                    <div className="text-right">
-                      {agendamento.pago_com_clube ? (
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                          Incluso no VIP
+            {/* Lista de Procedimentos / Serviços */}
+            {servs.length === 0 ? (
+              <div className="p-3 bg-white border border-dashed border-[#E8DEC9] rounded-xl text-center space-y-1.5 my-1">
+                <p className="text-xs font-semibold text-[#8C6D58]">Nenhum procedimento vinculado a este agendamento</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setServicosEditadosIds(['s1']);
+                    setProfissionalEditadaId(agendamento.profissional_id);
+                    setEditandoServicosEProf(true);
+                  }}
+                  className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] underline inline-flex items-center gap-1"
+                >
+                  <Plus size={13} /> Vincular procedimento realizado
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5 text-xs text-[#5A4535]">
+                {servs.map((s) => (
+                  <div key={s.id} className="p-2.5 rounded-xl bg-white border border-[#EFECE6] shadow-2xs space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                          {s.nome}
+                          {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
                         </span>
-                      ) : (
-                        <span className="font-semibold text-stone-700">
-                          {formatarMoeda(s.preco)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Detalhe de Procedimentos e Profissionais Escaladas se for combo/dupla */}
-                  {s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0 && (() => {
-                    const profsDistintas = new Set(
-                      s.servicos_pacote_detalhes
-                        .map(det => (det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id))
-                        .filter(Boolean)
-                    );
-                    const ehDuplaReal = profsDistintas.size > 1;
-
-                    return (
-                      <div className="pt-1.5 border-t border-[#FAF9F6] space-y-1">
-                        <span className="text-[9.5px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
-                          {ehDuplaReal ? 'Procedimentos em Dupla:' : 'Procedimentos Inclusos:'}
-                        </span>
-                        {s.servicos_pacote_detalhes.map((det, dIdx) => {
-                          const sub = servicos.find(item => item.id === det.servico_id);
-                          const pIdEfetivo = det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id;
-                          const profDet = equipe.find(u => 
-                            u.id === pIdEfetivo || 
-                            ((pIdEfetivo === 'u2' || pIdEfetivo === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
-                          );
-                          const nomeProfProcedimento = profDet?.nome || (
-                            (pIdEfetivo === 'u2' || sub?.nome.toLowerCase().includes('manicure')) ? 'Lurdinha' :
-                            (pIdEfetivo === 'u1' || sub?.nome.toLowerCase().includes('pedicure')) ? 'Sheila Santos' : 'Profissional'
-                          );
-                          const cotaProcedimento = ehDuplaReal && s.preco === 80 ? ' (R$ 40,00)' : '';
-                          return (
-                            <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
-                              <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
-                              <span className="font-bold text-[#8C6D58]">{nomeProfProcedimento}{cotaProcedimento}</span>
-                            </div>
-                          );
-                        })}
+                        <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
                       </div>
-                    );
-                  })()}
+                      <div className="text-right">
+                        {agendamento.pago_com_clube ? (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            Incluso no VIP
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-stone-700">
+                            {formatarMoeda(s.preco)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Detalhe de Procedimentos e Profissionais Escaladas se for combo/dupla */}
+                    {s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0 && (() => {
+                      const profsDistintas = new Set(
+                        s.servicos_pacote_detalhes
+                          .map(det => (det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id))
+                          .filter(Boolean)
+                      );
+                      const ehDuplaReal = profsDistintas.size > 1;
+
+                      return (
+                        <div className="pt-1.5 border-t border-[#FAF9F6] space-y-1">
+                          <span className="text-[9.5px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                            {ehDuplaReal ? 'Procedimentos em Dupla:' : 'Procedimentos Inclusos:'}
+                          </span>
+                          {s.servicos_pacote_detalhes.map((det, dIdx) => {
+                            const sub = servicos.find(item => item.id === det.servico_id);
+                            const pIdEfetivo = det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id;
+                            const profDet = equipe.find(u => 
+                              u.id === pIdEfetivo || 
+                              ((pIdEfetivo === 'u2' || pIdEfetivo === 'u_yxnfmkow1') && (u.id === 'u2' || u.id === 'u_yxnfmkow1' || u.nome?.toLowerCase().includes('lurd')))
+                            );
+                            const nomeProfProcedimento = profDet?.nome || (
+                              (pIdEfetivo === 'u2' || sub?.nome.toLowerCase().includes('manicure')) ? 'Lurdinha' :
+                              (pIdEfetivo === 'u1' || sub?.nome.toLowerCase().includes('pedicure')) ? 'Sheila Santos' : 'Profissional'
+                            );
+                            const cotaProcedimento = ehDuplaReal && s.preco === 80 ? ' (R$ 40,00)' : '';
+                            return (
+                              <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
+                                <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
+                                <span className="font-bold text-[#8C6D58]">{nomeProfProcedimento}{cotaProcedimento}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Produtos Adquiridos na Comanda (Histórico) */}
+            {(() => {
+              const prodsExibir = (agendamento.produtos && agendamento.produtos.length > 0) 
+                ? agendamento.produtos 
+                : (produtosComanda && produtosComanda.length > 0 ? produtosComanda : []);
+              if (prodsExibir.length === 0) return null;
+
+              const totalProds = prodsExibir.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
+              return (
+                <div className="pt-2.5 mt-2.5 border-t border-[#EFECE6] space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-[#8C6D58] uppercase tracking-wider">
+                    <span className="flex items-center gap-1">
+                      <ShoppingBag size={12} className="text-[#8C6D58]" />
+                      <span>Produtos na Comanda ({prodsExibir.length}):</span>
+                    </span>
+                    <span className="font-extrabold text-[#5A4535]">+{formatarMoeda(totalProds)}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {prodsExibir.map((p, pIdx) => (
+                      <div key={pIdx} className="flex items-center justify-between text-xs bg-white px-2.5 py-1.5 rounded-lg border border-[#EFECE6] shadow-2xs">
+                        <span className="font-medium text-[#5A4535]">{p.quantidade}x {p.nome_produto}</span>
+                        <span className="font-bold text-[#8C6D58]">{formatarMoeda(p.subtotal || (p.quantidade * p.preco_unitario))}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-            <div className="mt-2.5 flex justify-between border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
+              );
+            })()}
+
+            {/* Desconto Concedido e Motivo (Histórico) */}
+            {(() => {
+              let descVal = agendamento.desconto_valor || 0;
+              let descMot = agendamento.desconto_motivo || 'Cortesia';
+              if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
+                const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+                if (m) {
+                  descVal = parseFloat(m[1]) || 0;
+                  descMot = m[2]?.trim() || 'Cortesia';
+                }
+              }
+              if (descVal <= 0 && descontoValor > 0 && acao === 'concluir') {
+                descVal = descontoValor;
+                descMot = descontoMotivo;
+              }
+              if (descVal <= 0) return null;
+
+              return (
+                <div className="mt-2.5 p-2 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between text-xs text-emerald-800 shadow-2xs">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Tag size={12} className="text-emerald-600" />
+                    <span>Desconto Concedido ({descMot}):</span>
+                  </span>
+                  <span className="font-extrabold text-emerald-700">-{formatarMoeda(descVal)}</span>
+                </div>
+              );
+            })()}
+
+            {/* Totalizador Financeiro com Discriminação Contextual */}
+            <div className="mt-2.5 flex justify-between items-center border-t border-[#EFECE6] pt-2 text-xs font-bold text-[#5A4535]">
               <span>{isVip ? 'Valor cobrado nesta sessão' : 'Total'}</span>
-              <span>
-                {isVip ? (
-                  agendamento.valor_total > 0
-                    ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)`
-                    : 'R$ 0,00 (Incluso no VIP)'
-                ) : (
-                  agendamento.pago_com_clube
-                    ? (agendamento.valor_total > 0 ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)` : 'R$ 0,00 (Plano VIP)')
-                    : formatarMoeda(
-                        (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
-                          ? (servs[0]?.preco || agendamento.valor_total)
-                          : agendamento.valor_total
-                      )
-                )}
-              </span>
+              <div className="text-right">
+                {(() => {
+                  let descVal = agendamento.desconto_valor || 0;
+                  if (!descVal && agendamento.observacoes?.includes('[DESCONTO:')) {
+                    const m = agendamento.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+                    if (m) descVal = parseFloat(m[1]) || 0;
+                  }
+                  const valorOriginalServs = servs.reduce((acc, s) => acc + (s.preco || 0), 0);
+                  const isCortesiaTotal = agendamento.valor_total === 0 && ((descVal >= valorOriginalServs && valorOriginalServs > 0) || agendamento.desconto_motivo?.toLowerCase().includes('cortesia'));
+
+                  if (isCortesiaTotal) {
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 font-extrabold text-xs shadow-2xs">
+                        R$ 0,00 (100% Cortesia)
+                      </span>
+                    );
+                  }
+
+                  if (isVip) {
+                    return (
+                      <span className="font-extrabold text-xs">
+                        {agendamento.valor_total > 0
+                          ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)`
+                          : 'R$ 0,00 (Incluso no VIP)'}
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <span className="font-extrabold text-sm text-[#5A4535]">
+                      {agendamento.pago_com_clube
+                        ? (agendamento.valor_total > 0 ? `${formatarMoeda(agendamento.valor_total)} (Mensalidade VIP)` : 'R$ 0,00 (Plano VIP)')
+                        : formatarMoeda(
+                            (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
+                              ? (servs[0]?.preco || agendamento.valor_total)
+                              : agendamento.valor_total
+                          )}
+                    </span>
+                  );
+                })()}
+              </div>
             </div>
+
             {agendamento.valor_sinal > 0 && (
               <div className="mt-1 flex justify-between text-[10px] text-[#8C7A6B]">
                 <span>Sinal previsto</span>
                 <span>{formatarMoeda(agendamento.valor_sinal)}</span>
+              </div>
+            )}
+
+            {/* Rodapé Informativo de Atendimento Concluído */}
+            {agendamento.status === 'concluido' && (
+              <div className="mt-2.5 pt-2 border-t border-[#EFECE6] flex items-center justify-between text-[10.5px] text-[#8C7A6B]">
+                <span className="flex items-center gap-1 font-semibold text-emerald-700">
+                  <CheckCircle size={12} className="text-emerald-600" />
+                  <span>Atendimento Concluído com Sucesso</span>
+                </span>
+                <span className="text-[10px] text-[#8C7A6B]">
+                  {agendamento.origem === 'admin' ? 'Fechamento Salão' : 'Conclusão Sistema'}
+                </span>
               </div>
             )}
           </div>
@@ -2181,24 +2374,68 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
           </div>
         )}
 
-        {/* Falta inline */}
+        {/* Falta inline com registro de motivo */}
         {acao === 'falta' && (
-          <div className="p-3 border border-red-200 bg-red-50 rounded-xl space-y-3 mb-4">
-            <p className="text-xs text-red-700">
-              Confirmar falta? Isso ficará registrado no histórico de visitas da cliente.
-            </p>
-            <div className="flex justify-end gap-2 text-xs">
+          <div className="p-3.5 border border-amber-300 bg-amber-50 rounded-xl space-y-3 mb-4 animate-in fade-in duration-150 shadow-2xs">
+            <div>
+              <p className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                <span>Registrar Falta (No-Show)</span>
+              </p>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                Selecione ou digite o motivo da ausência para constar no histórico da cliente e nos relatórios.
+              </p>
+            </div>
+
+            {/* Sugestões rápidas de motivo */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                'Não compareceu e não atendeu',
+                'Avisou em cima da hora',
+                'Esqueceu do horário',
+                'Imprevisto pessoal'
+              ].map((mot) => (
+                <button
+                  key={mot}
+                  type="button"
+                  onClick={() => setMotivoFalta(mot)}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                    motivoFalta === mot
+                      ? 'bg-amber-600 text-white border-amber-700 shadow-2xs'
+                      : 'bg-white text-amber-900 border-amber-200/90 hover:bg-amber-100/70'
+                  }`}
+                >
+                  {mot}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider">
+                Descrição do Motivo
+              </label>
+              <input
+                type="text"
+                value={motivoFalta}
+                onChange={(e) => setMotivoFalta(e.target.value)}
+                placeholder="Ex: Cliente não compareceu e não respondeu WhatsApp"
+                className="w-full text-xs p-2.5 rounded-lg border border-amber-200 bg-white text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 font-medium"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 text-xs pt-1">
               <button 
                 type="button" onClick={() => { setAcao(null); setStatusVisual(agendamento.status); }}
-                className="px-3 py-1.5 text-red-700 hover:bg-red-100 rounded-lg font-semibold"
+                className="px-3 py-1.5 text-stone-600 hover:bg-amber-100 rounded-lg font-semibold cursor-pointer"
               >
                 Voltar
               </button>
               <button 
                 type="button" onClick={handleFalta}
-                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold shadow-sm"
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-lg font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-all"
               >
-                Registrar falta
+                <AlertTriangle size={13} />
+                <span>Confirmar e Registrar Falta</span>
               </button>
             </div>
           </div>

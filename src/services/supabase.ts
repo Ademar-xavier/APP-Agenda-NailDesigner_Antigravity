@@ -197,6 +197,25 @@ export const salvarAgendamentoSupabase = async (
       }
     }
 
+    // Preservar itens_servicos existentes caso não sejam passados explicitamente novos
+    let servicosSalvar = servicosIds;
+    if ((!servicosSalvar || servicosSalvar.length === 0) && (agendamento as any).itens_servicos && (agendamento as any).itens_servicos.length > 0) {
+      servicosSalvar = (agendamento as any).itens_servicos;
+    }
+
+    // Serializar metadados de histórico em observações para integridade na nuvem
+    let obsFinal = agendamento.observacoes || '';
+    if (agendamento.desconto_valor && agendamento.desconto_valor > 0 && !obsFinal.includes('[DESCONTO:')) {
+      const motivo = agendamento.desconto_motivo || 'Desconto concedido';
+      obsFinal = `${obsFinal} [DESCONTO:${agendamento.desconto_valor}|${motivo}]`.trim();
+    }
+    if (agendamento.produtos && agendamento.produtos.length > 0 && !obsFinal.includes('[PRODUTOS:')) {
+      try {
+        const prodJson = JSON.stringify(agendamento.produtos);
+        obsFinal = `${obsFinal} [PRODUTOS:${prodJson}]`.trim();
+      } catch (e) {}
+    }
+
     const { error } = await supabase.from('agendamentos').upsert({
       id: agendamento.id,
       cliente_id: agendamento.cliente_id,
@@ -206,11 +225,11 @@ export const salvarAgendamentoSupabase = async (
       status: agendamento.status,
       valor_total: Number(agendamento.valor_total) || 0,
       valor_sinal: Number(agendamento.valor_sinal) || 0,
-      observacoes: agendamento.observacoes || null,
+      observacoes: obsFinal || null,
       origem: agendamento.origem || 'cliente',
       motivo_cancelamento: agendamento.motivo_cancelamento || null,
       cancelado_por: agendamento.cancelado_por || null,
-      itens_servicos: servicosIds,
+      itens_servicos: servicosSalvar || [],
       criado_em: agendamento.criado_em || new Date().toISOString()
     });
     if (error) {
@@ -226,9 +245,9 @@ export const salvarAgendamentoSupabase = async (
           status: agendamento.status,
           valor_total: Number(agendamento.valor_total) || 0,
           valor_sinal: Number(agendamento.valor_sinal) || 0,
-          observacoes: agendamento.observacoes || null,
+          observacoes: obsFinal || null,
           origem: agendamento.origem || 'cliente',
-          itens_servicos: servicosIds,
+          itens_servicos: servicosSalvar || [],
           criado_em: agendamento.criado_em || new Date().toISOString()
         });
       }

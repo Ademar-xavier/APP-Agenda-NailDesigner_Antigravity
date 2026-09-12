@@ -14,7 +14,9 @@ import {
   CheckCircle,
   Crown,
   Repeat,
-  Utensils
+  Utensils,
+  Tag,
+  ShoppingBag
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
@@ -1343,7 +1345,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                 (a.profissional_id === 'u2' || a.profissional_id === 'u_yxnfmkow1' || a.observacoes?.toLowerCase().includes('lurd')) ? 'Lurdinha' :
                 (a.profissional_id === 'u1' || a.observacoes?.toLowerCase().includes('sheila')) ? 'Sheila Santos' : ''
               );
-              const servText = a.cliente_id === 'bloqueado' ? 'Bloqueio' : 'Atendimento';
+              const servsDoAgCard = obterServicosDeAgendamento(a.id);
+              const servText = a.cliente_id === 'bloqueado' 
+                ? 'Bloqueio' 
+                : (servsDoAgCard.length > 0 
+                    ? servsDoAgCard.map(s => s.nome).join(' + ') 
+                    : (a.observacoes?.includes('👑') ? 'Sessão Clube VIP' : 'Procedimento'));
               const horaIn = a.inicio.split('T')[1].substring(0, 5);
               const horaFi = a.fim.split('T')[1].substring(0, 5);
 
@@ -1449,8 +1456,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1 flex-wrap">
-                              <span>{servText}</span>
+                            <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-stone-800">{servText}</span>
                               {(() => {
                                 const servsDoAg = obterServicosDeAgendamento(a.id);
                                 const temPacoteComDuplaReal = servsDoAg.some(s => {
@@ -1469,15 +1476,58 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 );
 
                                 const textoProf = isDupla 
-                                  ? 'Profissionais: Sheila Santos e Lurdinha'
-                                  : (nomeProfissional ? `Profissional: ${nomeProfissional}` : '');
+                                  ? 'Sheila Santos e Lurdinha'
+                                  : nomeProfissional;
+
+                                // Desconto concedido
+                                let descVal = a.desconto_valor || 0;
+                                let descMot = a.desconto_motivo;
+                                if (!descVal && a.observacoes?.includes('[DESCONTO:')) {
+                                  const m = a.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+                                  if (m) {
+                                    descVal = parseFloat(m[1]) || 0;
+                                    descMot = m[2]?.trim();
+                                  }
+                                }
+
+                                // Produtos na comanda
+                                let prodsQtd = (a.produtos && a.produtos.length > 0) ? a.produtos.reduce((acc, p) => acc + p.quantidade, 0) : 0;
+                                if (prodsQtd === 0 && a.observacoes?.includes('[PRODUTOS:')) {
+                                  const prodMatch = a.observacoes.match(/\[PRODUTOS:\s*(\[.+?\])\s*\]/);
+                                  if (prodMatch) {
+                                    try {
+                                      const pList = JSON.parse(prodMatch[1]);
+                                      prodsQtd = pList.reduce((acc: any, p: any) => acc + (p.quantidade || 1), 0);
+                                    } catch (e) {}
+                                  }
+                                }
 
                                 return (
                                   <>
-                                    {textoProf && <span>· {textoProf}</span>}
+                                    {textoProf && <span className="text-[#8C7A6B]">· {textoProf}</span>}
                                     {isDupla && (
                                       <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
                                         <Sparkles size={9} /> Dupla
+                                      </span>
+                                    )}
+                                    {descVal > 0 && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        <Tag size={9} /> {descMot ? `Desc: ${descMot}` : `-${formatarMoeda(descVal)}`}
+                                      </span>
+                                    )}
+                                    {prodsQtd > 0 && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
+                                        <ShoppingBag size={9} /> +{prodsQtd} prod
+                                      </span>
+                                    )}
+                                    {a.status === 'cancelado' && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-red-700 bg-red-100/80 px-1.5 py-0.5 rounded border border-red-200">
+                                        Motivo: {a.motivo_cancelamento ? (a.motivo_cancelamento.length > 28 ? a.motivo_cancelamento.substring(0, 28) + '...' : a.motivo_cancelamento) : (a.cancelado_por === 'cliente' ? 'Pela cliente' : 'Pelo salão')}
+                                      </span>
+                                    )}
+                                    {a.status === 'falta' && (
+                                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                                        Falta: {a.motivo_cancelamento ? (a.motivo_cancelamento.length > 28 ? a.motivo_cancelamento.substring(0, 28) + '...' : a.motivo_cancelamento) : 'No-Show'}
                                       </span>
                                     )}
                                   </>
@@ -1496,13 +1546,44 @@ export const Agenda: React.FC<AgendaProps> = ({
                           (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('AG_PRINCIPAL:')) &&
                           !servsDoAg.some(s => s.id === 's_blmeapdgo')
                         );
+                        let descVal = a.desconto_valor || 0;
+                        if (!descVal && a.observacoes?.includes('[DESCONTO:')) {
+                          const m = a.observacoes.match(/\[DESCONTO:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+                          if (m) descVal = parseFloat(m[1]) || 0;
+                        }
                         const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
+                        const isCortesiaTotal = a.valor_total === 0 && (descVal > 0 || a.desconto_motivo?.toLowerCase().includes('cortesia'));
                         const valorCard = isVipIncluso ? 0 : (isDupla ? (servsDoAg[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
+
+                        if (a.status === 'cancelado') {
+                          return (
+                            <span className="text-xs font-semibold line-through text-stone-400">{formatarMoeda(valorCard)}</span>
+                          );
+                        }
+                        if (a.status === 'falta') {
+                          return (
+                            <span className="text-xs font-semibold line-through text-stone-400">{formatarMoeda(valorCard)}</span>
+                          );
+                        }
+                        if (isCortesiaTotal) {
+                          return (
+                            <span className="text-xs font-extrabold text-emerald-700">R$ 0,00 (Cortesia)</span>
+                          );
+                        }
+                        if (isVipIncluso) {
+                          return (
+                            <span className="text-xs font-extrabold text-amber-800">R$ 0,00 (VIP)</span>
+                          );
+                        }
                         return (
                           <span className="text-xs font-extrabold">{formatarMoeda(valorCard)}</span>
                         );
                       })()}
-                      <span className="text-[10px] font-bold uppercase tracking-wider bg-white bg-opacity-60 px-2 py-0.5 rounded">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
+                        a.status === 'cancelado' ? 'bg-red-100 text-red-700 border border-red-200' :
+                        a.status === 'falta' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
+                        'bg-white bg-opacity-60'
+                      }`}>
                         {statusLabels[a.status] || a.status}
                       </span>
                     </div>
