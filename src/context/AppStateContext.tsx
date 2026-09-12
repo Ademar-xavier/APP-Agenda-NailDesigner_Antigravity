@@ -25,6 +25,7 @@ import {
 } from '../types';
 import { dbSetAll, dbSetItem, dbDeleteItem, STORES, migrarLocalStorageParaIndexedDB } from '../services/dbStorage';
 import { registrarListenerSync, enfileirarTarefaSync, processarFilaOffline } from '../services/syncQueue';
+import { gerarIdSeguro, gerarCodigoSeguro } from '../utils/cryptoHelper';
 import { 
   supabase,
   salvarClienteSupabase,
@@ -420,7 +421,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       try {
         document.activeElement.blur();
       } catch (e) {
-        console.error(e);
+        console.error('Erro ao remover foco do elemento:', e);
       }
     }
   };
@@ -476,7 +477,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const adicionarAvisoNaoLido = (avisoData: Omit<AvisoCliente, 'id' | 'criadoEm' | 'lido'>) => {
     const novoAviso: AvisoCliente = {
-      id: 'aviso_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+      id: gerarIdSeguro('aviso_'),
       criadoEm: new Date().toISOString(),
       lido: false,
       ...avisoData
@@ -570,7 +571,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     if (visualAtivo) {
       const novaNotif: NotificacaoClienteAcao = {
-        id: Math.random().toString(36).substring(2, 9),
+        id: gerarIdSeguro('notif_'),
         hora: horaAgora,
         ...notif
       };
@@ -672,7 +673,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const saved = localStorage.getItem('nail_clientes');
       return saved ? JSON.parse(saved) : clientesIniciais;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler clientes do cache:', e);
       return clientesIniciais;
     }
   });
@@ -682,7 +683,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const saved = localStorage.getItem('nail_servicos');
       return saved ? JSON.parse(saved) : servicosIniciais;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler servicos do cache:', e);
       return servicosIniciais;
     }
   });
@@ -700,7 +701,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return agendamentosIniciais;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler agendamentos do cache:', e);
       return agendamentosIniciais;
     }
   });
@@ -714,7 +715,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return pagamentosIniciais;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler pagamentos do cache:', e);
       return pagamentosIniciais;
     }
   });
@@ -728,7 +729,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return listaEsperaInicial;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler lista de espera do cache:', e);
       return listaEsperaInicial;
     }
   });
@@ -738,7 +739,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const saved = localStorage.getItem('nail_config_salao');
       return saved ? JSON.parse(saved) : configSalaoInicial;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler configuracoes do cache:', e);
       return configSalaoInicial;
     }
   });
@@ -748,7 +749,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const saved = localStorage.getItem('nail_itens_agendamento');
       return saved ? JSON.parse(saved) : itensAgendamentoMock;
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler itens de agendamento do cache:', e);
       return itensAgendamentoMock;
     }
   });
@@ -769,7 +770,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error('Erro ao ler equipe do cache:', e);
     }
     return equipeInicial.map(u => ({
       ...u,
@@ -1995,17 +1996,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Auxiliar para gerar ID único
   const gerarId = () => {
-    return Math.random().toString(36).substring(2, 11);
+    return gerarIdSeguro();
   };
 
   // Código amigável para a cliente (apenas letras maiúsculas e números)
   const gerarCodigoReserva = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = 'AG';
-    for (let i = 0; i < 5; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
+    return 'AG' + gerarCodigoSeguro(5);
   };
 
   // --- Ações de Autenticação ---
@@ -2935,7 +2931,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const id = gerarCodigoReserva();
     const grupoId = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
-      ? 'rec_' + Math.random().toString(36).substring(2, 9)
+      ? gerarIdSeguro('rec_')
       : (todasProfsIds.length > 1 ? 'dupla_' + id : undefined);
 
     const nomesProfsFormatados = todasProfsIds

@@ -37,6 +37,7 @@ import {
   carregarFotosClienteSupabase
 } from '../services/supabase';
 import { getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { gerarIdSeguro } from '../utils/cryptoHelper';
 import { ModalAnamnese } from '../components/ModalAnamnese';
 import { otimizarImagemWebP } from '../utils/imageOptimizer';
 
@@ -431,7 +432,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     // Se o usuário clicou especificamente em "+ Antes" ou "+ Depois", salva imediatamente
     if (currentTipo) {
       const novasFotos: FotoCliente[] = validBase64.map(url => ({
-        id: 'foto_' + Math.random().toString(36).substring(2, 9),
+        id: gerarIdSeguro('foto_'),
         url,
         tipo: currentTipo,
         criado_em: new Date().toISOString()
@@ -478,7 +479,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     if (!selectedClienteIdForDetails || pendingUploads.length === 0) return;
 
     const novasFotos: FotoCliente[] = pendingUploads.map(url => ({
-      id: 'foto_' + Math.random().toString(36).substring(2, 9),
+      id: gerarIdSeguro('foto_'),
       url,
       tipo,
       criado_em: new Date().toISOString()
@@ -533,7 +534,7 @@ export const Clientes: React.FC<ClientesProps> = ({
       try {
         localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
       } catch (err) {
-        console.error(err);
+        console.error('Erro ao gravar fotos no cache local:', err);
       }
       return novoObjeto;
     });
@@ -555,7 +556,7 @@ export const Clientes: React.FC<ClientesProps> = ({
           try {
             localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(novoObjeto));
           } catch (err) {
-            console.error(err);
+            console.error('Erro ao atualizar fotos no cache local:', err);
           }
           return novoObjeto;
         });

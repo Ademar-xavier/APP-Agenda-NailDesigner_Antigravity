@@ -1,11 +1,11 @@
 // Escudo de Segurança Cibernética & Proteção Anti-Clonagem
 // Protege: Código-fonte, Chaves de Acesso, Licenças, Dados dos Clientes e Ataques Externos
 
-const SECRET_SALT = 'SHEILA_NAIL_SECURE_HASH_SALT_2026_PROD_#9821';
+const APP_INTEGRITY_SALT = (import.meta.env.VITE_SECURITY_SALT || (typeof window !== 'undefined' ? window.location.hostname : 'nail_shield')).trim();
 
 // 1. Função de Hashing Criptográfico Rápido (FNV-1a 64-bit extendido com salt)
 export const gerarHashSeguro = (dados: string): string => {
-  const str = dados + SECRET_SALT;
+  const str = dados + APP_INTEGRITY_SALT;
   let h1 = 0xdeadbeef ^ 0;
   let h2 = 0x41c6ce57 ^ 0;
   for (let i = 0; i < str.length; i++) {

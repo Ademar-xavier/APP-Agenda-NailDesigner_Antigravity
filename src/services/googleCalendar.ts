@@ -3,6 +3,8 @@
 // 1. Google OAuth 2.0 via Google Identity Services (GIS)
 // 2. Importação direta de arquivo .ics exportado da Google Agenda
 
+import { gerarIdSeguro } from '../utils/cryptoHelper';
+
 export interface EventoGoogleReal {
   id: string;
   clienteNome: string;
@@ -109,7 +111,7 @@ export const parseIcsCalendar = (icsContent: string): EventoGoogleReal[] => {
         const horaNum = parseInt(inicioIso.split('T')[1]?.substring(0, 2) || '12', 10);
 
         events.push({
-          id: uid || 'ics_' + Math.random().toString(36).substring(2, 9),
+          id: uid || gerarIdSeguro('ics_'),
           clienteNome: nome,
           clienteTelefone: telefone,
           servicoNome: servico,

@@ -14,19 +14,26 @@ export interface LicencaInfo {
 
 const STORAGE_KEY = 'nail_app_licenca_ativa_v1';
 
-// Chaves de Licença configuradas no arquivo .env
-const ENV_KEY_VITALICIO = (import.meta.env.VITE_LICENSE_KEY_VITALICIO || 'SHEILA-VIP-2026').trim().toUpperCase();
-const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || 'SHEILA-MENSAL-2026').trim().toUpperCase();
+// Chaves de Licença configuradas no arquivo de ambiente
+const ENV_KEY_VITALICIO = (import.meta.env.VITE_LICENSE_KEY_VITALICIO || '').trim().toUpperCase();
+const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || '').trim().toUpperCase();
 
-// Chaves Oficiais Pré-cadastradas para Entrega Rápida
-const CHAVES_MESTRAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
-  [ENV_KEY_VITALICIO]: { tipo: 'vitalicio', titular: 'Sheila Santos' },
-  [ENV_KEY_MENSAL]: { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 },
-  'SHEILA-VIP-2026': { tipo: 'vitalicio', titular: 'Sheila Santos' },
-  'SHEILA-VITALICIO-2026': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
-  'ADEMAR-ADMIN-VITA': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
-  'NAIL-PRO-VITALICIO': { tipo: 'vitalicio', titular: 'Licença Vitalícia Profissional' },
-  'NAIL-MENSAL-30': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 }
+// Dicionário de chaves ativas configuradas via variáveis de ambiente
+const CHAVES_CONFIGURADAS: { [key: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {};
+if (ENV_KEY_VITALICIO) {
+  CHAVES_CONFIGURADAS[ENV_KEY_VITALICIO] = { tipo: 'vitalicio', titular: 'Sheila Santos' };
+}
+if (ENV_KEY_MENSAL) {
+  CHAVES_CONFIGURADAS[ENV_KEY_MENSAL] = { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 };
+}
+
+// Hashes criptográficos unidirecionais para chaves de fábrica offline (protegendo chaves contra extração estática)
+const HASHES_AUTORIZADOS_OFFLINE: { [hash: string]: { tipo: 'vitalicio' | 'mensal' | 'teste'; titular: string; diasValidade?: number } } = {
+  '2DXJBAO8CGB': { tipo: 'vitalicio', titular: 'Sheila Santos' },
+  'PYC5KFHLS6': { tipo: 'vitalicio', titular: 'Sheila Santos Nails Designer' },
+  '1I4GL543LPW': { tipo: 'vitalicio', titular: 'Ademar Xavier' },
+  '21Z6JTFJI4Q': { tipo: 'vitalicio', titular: 'Licença Vitalícia Profissional' },
+  '1D5IDYCWNSL': { tipo: 'mensal', titular: 'Assinatura Mensal', diasValidade: 30 }
 };
 
 // Gera assinatura de integridade para a licença
@@ -162,8 +169,9 @@ export const ativarChaveLicenca = async (
     }
   } catch (e) {}
 
-  // 2. Verifica se é uma chave mestre pré-configurada no .env ou de fábrica
-  const mestre = CHAVES_MESTRAS[chaveLimpa];
+  // 2. Verifica se é uma chave configurada no .env ou autorizada de fábrica via hash
+  const hashChave = gerarHashSeguro(chaveLimpa);
+  const mestre = CHAVES_CONFIGURADAS[chaveLimpa] || HASHES_AUTORIZADOS_OFFLINE[hashChave];
   const agora = new Date();
 
   if (mestre) {
