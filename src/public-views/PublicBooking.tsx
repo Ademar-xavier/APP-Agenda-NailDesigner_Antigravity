@@ -814,10 +814,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   setProfissionalId('');
                   setHorarioSelecionado('');
                 }}
-                className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
                   profissionalId === ''
-                    ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-md'
-                    : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
+                    ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-[#DB7093] shadow-md'
+                    : 'bg-white border-[#F2C2D0] text-[#5A3F45] hover:border-[#DB7093] shadow-xs hover:shadow-sm'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -854,10 +854,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         }
                       }
                     }}
-                    className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between ${
+                    className={`w-full p-3.5 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
                       isSelected
-                        ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-transparent shadow-md'
-                        : 'bg-white border-[#FAD0DC]/50 text-[#5A3F45] hover:border-[#DB7093]'
+                        ? 'bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white border-[#DB7093] shadow-md'
+                        : 'bg-white border-[#F2C2D0] text-[#5A3F45] hover:border-[#DB7093] shadow-xs hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -939,16 +939,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
             {/* Seletor entre Procedimentos Avulsos e Planos do Clube VIP */}
             {planosDisponiveis.length > 0 && (
-              <div className="flex bg-[#FFF0F4] p-1 rounded-xl border border-[#FAD0DC]/50 mb-2">
+              <div className="flex bg-[#FFF0F4] p-1.5 rounded-2xl border-2 border-[#F7CFD9] mb-3 shadow-xs">
                 <button
                   type="button"
                   onClick={() => {
                     setSubTabStep2('servicos');
                     setPlanoVipEscolhidoId('');
                   }}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                     subTabStep2 === 'servicos'
-                      ? 'bg-white text-[#C71585] shadow-sm'
+                      ? 'bg-white text-[#C71585] shadow-sm border border-[#FAD0DC]'
                       : 'text-[#8C7A6B] hover:text-[#5A3F45]'
                   }`}
                 >
@@ -959,7 +959,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   onClick={() => {
                     setSubTabStep2('planos_vip');
                   }}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                  className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
                     subTabStep2 === 'planos_vip'
                       ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-sm'
                       : 'text-amber-800 hover:text-amber-950 font-bold'
@@ -973,9 +973,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
             {subTabStep2 === 'planos_vip' ? (
               <div className="space-y-3">
-                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-950 text-left space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <Crown size={15} className="text-amber-600" />
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-3.5 text-xs text-amber-950 text-left space-y-1.5 shadow-xs">
+                  <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                    <Crown size={16} className="text-amber-600" />
                     <span>Como funcionam os Planos VIP?</span>
                   </div>
                   <p className="text-[11px] text-amber-800 leading-relaxed">
@@ -983,7 +983,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   </p>
                 </div>
 
-                <div className="space-y-2.5 max-h-[340px] overflow-y-auto pr-1">
+                <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1 p-0.5">
                   {planosDisponiveis.map(p => {
                     const isSelected = planoVipEscolhidoId === p.id;
                     const servicosInclusos = (p.itens_servicos || [])
@@ -992,24 +992,28 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                         return s ? `${item.quantidade || 1}x ${s.nome}` : null;
                       })
                       .filter(Boolean);
+                    const resumo = obterTextoResumoSessoesVip(p, servicos);
 
                     return (
                       <div
                         key={p.id}
-                        className={`p-3.5 rounded-2xl border transition-all text-left space-y-2.5 ${
+                        className={`p-4 rounded-2xl border-2 transition-all duration-200 text-left space-y-3 relative ${
                           isSelected
-                            ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-400 shadow-md ring-2 ring-amber-300'
-                            : 'bg-white border-amber-200/80 hover:border-amber-400 shadow-sm'
+                            ? 'bg-gradient-to-br from-[#FFFDF7] via-amber-50/70 to-orange-50/50 border-amber-500 shadow-lg ring-2 ring-amber-400/60'
+                            : 'bg-gradient-to-b from-[#FFFDF9] via-white to-[#FFFBF5] border-amber-300 hover:border-amber-500 shadow-[0_2px_10px_rgba(217,119,6,0.08)] hover:shadow-[0_4px_16px_rgba(217,119,6,0.15)]'
                         }`}
                       >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <Crown size={16} className="text-amber-600" />
-                              <h4 className="font-bold text-xs text-amber-950">{p.nome}</h4>
+                        {/* Top Bar with Crown Badge, Title and Price */}
+                        <div className="flex items-start justify-between gap-2 border-b border-amber-200/80 pb-2.5">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-[9.5px] font-extrabold px-2.5 py-0.5 rounded-full shadow-xs uppercase tracking-wider">
+                                <Crown size={11} /> Clube VIP
+                              </span>
+                              <h4 className="font-serif font-bold text-sm text-amber-950">{p.nome}</h4>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
-                              <span className="text-[11px] text-amber-800 font-medium">
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                              <span className="text-[11px] text-amber-900 font-semibold bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-200/80">
                                 {p.qtd_procedimentos_mes} sessões no mês · {(() => {
                                   const f = p.frequencia_dias || 7;
                                   const fNorm = Math.max(7, Math.round(f / 7) * 7);
@@ -1019,37 +1023,35 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                                   return '1 por semana (semanal)';
                                 })()}
                               </span>
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
-                                <Clock size={11} /> {obterTextoResumoSessoesVip(p, servicos).duracaoResumo}
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-950 bg-amber-200/60 px-2 py-0.5 rounded-md border border-amber-300/80">
+                                <Clock size={11} className="text-amber-700" /> {resumo.duracaoResumo}
                               </span>
                             </div>
-                            {(() => {
-                              const resumo = obterTextoResumoSessoesVip(p, servicos);
-                              if (resumo.detalhePorSessao && resumo.detalhePorSessao.includes('•')) {
-                                return (
-                                  <div className="text-[9.5px] text-amber-800 bg-amber-50/80 px-2 py-0.5 rounded border border-amber-200/50 mt-1">
-                                    {resumo.detalhePorSessao}
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
                           </div>
-                          <div className="text-right">
-                            <span className="text-sm font-extrabold text-amber-900 block">
+                          <div className="text-right shrink-0 bg-amber-100/60 px-2.5 py-1.5 rounded-xl border border-amber-200 shadow-2xs">
+                            <span className="text-base font-extrabold text-amber-950 block leading-tight">
                               {formatarMoeda(p.preco_mensal)}
                             </span>
-                            <span className="text-[9px] text-amber-700 font-medium">/mês</span>
+                            <span className="text-[9px] text-amber-700 font-bold uppercase tracking-wider">/ mês</span>
                           </div>
                         </div>
 
+                        {/* Detalhe da Duração por Sessão */}
+                        {resumo.detalhePorSessao && resumo.detalhePorSessao.includes('•') && (
+                          <div className="text-[10px] text-amber-900 bg-amber-50/90 px-2.5 py-1.5 rounded-xl border border-amber-200/80 font-medium leading-relaxed">
+                            {resumo.detalhePorSessao}
+                          </div>
+                        )}
+
                         {/* Itens Inclusos */}
                         {servicosInclusos.length > 0 && (
-                          <div className="bg-amber-100/40 rounded-xl p-2 text-[10px] text-amber-900 border border-amber-200/50 space-y-1">
-                            <span className="font-bold block text-amber-950">Itens inclusos por mês:</span>
-                            <div className="flex flex-wrap gap-1">
+                          <div className="bg-amber-50/50 rounded-xl p-2.5 text-[10px] text-amber-950 border border-amber-200/80 space-y-1.5">
+                            <span className="font-bold text-amber-950 flex items-center gap-1">
+                              <Sparkles size={11} className="text-amber-600" /> Procedimentos Inclusos no Ciclo:
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
                               {servicosInclusos.map((itemStr, idx) => (
-                                <span key={idx} className="bg-white/80 px-2 py-0.5 rounded-md border border-amber-200 font-medium">
+                                <span key={idx} className="bg-white px-2.5 py-1 rounded-lg border border-amber-200 font-semibold text-amber-900 shadow-2xs">
                                   ✓ {itemStr}
                                 </span>
                               ))}
@@ -1069,7 +1071,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                             }
                             irParaStep(3);
                           }}
-                          className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+                          className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:to-amber-800 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-1.5 transition-all"
                         >
                           <Crown size={14} />
                           <span>Selecionar este Plano & Agendar 1ª Sessão →</span>
@@ -1081,24 +1083,29 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               </div>
             ) : (
               <>
-                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1 p-0.5">
                   {servsDisponiveis.length === 0 ? (
-                    <div className="p-6 text-center text-xs text-[#A88690] bg-[#FFF5F7]/30 rounded-2xl border border-[#FAD0DC]/50">
+                    <div className="p-6 text-center text-xs text-[#A88690] bg-[#FFF5F7]/30 rounded-2xl border-2 border-[#FAD0DC]">
                       Nenhum procedimento cadastrado para esta profissional.
                     </div>
                   ) : (
                     servsDisponiveis.map(s => {
                       const checked = servicosSelecionados.includes(s.id);
+                      const descLimpa = (s.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
+                      const detalhesPacote = s.is_pacote 
+                        ? (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 })))
+                        : [];
+
                       return (
                         <label 
                           key={s.id}
-                          className={`flex items-center justify-between p-3.5 border rounded-xl cursor-pointer transition-colors ${
+                          className={`relative flex items-start justify-between p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer text-left ${
                             checked 
-                              ? 'bg-[#FFF0F4] border-[#DB7093] text-[#C71585]' 
-                              : 'bg-white border-[#FAD0DC]/30 hover:bg-[#FFF0F4]/30 text-[#5A3F45]'
+                              ? 'bg-gradient-to-r from-[#FFF0F4] via-[#FFF5F8] to-[#FCE4EC] border-[#DB7093] shadow-md ring-2 ring-[#DB7093]/20 text-[#5A3F45]' 
+                              : 'bg-white border-[#F2C2D0] hover:border-[#DB7093] shadow-[0_2px_8px_rgba(219,112,147,0.06)] hover:shadow-[0_4px_14px_rgba(219,112,147,0.12)] text-[#5A3F45]'
                           }`}
                         >
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
                             <input 
                               type="checkbox"
                               checked={checked}
@@ -1109,36 +1116,46 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                                   setServicosSelecionados(prev => prev.filter(id => id !== s.id));
                                 }
                               }}
-                              className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4"
+                              className="rounded text-[#DB7093] focus:ring-[#DB7093] h-4 w-4 mt-1 border-2 border-[#DB7093]/50 cursor-pointer shrink-0"
                             />
-                            <div>
-                              <span className="font-semibold text-xs block text-[#5A3F45]">{s.nome}</span>
-                              {(() => {
-                                const descLimpa = (s.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
-                                return descLimpa ? (
-                                  <span className="text-[10px] text-[#A88690] block mt-0.5 max-w-[240px] leading-relaxed italic">
-                                    "{descLimpa}"
+                            <div className="flex-1 min-w-0">
+                              {s.is_pacote && (
+                                <div className="mb-1.5">
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-[#DB7093] to-[#C71585] text-white px-2.5 py-0.5 rounded-full shadow-2xs">
+                                    <Sparkles size={10} /> Combo Especial
                                   </span>
-                                ) : null;
-                              })()}
-                              <span className="text-[10px] text-[#A88690] block mt-1">Duração total: <strong>{s.duracao_minutos} min</strong></span>
+                                </div>
+                              )}
+                              <span className="font-serif font-bold text-xs block text-[#4A2E35] leading-tight">{s.nome}</span>
+                              {descLimpa && (
+                                <span className="text-[10.5px] text-[#8C6B75] block mt-1 max-w-[270px] leading-relaxed italic">
+                                  "{descLimpa}"
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1.5 mt-1.5 text-[10.5px] text-[#A88690]">
+                                <Clock size={11} className="text-[#DB7093]" />
+                                <span>Duração total: <strong className="text-[#5A3F45]">{s.duracao_minutos} min</strong></span>
+                              </div>
                               
                               {/* Se for Pacote, detalha os serviços internos para o cliente */}
-                              {s.is_pacote && (s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).length > 0 && (
-                                <div className="mt-2 bg-[#FFF9FB] p-2.5 rounded-xl border border-[#FAD0DC]/30 space-y-1.5 max-w-[280px] text-[10px] text-[#5A3F45] text-left">
-                                  <span className="font-bold text-[#C71585] block">Composição do Combo:</span>
-                                  {(s.servicos_pacote_detalhes || (s.servicos_pacote || []).map(id => ({ servico_id: id, quantidade: 1 }))).map((det, idx) => {
+                              {s.is_pacote && detalhesPacote.length > 0 && (
+                                <div className="mt-2.5 bg-gradient-to-br from-[#FFF5F8] to-[#FFF0F4] p-3 rounded-xl border-2 border-[#F8CAD7] shadow-xs space-y-2 max-w-[290px] text-[10px] text-[#5A3F45] text-left">
+                                  <div className="flex items-center gap-1.5 font-bold text-[#C71585] border-b border-[#FAD0DC] pb-1">
+                                    <Sparkles size={12} />
+                                    <span>Composição do Combo:</span>
+                                  </div>
+                                  {detalhesPacote.map((det, idx) => {
                                     const sub = servicos.find(item => item.id === det.servico_id);
                                     const subDesc = sub ? (sub.descricao || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim() : '';
                                     return sub ? (
-                                      <div key={idx} className="flex flex-col pl-2 border-l border-[#DB7093] py-0.5 space-y-0.5">
+                                      <div key={idx} className="flex flex-col pl-2 border-l-2 border-[#DB7093] py-0.5 space-y-0.5">
                                         <div className="flex justify-between font-bold text-[#5A3F45]">
                                           <span>{det.quantidade}x {sub.nome}</span>
                                         </div>
                                         {subDesc && (
-                                          <span className="text-[8px] text-[#A88690] leading-snug italic">"{subDesc}"</span>
+                                          <span className="text-[8.5px] text-[#8C6B75] leading-snug italic">"{subDesc}"</span>
                                         )}
-                                        <span className="text-[8px] text-[#C71585] font-semibold flex items-center gap-1">
+                                        <span className="text-[8.5px] text-[#C71585] font-semibold flex items-center gap-1">
                                           <span>⏱️ Retorno recomendado: a cada {sub.intervalo_manutencao_dias > 0 ? `${sub.intervalo_manutencao_dias} dias` : 'Não exige'}</span>
                                         </span>
                                       </div>
@@ -1148,7 +1165,11 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                               )}
                             </div>
                           </div>
-                          <span className="font-bold text-xs">{formatarMoeda(s.preco)}</span>
+                          <div className="text-right shrink-0 ml-3 pt-0.5">
+                            <span className="inline-block font-extrabold text-xs text-[#9E2A54] bg-[#FFF0F4] px-2.5 py-1 rounded-xl border border-[#F8C8D4] shadow-2xs">
+                              {formatarMoeda(s.preco)}
+                            </span>
+                          </div>
                         </label>
                       );
                     })
@@ -1157,14 +1178,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
                 {/* Sumário */}
                 {servicosSelecionados.length > 0 && (
-                  <div className="bg-[#FFF0F4] p-3 rounded-xl border border-[#FAD0DC]/30 text-xs text-[#5A3F45] space-y-1">
-                    <div className="flex justify-between">
-                      <span>Duração Total:</span>
-                      <span className="font-bold">{duracaoTotal} minutos</span>
+                  <div className="bg-gradient-to-r from-[#FFF5F8] to-[#FFF0F4] p-3.5 rounded-2xl border-2 border-[#F7CFD9] text-xs text-[#5A3F45] space-y-1.5 shadow-xs">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="text-[#8C6B75]">Duração Total:</span>
+                      <span className="font-bold text-[#5A3F45] bg-white px-2 py-0.5 rounded-md border border-[#FAD0DC]">{duracaoTotal} minutos</span>
                     </div>
-                    <div className="flex justify-between text-sm pt-1 border-t border-[#FAD0DC]/30">
-                      <span className="font-bold">Valor Total:</span>
-                      <span className="font-extrabold text-[#C71585]">{formatarMoeda(precoTotal)}</span>
+                    <div className="flex justify-between items-center text-sm pt-1.5 border-t border-[#FAD0DC]">
+                      <span className="font-bold text-[#5A3F45]">Valor Total:</span>
+                      <span className="font-extrabold text-base text-[#C71585]">{formatarMoeda(precoTotal)}</span>
                     </div>
                   </div>
                 )}
