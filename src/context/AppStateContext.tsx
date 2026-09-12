@@ -58,7 +58,8 @@ import {
   obterServicosIdsSessaoVip,
   obterProfissionaisDoServicoOuPacote,
   obterTodasProfissionaisDosServicos,
-  calcularValorServicoProfissional
+  calcularValorServicoProfissional,
+  agendamentoEnvolveProfissional
 } from '../utils/planoVipHelper';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
@@ -260,9 +261,11 @@ interface AppStateContextType {
     cliente: Cliente; 
     servico: Servico; 
     dataSugerida: string; 
-    diasAtraso: number;
-    diasRestantes: number;
+    diasAtraso: number; 
+    diasRestantes: number; 
     statusManutencao: 'atrasada' | 'hoje' | 'em_breve' | 'programada';
+    profissional_id?: string;
+    ultimoAgendamento?: Agendamento;
   }[];
   obterProximoHorarioLivre: (data: string, duracaoMinutos: number) => string | null;
   notificacaoGlobal: { mensagem: string; tipo: 'sucesso' | 'info' | 'erro' } | null;
@@ -2673,13 +2676,42 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const obterServicosDeAgendamento = (agendamentoId: string): Servico[] => {
     let ids = itensAgendamento[agendamentoId] || [];
-    if (ids.length === 0) {
-      const agend = agendamentos.find(a => a.id === agendamentoId) as any;
-      if (agend?.itens_servicos && Array.isArray(agend.itens_servicos) && agend.itens_servicos.length > 0) {
+    const agend = agendamentos.find(a => a.id === agendamentoId) as any;
+
+    if (ids.length === 0 && agend) {
+      if (agend.itens_servicos && Array.isArray(agend.itens_servicos) && agend.itens_servicos.length > 0) {
         ids = agend.itens_servicos;
+      } else if (agend.servico_id) {
+        ids = [agend.servico_id];
+      } else if (agend.servicos_ids && Array.isArray(agend.servicos_ids) && agend.servicos_ids.length > 0) {
+        ids = agend.servicos_ids;
+      } else if (agend.observacoes?.includes('2 Profissionais') || agend.observacoes?.includes('Co-atendimento') || agend.observacoes?.includes('Dupla')) {
+        const servDupla = servicos.find(s => s.id === 's3');
+        if (servDupla) return [servDupla];
       }
     }
-    return servicos.filter(s => ids.includes(s.id));
+
+    const encontrados = servicos.filter(s => ids.includes(s.id));
+    if (encontrados.length > 0) return encontrados;
+
+    // Fallback inteligente caso não tenha ID explícito:
+    if (agend) {
+      // 1. Tenta identificar por nome de serviço contido nas observações
+      if (agend.observacoes) {
+        const obsNorm = agend.observacoes.toLowerCase();
+        const servicosOrdenados = [...servicos].sort((a, b) => b.nome.length - a.nome.length);
+        const sMatch = servicosOrdenados.find(s => obsNorm.includes(s.nome.toLowerCase()));
+        if (sMatch) return [sMatch];
+      }
+
+      // 2. Tenta identificar pelo valor exato do serviço
+      if (agend.valor_total > 0) {
+        const sPreco = servicos.find(s => s.preco === agend.valor_total);
+        if (sPreco) return [sPreco];
+      }
+    }
+
+    return [];
   };
 
   // --- Formatação Segura de Data/Hora Local (sem distorção UTC) ---
@@ -2715,7 +2747,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const temConflitoAgendamento = agendamentos.some(a => {
       if (a.id === ignorarAgendamentoId) return false;
       if (a.status === 'cancelado' || a.status === 'falta') return false;
-      if (a.profissional_id !== profissionalId) return false;
+      const envolveEstaProf = a.profissional_id === profissionalId || agendamentoEnvolveProfissional(a, profissionalId, servicos, itensAgendamento);
+      if (!envolveEstaProf) return false;
       
       const aInicio = normalizarDataHora(a.inicio);
       let aFim = normalizarDataHora(a.fim);
@@ -2884,22 +2917,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       obsInicial = `${tagDupla} ${obsInicial || ''}`.trim();
     }
     
-    // Calcula o valor específico do serviço realizado pela profissional principal
-    const valorPrincipalProf = (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado')
-      ? calcularValorServicoProfissional(
-          { ...novoAgendamento, id, fim: fimStr, criado_em: '' },
-          novoAgendamento.profissional_id,
-          servicos,
-          equipe,
-          servicosSelecionados
-        )
-      : novoAgendamento.valor_total;
-
     const agendamento: Agendamento = {
       ...novoAgendamento,
       id,
       fim: fimStr,
-      valor_total: valorPrincipalProf,
+      valor_total: novoAgendamento.valor_total,
       recorrencia_grupo_id: grupoId,
       recorrencia_tipo: recorrenciaManual?.tipo,
       recorrencia_posicao: recorrenciaManual && recorrenciaManual.repeticoes > 1 ? `1 de ${recorrenciaManual.repeticoes}` : undefined,
@@ -2907,44 +2929,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       criado_em: new Date().toISOString()
     };
 
-    // Cria agendamentos simultâneos para as demais profissionais envolvidas na dupla, atribuindo o valor do serviço que cada uma irá realizar
     const coAgendamentosIniciais: Agendamento[] = [];
-    if (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado') {
-      const coProfs = todasProfsIds.filter(pid => pid !== novoAgendamento.profissional_id);
-      coProfs.forEach(coProfId => {
-        const coId = gerarCodigoReserva();
-        const valorCoProf = calcularValorServicoProfissional(
-          { ...novoAgendamento, id: coId, profissional_id: coProfId, fim: fimStr, criado_em: '' },
-          coProfId,
-          servicos,
-          equipe,
-          servicosSelecionados
-        );
-        const obsCo = `${tagDupla} [AG_PRINCIPAL:${id}] ${novoAgendamento.observacoes || ''}`.trim();
-        const coAg: Agendamento = {
-          ...novoAgendamento,
-          id: coId,
-          profissional_id: coProfId,
-          fim: fimStr,
-          valor_total: valorCoProf,
-          valor_sinal: 0,
-          recorrencia_grupo_id: grupoId,
-          recorrencia_tipo: recorrenciaManual?.tipo,
-          recorrencia_posicao: agendamento.recorrencia_posicao,
-          observacoes: obsCo,
-          criado_em: new Date().toISOString()
-        };
-        coAgendamentosIniciais.push(coAg);
-      });
-    }
 
-    setItensAgendamento(prev => {
-      const nextMap = { ...prev, [id]: servicosSelecionados };
-      coAgendamentosIniciais.forEach(co => {
-        nextMap[co.id] = servicosSelecionados;
-      });
-      return nextMap;
-    });
+    setItensAgendamento(prev => ({
+      ...prev,
+      [id]: servicosSelecionados
+    }));
 
     if (agendamento.valor_sinal > 0) {
       const pagSinal: Pagamento = {
@@ -3007,7 +2997,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           inicio: inicioRepStr,
           fim: fimRepStr,
           status: novoAgendamento.status === 'bloqueado' ? 'bloqueado' : 'confirmado',
-          valor_total: valorPrincipalProf,
+          valor_total: novoAgendamento.valor_total,
           valor_sinal: 0,
           pago_com_clube: novoAgendamento.pago_com_clube,
           recorrencia_grupo_id: grupoId,
@@ -3020,54 +3010,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         novosRecorrentes.push(agRep);
         novosItensMap[idRep] = servicosSelecionados;
         salvarAgendamentoSupabase(agRep, servicosSelecionados);
-
-        // Se for atendimento em dupla, cria também a repetição da co-profissional com o valor do seu serviço
-        if (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado') {
-          const coProfs = todasProfsIds.filter(pid => pid !== novoAgendamento.profissional_id);
-          coProfs.forEach(coProfId => {
-            const coIdRep = gerarCodigoReserva();
-            const valorCoProfRep = calcularValorServicoProfissional(
-              { ...agRep, id: coIdRep, profissional_id: coProfId },
-              coProfId,
-              servicos,
-              equipe,
-              servicosSelecionados
-            );
-            const obsCoRep = `${tagDupla} [AG_PRINCIPAL:${idRep}] ${obsRepBase}`.trim();
-            const coAgRep: Agendamento = {
-              ...agRep,
-              id: coIdRep,
-              profissional_id: coProfId,
-              valor_total: valorCoProfRep,
-              valor_sinal: 0,
-              observacoes: obsCoRep
-            };
-            novosRecorrentes.push(coAgRep);
-            novosItensMap[coIdRep] = servicosSelecionados;
-            salvarAgendamentoSupabase(coAgRep, servicosSelecionados);
-          });
-        }
       }
     }
 
-    setAgendamentos(prev => [...prev, agendamento, ...coAgendamentosIniciais, ...novosRecorrentes]);
+    setAgendamentos(prev => [...prev, agendamento, ...novosRecorrentes]);
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
-    coAgendamentosIniciais.forEach(co => {
-      salvarAgendamentoSupabase(co, servicosSelecionados);
-    });
 
     if (novosRecorrentes.length > 0) {
       setItensAgendamento(prev => ({ ...prev, [id]: servicosSelecionados, ...novosItensMap }));
       mostrarNotificacaoGlobal(`🔁 1º agendamento e mais ${novosRecorrentes.length} repetições (${recorrenciaManual?.tipoLabel}) foram reservados na agenda!`);
-    } else if (coAgendamentosIniciais.length > 0) {
-      setItensAgendamento(prev => {
-        const nextMap = { ...prev, [id]: servicosSelecionados };
-        coAgendamentosIniciais.forEach(co => {
-          nextMap[co.id] = servicosSelecionados;
-        });
-        return nextMap;
-      });
-      mostrarNotificacaoGlobal(`✨ Atendimento em dupla reservado simultaneamente para ${nomesProfsFormatados}!`);
+    } else if (todasProfsIds.length > 1) {
+      mostrarNotificacaoGlobal(`✨ Atendimento em dupla reservado para ${nomesProfsFormatados}!`);
     } else {
       mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
     }
@@ -3556,21 +3509,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ? novoFim
       : calcularFimAgendamento(novoInicio, duracaoTotal);
 
-    // 1. Identifica agendamentos parceiros da dupla
+    // 1. Identifica agendamentos parceiros da dupla (legado) ou se é atendimento em dupla unificado
     const parceiros = obterAgendamentosParceirosDupla(ag, agendamentos);
     const todosIds = [ag.id, ...parceiros.map(p => p.id)];
 
-    // 2. Validação estrita de conflito de horário para a profissional do agendamento principal
-    const conflito = checkConflitoHorario(novoInicio, fimEfetivo, profEfetiva, ag.id);
-    if (conflito) {
-      const pNome = equipe.find(u => u.id === profEfetiva)?.nome || 'esta profissional';
-      return {
-        success: false,
-        error: `Horário indisponível ou em conflito com outro agendamento de ${pNome}.`
-      };
+    const ehDuplaUnificada = parceiros.length > 0 ||
+      servs.some(s => s.id === 's3') ||
+      servs.some(s => {
+        if (!s.is_pacote || !s.servicos_pacote_detalhes || s.servicos_pacote_detalhes.length <= 1) return false;
+        const profsDistintas = new Set(
+          s.servicos_pacote_detalhes.map(d => (d.profissional_id === 'u_yxnfmkow1' ? 'u2' : d.profissional_id)).filter(Boolean)
+        );
+        return profsDistintas.size > 1;
+      }) || (
+        (ag.observacoes?.includes('Co-atendimento') || ag.observacoes?.includes('2 Profissionais') || ag.observacoes?.includes('Dupla') || ag.observacoes?.includes('AG_PAR:') || ag.observacoes?.includes('AG_PRINCIPAL:')) &&
+        !servs.some(s => s.id === 's_blmeapdgo')
+      );
+
+    // 2. Validação estrita de conflito de horário
+    if (ehDuplaUnificada) {
+      // No atendimento em dupla unificado, valida disponibilidade de ambas (Sheila u1 e Lurdinha u2)
+      const conflitoSheila = checkConflitoHorario(novoInicio, fimEfetivo, 'u1', ag.id);
+      if (conflitoSheila) {
+        return {
+          success: false,
+          error: 'Horário indisponível para Sheila Santos no atendimento em dupla.'
+        };
+      }
+      const conflitoLurdinha = checkConflitoHorario(novoInicio, fimEfetivo, 'u2', ag.id);
+      if (conflitoLurdinha) {
+        return {
+          success: false,
+          error: 'Horário indisponível para Lurdinha no atendimento em dupla.'
+        };
+      }
+    } else {
+      const conflito = checkConflitoHorario(novoInicio, fimEfetivo, profEfetiva, ag.id);
+      if (conflito) {
+        const pNome = equipe.find(u => u.id === profEfetiva)?.nome || 'esta profissional';
+        return {
+          success: false,
+          error: `Horário indisponível ou em conflito com outro agendamento de ${pNome}.`
+        };
+      }
     }
 
-    // 3. Validação estrita de conflito para cada parceira da dupla
+    // 3. Validação estrita de conflito para cada parceira da dupla legada (se houver clone associado)
     for (const parc of parceiros) {
       const conflitoParc = checkConflitoHorario(novoInicio, fimEfetivo, parc.profissional_id, parc.id);
       if (conflitoParc) {
@@ -3646,7 +3630,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const duracaoFutMin = Math.max(30, Math.round((new Date(a.fim).getTime() - new Date(a.inicio).getTime()) / (60 * 1000))) || duracaoTotal;
           const novoFimFut = calcularFimAgendamento(novoInicioFut, duracaoFutMin);
 
-          const temConflito = checkConflitoHorario(novoInicioFut, novoFimFut, a.profissional_id, a.id);
+          const temConflito = ehDuplaUnificada
+            ? (checkConflitoHorario(novoInicioFut, novoFimFut, 'u1', a.id) || checkConflitoHorario(novoInicioFut, novoFimFut, 'u2', a.id))
+            : checkConflitoHorario(novoInicioFut, novoFimFut, a.profissional_id, a.id);
           if (temConflito) {
             const dataFmt = new Date(a.inicio).toLocaleDateString('pt-BR');
             conflitosFuturosDatas.push(dataFmt);
@@ -3980,7 +3966,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           dataSugerida: dataSugeridaFinal,
           diasAtraso,
           diasRestantes,
-          statusManutencao
+          statusManutencao,
+          profissional_id: ultimoAgend.profissional_id,
+          ultimoAgendamento: ultimoAgend
         });
       });
     });
@@ -4816,161 +4804,99 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const idTag = plano?.id ? ` [PLANO_ID:${plano.id}]` : '';
       let idPrincipalSessaoRec = '';
 
-      // Processa cada profissional alocado nesta sessão
-      for (const [profId, procsDoProf] of mapaPorProfissional.entries()) {
-        const servicosIds = procsDoProf.map(p => p.servico_id);
-        const nomesServicosCombinados = procsDoProf.map(p => p.nome_servico).join(' + ');
-        const durSessao = procsDoProf.reduce((acc, p) => acc + p.duracao_minutos, 0) || 60;
+      const todasProfsSessao = Array.from(new Set(procsDestaSessao.map(p => p.profissional_id || agInicial.profissional_id)));
+      const nomesProfsSessao = todasProfsSessao
+        .map(pid => equipe.find(u => u.id === pid)?.nome || (pid === 'u2' ? 'Lurdinha' : (pid === 'u1' ? 'Sheila Santos' : pid)))
+        .join(' e ');
+      const tagDuplaSessao = todasProfsSessao.length > 1
+        ? `[Co-atendimento: ${todasProfsSessao.length} Profissionais (${nomesProfsSessao})]`
+        : '';
 
-        // Calcula fim somando durSessao
-        const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
-        const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
-        const [curY, curMo, curD] = curDataPart.split('-').map(Number);
-        const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
-        const anoFim = dFim.getFullYear();
-        const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
-        const diaFim = String(dFim.getDate()).padStart(2, '0');
-        const hFimStr = String(dFim.getHours()).padStart(2, '0');
-        const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
-        const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
+      const servicosIds = procsDestaSessao.map(p => p.servico_id);
+      const nomesServicosCombinados = procsDestaSessao.map(p => p.nome_servico).join(' + ');
+      const durSessao = Math.max(...procsDestaSessao.map(p => p.duracao_minutos || 60));
 
-        if (semana === 0) {
-          if (profId === agInicial.profissional_id) {
-            // Atualiza agendamento inicial do profissional principal com Sessão 1 e PLANO_ID
-            const baseObs = agInicial.observacoes?.includes('Sessão 1')
-              ? agInicial.observacoes
-              : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomesServicosCombinados})`;
-            const novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
-            
-            const valorPlano = Number(plano?.preco_mensal) || 0;
-            const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
+      // Calcula fim somando durSessao
+      const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
+      const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
+      const [curY, curMo, curD] = curDataPart.split('-').map(Number);
+      const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
+      const anoFim = dFim.getFullYear();
+      const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
+      const diaFim = String(dFim.getDate()).padStart(2, '0');
+      const hFimStr = String(dFim.getHours()).padStart(2, '0');
+      const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
+      const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
 
-            if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id || agInicial.recorrencia_posicao !== `1 de ${maxSemanas}`) {
-              const atualizado: Agendamento = {
-                ...agInicial,
-                fim: fimStr,
-                observacoes: novoObs,
-                valor_total: valorTotalFinal,
-                pago_com_clube: true,
-                plano_id: plano?.id || agInicial.plano_id,
-                recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
-                recorrencia_tipo: 'semanal',
-                recorrencia_posicao: `1 de ${maxSemanas}`
-              };
-              salvarAgendamentoSupabase(atualizado, servicosIds);
-              setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
-              setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servicosIds }));
-            }
-          } else {
-            // Se houver outra profissional na Sessão 1 (ex: Pé com Lurdinha e Mão com Sheila no dia 1)
-            const listaAtualAgendamentos = agendamentoInicialObj 
-              ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
-              : agendamentos;
+      if (semana === 0) {
+        // Atualiza agendamento inicial da Sessão 1 com serviços e tag dupla se houver
+        const baseObs = agInicial.observacoes?.includes('Sessão 1')
+          ? agInicial.observacoes
+          : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomesServicosCombinados})`;
+        let novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
+        if (tagDuplaSessao && !novoObs.includes('[Co-atendimento:')) {
+          novoObs = `${novoObs} ${tagDuplaSessao}`.trim();
+        }
+        
+        const valorPlano = Number(plano?.preco_mensal) || 0;
+        const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
 
-            const jaExisteSimultaneo = listaAtualAgendamentos.some(a =>
-              a.cliente_id === clienteIdFinal &&
-              a.profissional_id === profId &&
-              a.inicio.substring(0, 10) === dataSemanaStr &&
-              a.status !== 'cancelado'
-            ) || novosAgendamentos.some(a =>
-              a.cliente_id === clienteIdFinal &&
-              a.profissional_id === profId &&
-              a.inicio.substring(0, 10) === dataSemanaStr
-            );
+        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id || agInicial.recorrencia_posicao !== `1 de ${maxSemanas}`) {
+          const atualizado: Agendamento = {
+            ...agInicial,
+            fim: fimStr,
+            observacoes: novoObs,
+            valor_total: valorTotalFinal,
+            pago_com_clube: true,
+            plano_id: plano?.id || agInicial.plano_id,
+            recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
+            recorrencia_tipo: 'semanal',
+            recorrencia_posicao: `1 de ${maxSemanas}`
+          };
+          salvarAgendamentoSupabase(atualizado, servicosIds);
+          setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
+          setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servicosIds }));
+        }
+      } else {
+        // Semana > 0: Cria exatamente 1 agendamento por sessão semanal
+        const listaAtualAgendamentos = agendamentoInicialObj 
+          ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
+          : agendamentos;
 
-            if (!jaExisteSimultaneo) {
-              const novoId = gerarCodigoReserva();
-              const tagParceiroSessao1 = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais] [AG_PRINCIPAL:${agInicial.id}]`;
-              const valorCoProf = calcularValorServicoProfissional(
-                { id: novoId, profissional_id: profId, inicio: inicioStr, fim: fimStr } as any,
-                profId,
-                servicos,
-                equipe,
-                servicosIds
-              );
+        const jaExiste = listaAtualAgendamentos.some(a =>
+          a.cliente_id === clienteIdFinal &&
+          a.inicio.substring(0, 10) === dataSemanaStr &&
+          a.status !== 'cancelado'
+        ) || novosAgendamentos.some(a =>
+          a.cliente_id === clienteIdFinal &&
+          a.inicio.substring(0, 10) === dataSemanaStr
+        );
 
-              const novoAgendamento: Agendamento = {
-                id: novoId,
-                cliente_id: clienteIdFinal,
-                profissional_id: profId,
-                inicio: inicioStr,
-                fim: fimStr,
-                status: 'confirmado',
-                valor_total: valorCoProf,
-                valor_sinal: 0,
-                pago_com_clube: true,
-                plano_id: plano?.id,
-                origem: 'admin',
-                recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
-                recorrencia_tipo: 'semanal',
-                recorrencia_posicao: `1 de ${maxSemanas}`,
-                observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão 1 (${nomesServicosCombinados}) ${tagParceiroSessao1}`.trim(),
-                criado_em: new Date().toISOString()
-              };
-              novosAgendamentos.push(novoAgendamento);
-              novosItensMap[novoId] = servicosIds;
-              salvarAgendamentoSupabase(novoAgendamento, servicosIds);
-            }
-          }
-        } else {
-          // Semana > 0: Cria a sessão para cada profissional designado
-          const listaAtualAgendamentos = agendamentoInicialObj 
-            ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
-            : agendamentos;
+        if (!jaExiste) {
+          const novoId = gerarCodigoReserva();
+          const obsSessao = `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados}) ${tagDuplaSessao}`.trim();
 
-          const jaExiste = listaAtualAgendamentos.some(a =>
-            a.cliente_id === clienteIdFinal &&
-            a.profissional_id === profId &&
-            a.inicio.substring(0, 10) === dataSemanaStr &&
-            a.status !== 'cancelado'
-          ) || novosAgendamentos.some(a =>
-            a.cliente_id === clienteIdFinal &&
-            a.profissional_id === profId &&
-            a.inicio.substring(0, 10) === dataSemanaStr
-          );
-
-          if (!jaExiste) {
-            const novoId = gerarCodigoReserva();
-            let tagDuplaRec = '';
-            if (mapaPorProfissional.size > 1) {
-              if (!idPrincipalSessaoRec) {
-                idPrincipalSessaoRec = novoId;
-                tagDuplaRec = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais]`;
-              } else {
-                tagDuplaRec = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais] [AG_PRINCIPAL:${idPrincipalSessaoRec}]`;
-              }
-            }
-
-            const valorCoProf = calcularValorServicoProfissional(
-              { id: novoId, profissional_id: profId, inicio: inicioStr, fim: fimStr } as any,
-              profId,
-              servicos,
-              equipe,
-              servicosIds
-            );
-
-            const novoAgendamento: Agendamento = {
-              id: novoId,
-              cliente_id: clienteIdFinal,
-              profissional_id: profId,
-              inicio: inicioStr,
-              fim: fimStr,
-              status: 'confirmado',
-              valor_total: valorCoProf,
-              valor_sinal: 0,
-              pago_com_clube: true,
-              plano_id: plano?.id,
-              origem: 'admin',
-              recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
-              recorrencia_tipo: 'semanal',
-              recorrencia_posicao: `${sessaoNum} de ${maxSemanas}`,
-              observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados}) ${tagDuplaRec}`.trim(),
-              criado_em: new Date().toISOString()
-            };
-            novosAgendamentos.push(novoAgendamento);
-            novosItensMap[novoId] = servicosIds;
-            salvarAgendamentoSupabase(novoAgendamento, servicosIds);
-          }
+          const novoAgendamento: Agendamento = {
+            id: novoId,
+            cliente_id: clienteIdFinal,
+            profissional_id: agInicial.profissional_id,
+            inicio: inicioStr,
+            fim: fimStr,
+            status: 'confirmado',
+            valor_total: 0,
+            valor_sinal: 0,
+            pago_com_clube: true,
+            plano_id: plano?.id,
+            origem: 'admin',
+            recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
+            recorrencia_tipo: 'semanal',
+            recorrencia_posicao: `${sessaoNum} de ${maxSemanas}`,
+            observacoes: obsSessao,
+            criado_em: new Date().toISOString()
+          };
+          novosAgendamentos.push(novoAgendamento);
+          novosItensMap[novoId] = servicosIds;
+          salvarAgendamentoSupabase(novoAgendamento, servicosIds);
         }
       }
     }

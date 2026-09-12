@@ -29,7 +29,8 @@ import {
   obterServicosIdsSessaoVip,
   obterTextoResumoSessoesVip,
   obterProfissionaisDoServicoOuPacote,
-  obterTodasProfissionaisDosServicos
+  obterTodasProfissionaisDosServicos,
+  agendamentoEnvolveProfissional
 } from '../utils/planoVipHelper';
 
 interface AgendaProps {
@@ -157,8 +158,11 @@ export const Agenda: React.FC<AgendaProps> = ({
         !a.observacoes?.includes('[Almoço Liberado]') &&
         !a.observacoes?.includes('[Bloqueio]')
       ) {
-        // Se visualizando como profissional, contabiliza apenas os próprios atendimentos
-        if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
+        // Se visualizando como profissional, contabiliza apenas os próprios atendimentos ou co-atendimentos
+        if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) {
+          return;
+        }
+        if (a.observacoes?.includes('[AG_PRINCIPAL:')) {
           return;
         }
         const dia = a.inicio.split('T')[0];
@@ -166,7 +170,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
     });
     return mapa;
-  }, [agendamentos, currentUser]);
+  }, [agendamentos, currentUser, servicos]);
 
   // Auxiliar para gerar os dias da grade mensal
   const gerarDiasDoMes = (dataBase: Date) => {
@@ -594,8 +598,12 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     return todos
       .filter(a => {
-        // Se for profissional da equipe, visualiza apenas a própria agenda
-        if (currentUser?.perfil === 'profissional' && a.profissional_id !== currentUser.id) {
+        // Se for profissional da equipe, visualiza apenas a própria agenda e atendimentos em dupla onde participa
+        if (currentUser?.perfil === 'profissional' && !agendamentoEnvolveProfissional(a, currentUser.id, servicos)) {
+          return false;
+        }
+        // Oculta registros clones/secundários para manter 1 linha única na agenda
+        if (a.observacoes?.includes('[AG_PRINCIPAL:')) {
           return false;
         }
         return true;
@@ -613,7 +621,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         return true;
       })
       .sort((a, b) => a.inicio.localeCompare(b.inicio));
-  }, [agendamentos, dataSelecionada, diaFechado, equipe, currentUser, filtroStatus, busca, clientes]);
+  }, [agendamentos, dataSelecionada, diaFechado, equipe, currentUser, filtroStatus, busca, clientes, servicos]);
 
   // Duração necessária para o atendimento em minutos
   const duracaoMinutosAtual = useMemo(() => {
@@ -1443,11 +1451,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                             </div>
                             <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1 flex-wrap">
                               <span>{servText}</span>
-                              {currentUser?.perfil === 'admin' && nomeProfissional && (
-                                <span>· Profissional: {nomeProfissional}</span>
-                              )}
                               {(() => {
-                                // Só mostrar a palavra 'Dupla' se forem serviços com profissionais diferentes no atendimento
                                 const servsDoAg = obterServicosDeAgendamento(a.id);
                                 const temPacoteComDuplaReal = servsDoAg.some(s => {
                                   if (!s.is_pacote || !s.servicos_pacote_detalhes || s.servicos_pacote_detalhes.length <= 1) return false;
@@ -1464,14 +1468,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                                   !servsDoAg.some(s => s.id === 's_blmeapdgo')
                                 );
 
-                                if (isDupla) {
-                                  return (
-                                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
-                                      <Sparkles size={9} /> Dupla
-                                    </span>
-                                  );
-                                }
-                                return null;
+                                const textoProf = isDupla 
+                                  ? 'Profissionais: Sheila Santos e Lurdinha'
+                                  : (nomeProfissional ? `Profissional: ${nomeProfissional}` : '');
+
+                                return (
+                                  <>
+                                    {textoProf && <span>· {textoProf}</span>}
+                                    {isDupla && (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold text-[#8C6D58] bg-[#FAF4ED] px-1.5 py-0.5 rounded border border-[#E8DEC9]">
+                                        <Sparkles size={9} /> Dupla
+                                      </span>
+                                    )}
+                                  </>
+                                );
                               })()}
                             </p>
                           </>
@@ -1480,9 +1490,18 @@ export const Agenda: React.FC<AgendaProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-3 border-t border-black border-opacity-5 sm:border-none pt-2 sm:pt-0">
-                      {a.cliente_id !== 'bloqueado' && (
-                        <span className="text-xs font-extrabold">{formatarMoeda(a.valor_total)}</span>
-                      )}
+                      {a.cliente_id !== 'bloqueado' && (() => {
+                        const servsDoAg = obterServicosDeAgendamento(a.id);
+                        const isDupla = servsDoAg.some(s => s.id === 's3') || (
+                          (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('AG_PRINCIPAL:')) &&
+                          !servsDoAg.some(s => s.id === 's_blmeapdgo')
+                        );
+                        const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
+                        const valorCard = isVipIncluso ? 0 : (isDupla ? (servsDoAg[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
+                        return (
+                          <span className="text-xs font-extrabold">{formatarMoeda(valorCard)}</span>
+                        );
+                      })()}
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-white bg-opacity-60 px-2 py-0.5 rounded">
                         {statusLabels[a.status] || a.status}
                       </span>

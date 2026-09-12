@@ -609,6 +609,67 @@ export const obterTodasProfissionaisDosServicos = (
 };
 
 /**
+ * Verifica se um agendamento envolve determinada profissional (diretamente ou em serviços em dupla/co-atendimento).
+ */
+export const agendamentoEnvolveProfissional = (
+  ag: Agendamento,
+  profId: string,
+  todosServicos: Servico[],
+  itensAgendamentoMap?: Record<string, string[]>
+): boolean => {
+  if (!ag || !profId) return false;
+
+  const pIdTarget = (profId === 'u_yxnfmkow1' || profId.toLowerCase().includes('lurd')) ? 'u2' : profId;
+  const pIdAg = (ag.profissional_id === 'u_yxnfmkow1' || (ag.profissional_id === 'u2') || ag.observacoes?.toLowerCase().includes('lurdinha')) 
+    ? (ag.profissional_id === 'u1' ? 'u1' : 'u2') 
+    : ag.profissional_id;
+
+  // 1. É a profissional principal direta
+  if (ag.profissional_id === profId || pIdAg === pIdTarget) return true;
+
+  // 2. Co-atendimento com 2 profissionais ou pacote de dupla
+  const sIds = (ag as any).itens_servicos && Array.isArray((ag as any).itens_servicos)
+    ? (ag as any).itens_servicos
+    : (itensAgendamentoMap && itensAgendamentoMap[ag.id])
+      ? itensAgendamentoMap[ag.id]
+      : [];
+
+  const servs = todosServicos.filter(s => sIds.includes(s.id));
+  const temPacoteDupla = servs.some(s => {
+    if (!s.is_pacote || !s.servicos_pacote_detalhes || s.servicos_pacote_detalhes.length <= 1) return false;
+    return s.servicos_pacote_detalhes.some(d => {
+      const dProf = (d.profissional_id === 'u_yxnfmkow1' || d.profissional_id === 'u2') ? 'u2' : d.profissional_id;
+      return dProf === pIdTarget;
+    });
+  });
+
+  if (temPacoteDupla) return true;
+
+  // 3. Menção explícita de co-atendimento em observações
+  if (pIdTarget === 'u2' && (
+    ag.observacoes?.toLowerCase().includes('lurd') ||
+    ag.observacoes?.includes('AG_PAR:') ||
+    ag.observacoes?.includes('AG_PRINCIPAL:') ||
+    ag.observacoes?.includes('2 Profissionais') ||
+    ag.observacoes?.includes('Dupla')
+  )) {
+    return true;
+  }
+
+  if (pIdTarget === 'u1' && (
+    ag.observacoes?.toLowerCase().includes('sheila') ||
+    ag.observacoes?.includes('AG_PAR:') ||
+    ag.observacoes?.includes('AG_PRINCIPAL:') ||
+    ag.observacoes?.includes('2 Profissionais') ||
+    ag.observacoes?.includes('Dupla')
+  )) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
  * Retorna o valor monetário que deve ser considerado para uma profissional específica em um agendamento.
  * Em serviços realizados em dupla ou com múltiplas profissionais (ex: Manicure + Pedicure 2 Profissionais),
  * considera ESTRITAMENTE o valor do procedimento realizado por aquela profissional, atendendo à regra:
@@ -621,10 +682,13 @@ export const calcularValorServicoProfissional = (
   equipe: Usuario[],
   servicosIds?: string[]
 ): number => {
-  if (ag.profissional_id !== profId) {
-    return 0;
-  }
+  if (!ag || !profId) return 0;
 
+  const pIdTarget = (profId === 'u_yxnfmkow1' || profId.toLowerCase().includes('lurd')) ? 'u2' : profId;
+  const isLurdinha = pIdTarget === 'u2';
+  const isSheila = pIdTarget === 'u1';
+
+  const obs = ag.observacoes || '';
   const sIds = (servicosIds && servicosIds.length > 0)
     ? servicosIds
     : ((ag as any).itens_servicos && (ag as any).itens_servicos.length > 0)
@@ -632,63 +696,98 @@ export const calcularValorServicoProfissional = (
       : [];
 
   const servs = todosServicos.filter(s => sIds.includes(s.id));
-  const pacoteDupla = servs.find(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
 
-  if (pacoteDupla) {
-    const profsInfo = obterProfissionaisDoServicoOuPacote(pacoteDupla.id, todosServicos, equipe);
-    const profProcs = profsInfo.filter(p => p.profissional_id === profId);
+  const isDupla = obs.includes('Co-atendimento') ||
+    obs.includes('2 Profissionais') ||
+    obs.includes('Dupla') ||
+    obs.includes('AG_PAR:') ||
+    obs.includes('AG_PRINCIPAL:') ||
+    servs.some(s => s.id === 's3' || (s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1));
+
+  // --- 1. ATENDIMENTOS EM DUPLA / CO-ATENDIMENTO ---
+  if (isDupla) {
+    // Procura se tem serviço de pacote cadastrado com divisão explícita de profissionais
+    const pacoteComDetalhes = servs.find(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1) ||
+      (sIds.includes('s3') || obs.includes('s3') || obs.includes('2 Profissionais') ? todosServicos.find(s => s.id === 's3') : null);
+
+    if (pacoteComDetalhes && pacoteComDetalhes.servicos_pacote_detalhes) {
+      const profsInfo = obterProfissionaisDoServicoOuPacote(pacoteComDetalhes.id, todosServicos, equipe);
+      const profProcs = profsInfo.filter(p => {
+        const pId = (p.profissional_id === 'u_yxnfmkow1' || p.profissional_id === 'u2') ? 'u2' : p.profissional_id;
+        return pId === pIdTarget;
+      });
+      if (profProcs.length > 0) {
+        return profProcs.reduce((acc, p) => acc + (p.preco || 0), 0);
+      }
+    }
+
+    // Regra padrão para atendimento em dupla entre Sheila e Lurdinha (pacote R$ 80 => R$ 40 para cada)
+    if (isLurdinha) return 40;
+    if (isSheila) return 40;
+    return 0;
+  }
+
+  // --- 2. ATENDIMENTOS CLUBE VIP ---
+  const isVip = !!(
+    ag.pago_com_clube ||
+    ag.plano_id ||
+    obs.includes('Clube VIP') ||
+    obs.includes('👑')
+  );
+
+  if (isVip) {
+    // Se for sessão VIP com co-atendimento explícito / 2 profissionais em dupla
+    const isSessaoDuplaReal = (
+      obs.includes('Co-atendimento') ||
+      obs.includes('2 Profissionais') ||
+      obs.includes('Sheila e Lurdinha') ||
+      obs.includes('Sheila Santos e Lurdinha') ||
+      (obs.includes('Manicure + Pedicure') && obs.includes('Simultâneo'))
+    );
+
+    if (isSessaoDuplaReal) {
+      if (isLurdinha) return 40;
+      if (isSheila) return 40;
+      return 0;
+    }
+
+    // Se for sessão individual, pertence estritamente à profissional designada no agendamento
+    const pIdAg = (ag.profissional_id === 'u_yxnfmkow1' || ag.profissional_id === 'u2') ? 'u2' : ag.profissional_id;
+    if (pIdAg !== pIdTarget) {
+      return 0;
+    }
+
+    // Em Clube VIP, a comissão é estritamente sobre os serviços executados na sessão, JAMAIS sobre a mensalidade do plano (ex: 190, 205, 220)
+    if (servs.length > 0) {
+      return servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+    }
+
+    // Fallback inteligente para identificar pelo nome do procedimento nas observações da sessão
+    if (obs.toLowerCase().includes('banho em gel')) return 75;
+    if (obs.toLowerCase().includes('pedicure')) return 45;
+    if (obs.toLowerCase().includes('manicure')) return 40;
+    if (obs.toLowerCase().includes('alongamento')) return 120;
+
+    return 40;
+  }
+
+  // --- 3. PACOTE NORMAL COM PROFISSIONAIS DESIGNADAS NOS DETALHES ---
+  const pacoteNormal = servs.find(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0);
+  if (pacoteNormal && pacoteNormal.servicos_pacote_detalhes) {
+    const profsInfo = obterProfissionaisDoServicoOuPacote(pacoteNormal.id, todosServicos, equipe, ag.profissional_id);
+    const profProcs = profsInfo.filter(p => {
+      const pId = (p.profissional_id === 'u_yxnfmkow1' || p.profissional_id === 'u2') ? 'u2' : p.profissional_id;
+      return pId === pIdTarget;
+    });
     if (profProcs.length > 0) {
       return profProcs.reduce((acc, p) => acc + (p.preco || 0), 0);
     }
   }
 
-  // Se agendamento tem observações indicando co-atendimento em dupla e pacote s3
-  if (ag.observacoes?.includes('Co-atendimento') || ag.observacoes?.includes('2 Profissionais') || ag.observacoes?.includes('AG_PAR:') || ag.observacoes?.includes('AG_PRINCIPAL:')) {
-    const servS3 = todosServicos.find(s => s.id === 's3');
-    if (servS3 && (!sIds.length || sIds.includes('s3'))) {
-      const profsInfo = obterProfissionaisDoServicoOuPacote('s3', todosServicos, equipe);
-      const profProcs = profsInfo.filter(p => p.profissional_id === profId);
-      if (profProcs.length > 0) {
-        return profProcs.reduce((acc, p) => acc + (p.preco || 0), 0);
-      }
-    }
-  }
-
-  const isVip = !!(
-    ag.pago_com_clube ||
-    ag.plano_id ||
-    ag.observacoes?.includes('Clube VIP') ||
-    ag.observacoes?.includes('👑')
-  );
-
-  // Se for Clube VIP: cada profissional é remunerada estritamente pelo serviço prestado na sessão,
-  // mesmo que o agendamento tenha valor_total === 0 (sessões 2..N) ou valor_total com a mensalidade (sessão 1)
-  if (isVip) {
-    if (servs.length > 0) {
-      return servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
-    }
-
-    if (ag.observacoes) {
-      const servsEncontrados = todosServicos.filter(s =>
-        ag.observacoes?.toLowerCase().includes(s.nome.toLowerCase())
-      );
-      if (servsEncontrados.length > 0) {
-        const pacote = servsEncontrados.find(s => s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 1);
-        if (pacote) {
-          const profsInfo = obterProfissionaisDoServicoOuPacote(pacote.id, todosServicos, equipe);
-          const profProcs = profsInfo.filter(p => p.profissional_id === profId);
-          if (profProcs.length > 0) {
-            return profProcs.reduce((acc, p) => acc + (p.preco || 0), 0);
-          }
-        }
-        return servsEncontrados.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
-      }
-    }
-
-    // Se for VIP sem serviços listados e não for a sessão 1 com anuidade cheia
-    if (Number(ag.valor_total) > 0 && !ag.observacoes?.includes('Sessão 1')) {
-      return Number(ag.valor_total);
-    }
+  // --- 4. AGENDAMENTO SOLO NORMAL (1 PROFISSIONAL) ---
+  const pIdAg = (ag.profissional_id === 'u_yxnfmkow1' || ag.profissional_id === 'u2') ? 'u2' : ag.profissional_id;
+  if (pIdAg !== pIdTarget) {
+    return 0;
   }
 
   return Number(ag.valor_total) || 0;

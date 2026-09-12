@@ -25,11 +25,15 @@ import {
   RotateCcw,
   FileText,
   Download,
-  Printer
+  Printer,
+  Sparkles,
+  Crown,
+  Flame,
+  BarChart3
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { MetodoPagamento } from '../types';
-import { calcularValorServicoProfissional } from '../utils/planoVipHelper';
+import { MetodoPagamento, Agendamento } from '../types';
+import { calcularValorServicoProfissional, agendamentoEnvolveProfissional, encontrarPlanoVip } from '../utils/planoVipHelper';
 
 export const Financeiro: React.FC = () => {
   const { 
@@ -51,7 +55,8 @@ export const Financeiro: React.FC = () => {
     fechamentosComissao,
     salvarFechamentoComissao,
     deleteFechamentoComissao,
-    configSalao
+    configSalao,
+    planosAssinatura
   } = useAppState();
 
   const [profissionalFiltro, setProfissionalFiltro] = useState<string>('todas');
@@ -147,42 +152,123 @@ export const Financeiro: React.FC = () => {
     setMesSelecionadoStr(`${novoAno}-${novoMes}`);
   };
 
-  const agendamentosMes = agendamentos.filter(a => {
-    const matchMes = a.inicio.startsWith(mesSelecionadoStr);
-    if (!matchMes) return false;
-    if (profissionalFiltro !== 'todas') {
-      return a.profissional_id === profissionalFiltro;
-    }
-    return true;
-  });
-  const concluidosMes = agendamentosMes.filter(a => a.status === 'concluido');
+  // Profissionais ativas
+  const profsAtivas = useMemo(() => equipe.filter(u => u.ativo), [equipe]);
+  const totalProfsAtivas = Math.max(profsAtivas.length, 1);
 
-  // 1. Receitas Realizadas (KPI Box 1 - Atendimentos Concluídos)
-  const receitasRealizadas = concluidosMes.reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+  // Total geral de despesas do mês (Salão)
+  const totalDespesasGerais = useMemo(() => {
+    return despesas
+      .filter(d => d.data.startsWith(mesSelecionadoStr))
+      .reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+  }, [despesas, mesSelecionadoStr]);
 
-  // 2. Faturamento Previsto (KPI Box 2 - Confirmados + Pendentes)
-  const faturamentoPrevisto = agendamentosMes
-    .filter(a => a.status === 'confirmado' || a.status === 'pendente')
-    .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
+  // Profissional atualmente filtrada (se houver)
+  const profSelecionadaFiltro = useMemo(() => {
+    if (profissionalFiltro === 'todas') return null;
+    return equipe.find(u => u.id === profissionalFiltro) || null;
+  }, [equipe, profissionalFiltro]);
+
+  const taxaComissaoProfFiltro = profSelecionadaFiltro?.comissao_padrao_porcentagem !== undefined 
+    ? profSelecionadaFiltro.comissao_padrao_porcentagem 
+    : 50;
 
   // 3. Despesas Totais do Mês (KPI Box 3)
-  const totalDespesasMes = despesas
-    .filter(d => d.data.startsWith(mesSelecionadoStr))
-    .reduce((acc, d) => acc + (Number(d.valor) || 0), 0);
+  // REGRA DE NEGÓCIO:
+  // - Filtro "Salão": Mostra o total das despesas operacionais do salão.
+  // - Filtro por Profissional:
+  //   * Se comissão = 100%: rateia as despesas igualmente entre as profissionais do salão.
+  //   * Se comissão < 100%: despesas zeradas (R$ 0,00), pois os custos são exclusivos do Salão.
+  const totalDespesasMes = useMemo(() => {
+    if (profissionalFiltro === 'todas') {
+      return totalDespesasGerais;
+    }
+    if (taxaComissaoProfFiltro >= 100) {
+      return totalDespesasGerais / totalProfsAtivas;
+    }
+    return 0;
+  }, [profissionalFiltro, totalDespesasGerais, taxaComissaoProfFiltro, totalProfsAtivas]);
+
+  // Faturamento e Atendimentos do Mês
+  const { receitasRealizadas, faturamentoPrevisto, concluidosMes, ticketMedio, totalMinutosAgendados } = useMemo(() => {
+    let recReal = 0;
+    let recPrev = 0;
+    let minAgendados = 0;
+    const concluidos: Agendamento[] = [];
+
+    agendamentos.forEach(a => {
+      if (
+        a.motivo_cancelamento === 'EXCLUIDO_ADMIN' ||
+        a.cliente_id === 'bloqueado' ||
+        !a.inicio.startsWith(mesSelecionadoStr) ||
+        a.observacoes?.includes('[AG_PRINCIPAL:') ||
+        a.status === 'cancelado' ||
+        a.status === 'falta'
+      ) {
+        return;
+      }
+
+      const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+
+      if (profissionalFiltro === 'todas') {
+        // Visão consolidada do Salão
+        const isDupla = sIds.some(s => s.id === 's3') || (
+          (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
+          !sIds.some(s => s.id === 's_blmeapdgo')
+        );
+        const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
+        const valTotal = isVipIncluso ? 0 : (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
+
+        if (a.status === 'concluido') {
+          recReal += valTotal;
+          concluidos.push(a);
+        } else if (a.status === 'confirmado' || a.status === 'pendente') {
+          recPrev += valTotal;
+        }
+
+        const diffMs = new Date(a.fim).getTime() - new Date(a.inicio).getTime();
+        minAgendados += Math.floor(diffMs / (60 * 1000));
+      } else {
+        // Visão individual da Profissional: calcula estritamente o valor que cabe a ela
+        const valProf = calcularValorServicoProfissional(a, profissionalFiltro, servicos, equipe, sIds);
+        if (valProf > 0) {
+          if (a.status === 'concluido') {
+            recReal += valProf;
+            concluidos.push(a);
+          } else if (a.status === 'confirmado' || a.status === 'pendente') {
+            recPrev += valProf;
+          }
+
+          const diffMs = new Date(a.fim).getTime() - new Date(a.inicio).getTime();
+          minAgendados += Math.floor(diffMs / (60 * 1000));
+        }
+      }
+    });
+
+    const ticket = concluidos.length > 0 ? (recReal / concluidos.length) : 0;
+    return {
+      receitasRealizadas: recReal,
+      faturamentoPrevisto: recPrev,
+      concluidosMes: concluidos,
+      ticketMedio: ticket,
+      totalMinutosAgendados: minAgendados
+    };
+  }, [agendamentos, mesSelecionadoStr, profissionalFiltro, servicos, equipe, obterServicosDeAgendamento]);
 
   // 4. Lucro Líquido (KPI Box 4)
-  const lucroLiquido = receitasRealizadas - totalDespesasMes;
-
-  // 5. Ticket Médio (KPI Box 5)
-  const ticketMedio = concluidosMes.length > 0 ? (receitasRealizadas / concluidosMes.length) : 0;
+  const lucroLiquido = useMemo(() => {
+    if (profissionalFiltro === 'todas') {
+      return receitasRealizadas - totalDespesasMes;
+    }
+    if (taxaComissaoProfFiltro >= 100) {
+      // 100% comissão: Faturamento Realizado - Despesa rateada
+      return receitasRealizadas - totalDespesasMes;
+    }
+    // Comissão < 100%: Comissão devida da profissional (já que os custos operacionais são do Salão)
+    return (receitasRealizadas * taxaComissaoProfFiltro) / 100;
+  }, [profissionalFiltro, receitasRealizadas, totalDespesasMes, taxaComissaoProfFiltro]);
 
   // 6. Ocupação Real (KPI Box 6)
-  const totalMinutosAgendados = agendamentosMes
-    .filter(a => a.status !== 'cancelado' && a.status !== 'falta' && a.status !== 'bloqueado')
-    .reduce((acc, a) => {
-      const diffMs = new Date(a.fim).getTime() - new Date(a.inicio).getTime();
-      return acc + Math.floor(diffMs / (60 * 1000));
-    }, 0);
   const expedienteMinutosMes = 22 * 540; // ~22 dias úteis de 9 horas
   const taxaOcupacao = Math.min(100, Math.round((totalMinutosAgendados / expedienteMinutosMes) * 100));
 
@@ -191,18 +277,84 @@ export const Financeiro: React.FC = () => {
   const mesNum = Number(mesSelecionadoStr.split('-')[1]);
   const diasNoMes = new Date(anoNum, mesNum, 0).getDate();
 
-  const faturamentoPorDia = Array.from({ length: diasNoMes }, (_, i) => {
-    const dia = String(i + 1).padStart(2, '0');
-    const dataDiaStr = `${mesSelecionadoStr}-${dia}`;
-    const valorDia = concluidosMes
-      .filter(a => a.inicio.startsWith(dataDiaStr))
-      .reduce((acc, a) => acc + (Number(a.valor_total) || 0), 0);
-    return { dia, valor: valorDia };
-  });
+  const nomesDiasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const nomesDiasSemanaCompletos = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
-  const maxValorDia = Math.max(...faturamentoPorDia.map(d => d.valor), 1);
+  const faturamentoPorDia = useMemo(() => {
+    return Array.from({ length: diasNoMes }, (_, i) => {
+      const diaNum = i + 1;
+      const dia = String(diaNum).padStart(2, '0');
+      const dataDiaStr = `${mesSelecionadoStr}-${dia}`;
+      const dataObj = new Date(anoNum, mesNum - 1, diaNum);
+      const diaSemanaIndex = dataObj.getDay();
+      const diaSemana = nomesDiasSemana[diaSemanaIndex];
+      const diaSemanaCompleto = nomesDiasSemanaCompletos[diaSemanaIndex];
+      const isFimDeSemana = diaSemanaIndex === 0 || diaSemanaIndex === 6;
+
+      let valorDia = 0;
+      const agsDoDia = concluidosMes.filter(a => a.inicio.startsWith(dataDiaStr));
+      
+      agsDoDia.forEach(a => {
+        const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+        if (profissionalFiltro === 'todas') {
+          const isDupla = sIds.some(s => s.id === 's3') || (
+            (a.observacoes?.includes('Co-atendimento') || a.observacoes?.includes('2 Profissionais') || a.observacoes?.includes('AG_PAR:') || a.observacoes?.includes('Dupla')) &&
+            !sIds.some(s => s.id === 's_blmeapdgo')
+          );
+          const isVipIncluso = a.pago_com_clube && a.valor_total === 0;
+          valorDia += isVipIncluso ? 0 : (isDupla ? (obterServicosDeAgendamento(a.id)[0]?.preco || Math.max(a.valor_total, 80)) : a.valor_total);
+        } else {
+          valorDia += calcularValorServicoProfissional(a, profissionalFiltro, servicos, equipe, sIds);
+        }
+      });
+
+      return { 
+        dia, 
+        diaNum,
+        dataDiaStr,
+        diaSemana,
+        diaSemanaCompleto,
+        isFimDeSemana,
+        valor: valorDia,
+        qtdAtendimentos: agsDoDia.length,
+        atendimentos: agsDoDia
+      };
+    });
+  }, [diasNoMes, mesSelecionadoStr, anoNum, mesNum, concluidosMes, profissionalFiltro, obterServicosDeAgendamento, servicos, equipe]);
+
+  const maxValorDia = useMemo(() => {
+    return Math.max(...faturamentoPorDia.map(d => d.valor), 1);
+  }, [faturamentoPorDia]);
+
+  const statsGrafico = useMemo(() => {
+    const diasComValor = faturamentoPorDia.filter(d => d.valor > 0);
+    const diaPico = faturamentoPorDia.reduce((max, d) => (d.valor > max.valor ? d : max), faturamentoPorDia[0]);
+    const totalFaturadoGrafico = faturamentoPorDia.reduce((acc, d) => acc + d.valor, 0);
+    const mediaPorDiaAtivo = diasComValor.length > 0 ? (totalFaturadoGrafico / diasComValor.length) : 0;
+
+    return {
+      diaPico,
+      totalDiasAtivos: diasComValor.length,
+      mediaPorDiaAtivo,
+      totalFaturadoGrafico
+    };
+  }, [faturamentoPorDia]);
+
+  const [diaHover, setDiaHover] = useState<typeof faturamentoPorDia[0] | null>(null);
 
   // --- TAXAS DO PERÍODO ---
+  const agendamentosMes = useMemo(() => {
+    return agendamentos.filter(a => {
+      const matchMes = a.inicio?.startsWith(mesSelecionadoStr);
+      if (!matchMes) return false;
+      if (a.motivo_cancelamento === 'EXCLUIDO_ADMIN' || a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
+      if (profissionalFiltro !== 'todas') {
+        return a.profissional_id === profissionalFiltro || agendamentoEnvolveProfissional(a, profissionalFiltro, servicos);
+      }
+      return true;
+    });
+  }, [agendamentos, mesSelecionadoStr, profissionalFiltro, servicos]);
+
   const totalAgends = agendamentosMes.length || 1;
   const confCount = agendamentosMes.filter(a => a.status === 'confirmado' || a.status === 'concluido').length;
   const faltaCount = agendamentosMes.filter(a => a.status === 'falta').length;
@@ -212,22 +364,108 @@ export const Financeiro: React.FC = () => {
   const taxaFalta = Math.round((faltaCount / totalAgends) * 100);
   const taxaCancelamento = Math.round((cancCount / totalAgends) * 100);
 
-  // --- SERVIÇOS MAIS RENTÁVEIS ---
-  const faturamentoPorServicoMap: { [key: string]: { nome: string; quantidade: number; total: number } } = {};
-  
-  concluidosMes.forEach(a => {
-    const servs = obterServicosDeAgendamento(a.id);
-    servs.forEach(s => {
-      if (!faturamentoPorServicoMap[s.id]) {
-        faturamentoPorServicoMap[s.id] = { nome: s.nome, quantidade: 0, total: 0 };
-      }
-      faturamentoPorServicoMap[s.id].quantidade += 1;
-      faturamentoPorServicoMap[s.id].total += s.preco;
-    });
-  });
+  // --- SERVIÇOS E PLANOS VIPS MAIS RENTÁVEIS ---
+  const servicosMaisRentaveis = useMemo(() => {
+    const faturamentoPorItemMap: { 
+      [key: string]: { 
+        id: string;
+        nome: string; 
+        quantidade: number; 
+        total: number; 
+        isVip: boolean;
+      } 
+    } = {};
 
-  const servicosMaisRentaveis = Object.values(faturamentoPorServicoMap)
-    .sort((a, b) => b.total - a.total);
+    concluidosMes.forEach(a => {
+      const cli = clientes.find(c => c.id === a.cliente_id);
+      const planoVip = encontrarPlanoVip(a.plano_id, cli?.assinatura, a.observacoes, planosAssinatura);
+      const isVip = !!(a.pago_com_clube || a.plano_id || a.observacoes?.includes('👑') || a.observacoes?.includes('Clube VIP') || planoVip);
+      const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+
+      if (isVip) {
+        // Atendimento vinculado ao Clube VIP
+        const nomePlano = planoVip ? `👑 ${planoVip.nome}` : (cli?.assinatura?.nome_plano ? `👑 ${cli.assinatura.nome_plano}` : '👑 Clube VIP');
+        const itemKey = planoVip ? `vip_${planoVip.id}` : `vip_${nomePlano}`;
+        
+        let valorItem = 0;
+        if (profissionalFiltro === 'todas') {
+          if (a.valor_total > 0) {
+            valorItem = a.valor_total;
+          } else if (planoVip && planoVip.preco_mensal && planoVip.qtd_procedimentos_mes) {
+            valorItem = Math.round(planoVip.preco_mensal / (planoVip.qtd_procedimentos_mes || 1));
+          } else {
+            const servs = obterServicosDeAgendamento(a.id);
+            valorItem = servs.reduce((acc, s) => acc + (s.preco || 0), 0) || 45;
+          }
+        } else {
+          valorItem = calcularValorServicoProfissional(a, profissionalFiltro, servicos, equipe, sIds);
+        }
+
+        if (!faturamentoPorItemMap[itemKey]) {
+          faturamentoPorItemMap[itemKey] = {
+            id: itemKey,
+            nome: nomePlano,
+            quantidade: 0,
+            total: 0,
+            isVip: true
+          };
+        }
+        faturamentoPorItemMap[itemKey].quantidade += 1;
+        faturamentoPorItemMap[itemKey].total += valorItem;
+      } else {
+        // Atendimento Avulso / Procedimento Normal
+        let servs = obterServicosDeAgendamento(a.id);
+
+        // Se ainda não encontrou serviço, tenta fallback por observações ou por preço
+        if (servs.length === 0) {
+          if (a.observacoes) {
+            const obsNorm = a.observacoes.toLowerCase();
+            const servicosOrdenados = [...servicos].sort((x, y) => y.nome.length - x.nome.length);
+            const sMatch = servicosOrdenados.find(s => obsNorm.includes(s.nome.toLowerCase()));
+            if (sMatch) servs = [sMatch];
+          }
+          if (servs.length === 0 && a.valor_total > 0) {
+            const sPreco = servicos.find(s => s.preco === a.valor_total);
+            if (sPreco) servs = [sPreco];
+          }
+        }
+
+        if (servs.length === 0) {
+          const nomeFallback = a.observacoes?.trim() ? a.observacoes.split('\n')[0].replace(/\[.*?\]/g, '').trim() : '';
+          const nomeItem = nomeFallback || 'Atendimento Avulso';
+          const itemKey = `avulso_${nomeItem.toLowerCase().replace(/\s+/g, '_')}`;
+          const valorItem = profissionalFiltro === 'todas' ? a.valor_total : calcularValorServicoProfissional(a, profissionalFiltro, servicos, equipe, []);
+          if (!faturamentoPorItemMap[itemKey]) {
+            faturamentoPorItemMap[itemKey] = { id: itemKey, nome: nomeItem, quantidade: 0, total: 0, isVip: false };
+          }
+          faturamentoPorItemMap[itemKey].quantidade += 1;
+          faturamentoPorItemMap[itemKey].total += valorItem;
+        } else {
+          servs.forEach(s => {
+            let valorItem = 0;
+            if (profissionalFiltro === 'todas') {
+              valorItem = s.preco;
+            } else {
+              valorItem = calcularValorServicoProfissional(a, profissionalFiltro, servicos, equipe, [s.id]);
+            }
+            if (!faturamentoPorItemMap[s.id]) {
+              faturamentoPorItemMap[s.id] = { id: s.id, nome: s.nome, quantidade: 0, total: 0, isVip: false };
+            }
+            faturamentoPorItemMap[s.id].quantidade += 1;
+            faturamentoPorItemMap[s.id].total += valorItem;
+          });
+        }
+      }
+    });
+
+    return Object.values(faturamentoPorItemMap)
+      .filter(item => item.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [concluidosMes, clientes, planosAssinatura, profissionalFiltro, obterServicosDeAgendamento, servicos, equipe]);
+
+  const maxTotalServico = useMemo(() => {
+    return Math.max(...servicosMaisRentaveis.map(s => s.total), 1);
+  }, [servicosMaisRentaveis]);
 
   // --- PAGAMENTOS PENDENTES ---
   // Inclui todos os agendamentos que estão com status 'pendente' (A Confirmar) no mês selecionado
@@ -237,8 +475,9 @@ export const Financeiro: React.FC = () => {
       const matchMes = a.inicio?.startsWith(mesSelecionadoStr);
       const isPendente = a.status === 'pendente';
       if (!matchMes || !isPendente) return false;
+      if (a.motivo_cancelamento === 'EXCLUIDO_ADMIN' || a.observacoes?.includes('[AG_PRINCIPAL:')) return false;
       if (profissionalFiltro !== 'todas') {
-        return a.profissional_id === profissionalFiltro;
+        return a.profissional_id === profissionalFiltro || agendamentoEnvolveProfissional(a, profissionalFiltro, servicos);
       }
       return true;
     });
@@ -282,7 +521,7 @@ export const Financeiro: React.FC = () => {
         }
         const matchData = agend.inicio?.startsWith(mesSelecionadoStr);
         if (!matchData) return;
-        if (profissionalFiltro !== 'todas' && agend.profissional_id !== profissionalFiltro) {
+        if (profissionalFiltro !== 'todas' && agend.profissional_id !== profissionalFiltro && !agendamentoEnvolveProfissional(agend, profissionalFiltro, servicos)) {
           return;
         }
         lista.push(p);
@@ -290,26 +529,45 @@ export const Financeiro: React.FC = () => {
     });
 
     return lista;
-  }, [agendamentos, pagamentos, mesSelecionadoStr, profissionalFiltro]);
+  }, [agendamentos, pagamentos, mesSelecionadoStr, profissionalFiltro, servicos]);
 
   const despesasMes = despesas.filter(d => d.data.startsWith(mesSelecionadoStr));
 
   // --- CÁLCULO DE COMISSÕES E REPASSES (LEI DO SALÃO-PARCEIRO) ---
   const comissoesPorProfissional = useMemo(() => {
     return equipe.filter(u => u.ativo).map(prof => {
-      const ags = agendamentos.filter(a => 
-        a.profissional_id === prof.id && 
-        (a.status === 'concluido' || a.status === 'confirmado') && 
-        a.inicio.startsWith(mesSelecionadoStr)
-      );
-      const faturamentoBruto = ags.reduce((acc, a) => {
-        const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
-        const valorEfetivo = calcularValorServicoProfissional(a, prof.id, servicos, equipe, sIds);
-        return acc + valorEfetivo;
-      }, 0);
+      const agsConcluidos: { agendamento: Agendamento; valorEfetivo: number }[] = [];
+      const agsPrevistos: { agendamento: Agendamento; valorEfetivo: number }[] = [];
+
+      agendamentos.forEach(a => {
+        if (
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
+          a.cliente_id !== 'bloqueado' &&
+          a.inicio.startsWith(mesSelecionadoStr) &&
+          !a.observacoes?.includes('[AG_PRINCIPAL:')
+        ) {
+          const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
+          const valorEfetivo = calcularValorServicoProfissional(a, prof.id, servicos, equipe, sIds);
+          if (valorEfetivo > 0) {
+            if (a.status === 'concluido') {
+              agsConcluidos.push({ agendamento: a, valorEfetivo });
+            } else if (a.status === 'confirmado') {
+              agsPrevistos.push({ agendamento: a, valorEfetivo });
+            }
+          }
+        }
+      });
+
+      const faturamentoBruto = agsConcluidos.reduce((acc, item) => acc + item.valorEfetivo, 0);
+      const totalAtendimentos = agsConcluidos.length;
       const taxaPct = prof.comissao_padrao_porcentagem !== undefined ? prof.comissao_padrao_porcentagem : 50;
       const valorComissaoBruta = (faturamentoBruto * taxaPct) / 100;
       const cotaSalao = faturamentoBruto - valorComissaoBruta;
+
+      const faturamentoPrevistoProf = agsPrevistos.reduce((acc, item) => acc + item.valorEfetivo, 0);
+      const totalPrevistos = agsPrevistos.length;
+      const comissaoPrevista = (faturamentoPrevistoProf * taxaPct) / 100;
+
       const fechamentoExistente = fechamentosComissao.find(f => 
         f.profissional_id === prof.id && 
         f.periodo_inicio.startsWith(mesSelecionadoStr)
@@ -317,15 +575,18 @@ export const Financeiro: React.FC = () => {
 
       return {
         profissional: prof,
-        totalAtendimentos: ags.length,
+        totalAtendimentos,
         faturamentoBruto,
         taxaPct,
         valorComissaoBruta,
         cotaSalao,
+        totalPrevistos,
+        faturamentoPrevistoProf,
+        comissaoPrevista,
         fechamentoExistente
       };
     });
-  }, [equipe, agendamentos, mesSelecionadoStr, fechamentosComissao]);
+  }, [equipe, agendamentos, mesSelecionadoStr, fechamentosComissao, servicos, obterServicosDeAgendamento]);
 
   const handleFecharComissao = (item: typeof comissoesPorProfissional[0]) => {
     confirmarAcao({
@@ -596,7 +857,7 @@ export const Financeiro: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-4 md:p-8 flex flex-col h-screen overflow-hidden pb-24 md:pb-0 bg-[#FAF9F6]">
+    <div className="flex-1 p-4 md:p-8 flex flex-col min-h-screen overflow-y-auto pb-24 md:pb-12 bg-[#FAF9F6]">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#EFECE6] pb-4 mb-5">
         <div>
@@ -675,7 +936,7 @@ export const Financeiro: React.FC = () => {
             onChange={(e) => setProfissionalFiltro(e.target.value)}
             className="text-xs font-bold text-[#5A4535] bg-transparent outline-none cursor-pointer pr-1"
           >
-            <option value="todas">Todas as Profissionais (Geral)</option>
+            <option value="todas">Salão</option>
             {equipe.map(membro => (
               <option key={membro.id} value={membro.id}>
                 {membro.nome}
@@ -743,90 +1004,307 @@ export const Financeiro: React.FC = () => {
       </div>
 
       {/* Main Grid: Bar Chart & Right Info panels */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-5 overflow-hidden pb-6">
-        {/* Left Side: Bar Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm flex flex-col h-full overflow-hidden">
-          <h3 className="font-serif font-bold text-sm text-[#5A4535] mb-6">Faturamento realizado por dia</h3>
-          
-          <div className="flex-1 flex items-end justify-between gap-1 pt-6 border-b border-[#EFECE6] pb-2 px-2 relative min-h-[140px]">
-            <div className="absolute inset-x-0 top-1/4 border-t border-[#FAF9F6] border-dashed"></div>
-            <div className="absolute inset-x-0 top-2/4 border-t border-[#FAF9F6] border-dashed"></div>
-            <div className="absolute inset-x-0 top-3/4 border-t border-[#FAF9F6] border-dashed"></div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+        {/* Left Side: Bar Chart Premium */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-[#EFECE6] p-5 md:p-6 shadow-sm flex flex-col justify-between relative">
+          {/* Header do Gráfico com Indicadores Dinâmicos Padronizados */}
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 border-b border-[#FAF9F6] pb-3 mb-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <BarChart3 size={18} className="text-[#8C6D58] shrink-0" />
+                <h3 className="font-serif font-bold text-sm md:text-base text-[#5A4535]">Faturamento Realizado por Dia</h3>
+              </div>
+              <p className="text-[11px] text-[#8C7A6B] mt-0.5">
+                Valores faturados dia a dia no mês de <span className="capitalize font-semibold text-[#5A4535]">{nomeMesAtual}</span>
+              </p>
+            </div>
 
-            {faturamentoPorDia.map((item) => {
-              const heightPct = (item.valor / maxValorDia) * 100;
-              return (
-                <div key={item.dia} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end group">
-                  <div className="w-full flex justify-center items-end h-full relative">
-                    {item.valor > 0 && (
-                      <span className="absolute bottom-full mb-1 bg-[#5A4535] text-white text-[8px] px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap shadow">
-                        {formatarMoeda(item.valor)}
-                      </span>
-                    )}
-                    <div 
-                      style={{ height: `${item.valor > 0 ? Math.max(heightPct, 5) : 0}%` }} 
-                      className="w-full max-w-[12px] bg-[#8C6D58] rounded-t-sm transition-all animate-fade-in"
-                    ></div>
-                  </div>
-                  <span className="text-[8px] font-bold text-[#8C7A6B] tracking-tight">{item.dia}</span>
+            {/* Badges de Resumo e Destaque Padronizados */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+              {statsGrafico.diaPico && statsGrafico.diaPico.valor > 0 && (
+                <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                  <Crown size={13} className="text-[#C9A227] shrink-0" />
+                  <span>Pico: <strong className="font-bold">Dia {statsGrafico.diaPico.dia} ({formatarMoeda(statsGrafico.diaPico.valor)})</strong></span>
                 </div>
-              );
-            })}
+              )}
+              {statsGrafico.totalDiasAtivos > 0 && (
+                <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                  <BarChart3 size={13} className="text-[#8C6D58] shrink-0" />
+                  <span>Média: <strong className="font-bold">{formatarMoeda(statsGrafico.mediaPorDiaAtivo)}/dia</strong></span>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Corpo do Gráfico com Eixo Y e Plot Separados */}
+          <div className="flex gap-2 pt-4 pb-1">
+            {/* Coluna do Eixo Y */}
+            <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between text-right pr-2 select-none h-44 md:h-52">
+              <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia)}</span>
+              <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia * 0.5)}</span>
+              <span className="text-[9px] font-mono text-[#A39284] leading-none">R$ 0,00</span>
+            </div>
+
+            {/* Área de Plotagem (Grid + Barras + Eixo X) */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              {/* Container das Barras e Linhas Guias */}
+              <div className="relative h-44 md:h-52 flex items-end">
+                {/* Linhas de Grade Horizontais */}
+                <div className="absolute inset-0 pointer-events-none flex flex-col justify-between">
+                  <div className="border-t border-[#FAF2EB] w-full"></div>
+                  <div className="border-t border-[#FAF2EB] border-dashed w-full"></div>
+                  <div className="border-b border-[#EFECE6] w-full"></div>
+                </div>
+
+                {/* Linha pontilhada da média */}
+                {statsGrafico.mediaPorDiaAtivo > 0 && maxValorDia > 0 && (
+                  <div 
+                    style={{ bottom: `${Math.min(92, Math.max(4, (statsGrafico.mediaPorDiaAtivo / maxValorDia) * 100))}%` }}
+                    className="absolute inset-x-0 border-t border-amber-500/50 border-dashed pointer-events-none z-0"
+                    title={`Média diária: ${formatarMoeda(statsGrafico.mediaPorDiaAtivo)}`}
+                  />
+                )}
+
+                {/* Barras dos Dias */}
+                <div className="flex items-end justify-between gap-0.5 sm:gap-1 w-full h-full relative z-10">
+                  {faturamentoPorDia.map((item) => {
+                    const heightPct = (item.valor / maxValorDia) * 100;
+                    const isPico = item.valor > 0 && item.valor === statsGrafico.diaPico?.valor;
+                    const isHovered = diaHover?.dia === item.dia;
+
+                    return (
+                      <div 
+                        key={item.dia} 
+                        className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                        onMouseEnter={() => setDiaHover(item)}
+                        onMouseLeave={() => setDiaHover(null)}
+                        onClick={() => setDiaHover(diaHover?.dia === item.dia ? null : item)}
+                      >
+                        <div className="w-full flex justify-center items-end h-full relative">
+                          {/* Tooltip Interativo Premium Ampliado e Bem Distribuído */}
+                          {isHovered && (
+                            <div className={`absolute bottom-full mb-2.5 bg-[#2D221A] text-white p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[220px] md:min-w-[240px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
+                              item.diaNum > 20 ? 'right-0' : item.diaNum < 6 ? 'left-0' : 'left-1/2 -translate-x-1/2'
+                            }`}>
+                              {/* Header do Tooltip */}
+                              <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
+                                <span className="text-[11px] text-[#EFE7D8] font-bold">{item.diaSemanaCompleto}</span>
+                                <span className="text-[10px] font-mono text-amber-300 font-bold">{item.dia}/{String(mesNum).padStart(2, '0')}</span>
+                              </div>
+
+                              {/* Faturamento e Atendimentos */}
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-base font-extrabold text-emerald-400 font-mono tracking-tight">
+                                  {formatarMoeda(item.valor)}
+                                </span>
+                                <span className="text-[11px] text-stone-300 font-medium whitespace-nowrap">
+                                  {item.qtdAtendimentos} {item.qtdAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
+                                </span>
+                              </div>
+
+                              {/* Badge de Pico do Mês */}
+                              {isPico && (
+                                <div className="mt-1.5 inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-300 bg-amber-950/70 border border-amber-700/50 px-2 py-0.5 rounded-md">
+                                  <span>★ Maior faturamento do mês</span>
+                                </div>
+                              )}
+
+                              {/* Lista de Atendimentos Detalhada */}
+                              {item.atendimentos && item.atendimentos.length > 0 && (
+                                <div className="mt-2.5 pt-2 border-t border-white/10 text-[10px] text-stone-200 space-y-1 max-h-32 overflow-hidden">
+                                  {item.atendimentos.slice(0, 4).map((a, aIdx) => {
+                                    const cli = clientes.find(c => c.id === a.cliente_id);
+                                    return (
+                                      <div key={aIdx} className="flex items-center justify-between gap-3">
+                                        <span className="truncate text-stone-300">• {cli?.nome || 'Cliente'}</span>
+                                        <span className="font-mono font-semibold text-emerald-300 shrink-0">{formatarMoeda(a.valor_total || 0)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                  {item.atendimentos.length > 4 && (
+                                    <div className="text-[9px] text-stone-400 italic pt-0.5">
+                                      + {item.atendimentos.length - 4} outros atendimentos
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Barra com Gradiente e Destaque */}
+                          <div 
+                            style={{ height: `${item.valor > 0 ? Math.max(heightPct, 6) : 0}%` }} 
+                            className={`w-full max-w-[12px] sm:max-w-[16px] rounded-t-md transition-all duration-300 ${
+                              isPico
+                                ? 'bg-gradient-to-t from-[#8C6D58] via-[#B8977E] to-[#E5C378] shadow-[0_0_8px_rgba(229,195,120,0.5)] group-hover:brightness-110'
+                                : item.valor > 0
+                                ? 'bg-gradient-to-t from-[#8C6D58] to-[#AA8B75] group-hover:from-[#725743] group-hover:to-[#967761]'
+                                : 'bg-transparent'
+                            } ${isHovered ? 'scale-x-110 brightness-110 ring-2 ring-[#8C6D58]/40' : ''}`}
+                          >
+                            {isPico && (
+                              <div className="w-full flex justify-center -mt-2">
+                                <span className="text-[8px] text-[#C9A227]">★</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Rótulo do Dia no Eixo X (Abaixo da linha de base!) */}
+              <div className="flex justify-between gap-0.5 sm:gap-1 w-full pt-1.5">
+                {faturamentoPorDia.map((item) => {
+                  const isPico = item.valor > 0 && item.valor === statsGrafico.diaPico?.valor;
+                  const isHovered = diaHover?.dia === item.dia;
+                  return (
+                    <div key={item.dia} className="flex-1 flex flex-col items-center">
+                      <span className={`text-[8px] sm:text-[9px] font-bold tracking-tight ${
+                        isHovered ? 'text-[#5A4535] font-black' : isPico ? 'text-[#8A6218]' : item.isFimDeSemana ? 'text-[#B3A295]' : 'text-[#8C7A6B]'
+                      }`}>
+                        {item.dia}
+                      </span>
+                      <span className="text-[7px] text-[#B8A89A] uppercase hidden sm:block">
+                        {item.diaSemana[0]}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Rodapé explicativo do gráfico */}
+          <div className="flex flex-wrap items-center justify-between text-[11px] text-[#8C7A6B] pt-3 border-t border-[#FAF9F6] mt-2">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-gradient-to-t from-[#8C6D58] to-[#AA8B75]"></span>
+                <span>Faturamento diário</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-gradient-to-t from-[#8C6D58] via-[#B8977E] to-[#E5C378]"></span>
+                <span>Pico do mês (★)</span>
+              </span>
+            </div>
+            <span className="text-[10px] text-[#8C7A6B] italic">
+              Passe o mouse ou toque sobre as barras para ver detalhes
+            </span>
           </div>
         </div>
 
         {/* Right Side Info: Taxas & Rentabilidade */}
-        <div className="space-y-4 overflow-y-auto pr-1">
+        <div className="flex flex-col gap-4">
           {/* Taxas do Período */}
-          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
-            <h3 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#FAF9F6] pb-1.5">Taxas do período</h3>
+          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-3.5">
+            <div className="flex items-center justify-between border-b border-[#FAF9F6] pb-2">
+              <h3 className="font-serif font-bold text-sm text-[#5A4535]">Taxas do Período</h3>
+              <span className="text-[10px] font-bold text-[#8C7A6B] bg-[#FAF9F6] px-2 py-0.5 rounded-md border border-[#EFECE6]">
+                {agendamentosMes.length} {agendamentosMes.length === 1 ? 'agendamento' : 'agendamentos'}
+              </span>
+            </div>
             <div className="space-y-3 text-xs text-[#5A4535]">
               <div>
                 <div className="flex justify-between font-semibold mb-1">
-                  <span>Confirmação</span>
-                  <span>{taxaConfirmacao}%</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#4FA97A]"></span>
+                    <span>Confirmação / Conclusão</span>
+                  </span>
+                  <span className="font-bold text-[#2B7A4B]">{taxaConfirmacao}% <span className="text-[10px] font-normal text-[#8C7A6B]">({confCount})</span></span>
                 </div>
-                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6]">
-                  <div style={{ width: `${taxaConfirmacao}%` }} className="bg-[#4FA97A] h-full rounded-full"></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between font-semibold mb-1">
-                  <span>Falta</span>
-                  <span>{taxaFalta}%</span>
-                </div>
-                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6]">
-                  <div style={{ width: `${taxaFalta}%` }} className="bg-[#C81E1E] h-full rounded-full"></div>
+                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6] overflow-hidden">
+                  <div style={{ width: `${taxaConfirmacao}%` }} className="bg-[#4FA97A] h-full rounded-full transition-all duration-500"></div>
                 </div>
               </div>
               <div>
                 <div className="flex justify-between font-semibold mb-1">
-                  <span>Cancelamento</span>
-                  <span>{taxaCancelamento}%</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#C81E1E]"></span>
+                    <span>Falta (Não compareceu)</span>
+                  </span>
+                  <span className="font-bold text-[#C81E1E]">{taxaFalta}% <span className="text-[10px] font-normal text-[#8C7A6B]">({faltaCount})</span></span>
                 </div>
-                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6]">
-                  <div style={{ width: `${taxaCancelamento}%` }} className="bg-gray-400 h-full rounded-full"></div>
+                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6] overflow-hidden">
+                  <div style={{ width: `${taxaFalta}%` }} className="bg-[#C81E1E] h-full rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between font-semibold mb-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-stone-400"></span>
+                    <span>Cancelamentos</span>
+                  </span>
+                  <span className="font-bold text-stone-600">{taxaCancelamento}% <span className="text-[10px] font-normal text-[#8C7A6B]">({cancCount})</span></span>
+                </div>
+                <div className="w-full bg-[#FAF9F6] rounded-full h-2 border border-[#EFECE6] overflow-hidden">
+                  <div style={{ width: `${taxaCancelamento}%` }} className="bg-stone-400 h-full rounded-full transition-all duration-500"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Serviços mais rentáveis */}
-          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-4">
-            <h3 className="font-serif font-bold text-sm text-[#5A4535] border-b border-[#FAF9F6] pb-1.5">Serviços mais rentáveis</h3>
-            <div className="space-y-2.5 text-xs">
-              {servicosMaisRentaveis.map((item, idx) => (
-                <div key={idx} className="flex justify-between items-center text-[#5A4535]">
-                  <span className="text-[#8C7A6B]">
-                    {idx + 1}. {item.nome} <strong className="text-[#5A4535]">({item.quantidade}x)</strong>
-                  </span>
-                  <span className="font-extrabold">{formatarMoeda(item.total)}</span>
+          {/* Serviços e Planos VIP mais rentáveis */}
+          <div className="bg-white rounded-2xl border border-[#EFECE6] p-5 shadow-sm space-y-3.5 flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between border-b border-[#FAF9F6] pb-2 mb-3">
+                <div className="flex items-center gap-1.5">
+                  <Flame size={16} className="text-[#D37F64]" />
+                  <h3 className="font-serif font-bold text-sm text-[#5A4535]">Mais Rentáveis</h3>
                 </div>
-              ))}
-              {servicosMaisRentaveis.length === 0 && (
-                <p className="text-xs text-[#8C7A6B] italic text-center">Nenhum serviço realizado ainda.</p>
-              )}
+                <span className="text-[10px] font-bold text-[#8C6D58] bg-[#F8F2ED] px-2 py-0.5 rounded-md border border-[#EFE5DC]">
+                  Top {Math.min(servicosMaisRentaveis.length, 5)}
+                </span>
+              </div>
+              <div className="space-y-3 text-xs">
+                {servicosMaisRentaveis.slice(0, 5).map((item, idx) => {
+                  const barPct = maxTotalServico > 0 ? (item.total / maxTotalServico) * 100 : 0;
+                  return (
+                    <div key={item.id || idx} className="space-y-1">
+                      <div className="flex justify-between items-center text-[#5A4535] gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-4 text-[10px] font-bold text-[#8C7A6B] shrink-0">{idx + 1}.</span>
+                          <span className="text-[#5A4535] font-semibold truncate text-[11px]" title={item.nome}>
+                            {item.nome}
+                          </span>
+                          {item.isVip && (
+                            <span className="bg-amber-100/80 text-amber-800 border border-amber-200 text-[8px] font-bold px-1.5 py-0.2 rounded shrink-0">
+                              VIP
+                            </span>
+                          )}
+                          <span className="text-[10px] text-[#8C7A6B] shrink-0 font-normal">
+                            ({item.quantidade}x)
+                          </span>
+                        </div>
+                        <span className="font-extrabold text-[#5A4535] shrink-0 text-xs">
+                          {formatarMoeda(item.total)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-[#FAF9F6] rounded-full h-1.5 border border-[#EFECE6] overflow-hidden">
+                        <div 
+                          style={{ width: `${barPct}%` }} 
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            item.isVip 
+                              ? 'bg-gradient-to-r from-[#D4AF37] to-[#8C6D58]' 
+                              : 'bg-gradient-to-r from-[#8C6D58] to-[#AA8B75]'
+                          }`}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {servicosMaisRentaveis.length === 0 && (
+                  <p className="text-xs text-[#8C7A6B] italic text-center py-4">Nenhum serviço ou plano faturado no período.</p>
+                )}
+              </div>
             </div>
+
+            {servicosMaisRentaveis.length > 5 && (
+              <p className="text-[10px] text-[#8C7A6B] text-center italic pt-2 border-t border-[#FAF9F6]">
+                + {servicosMaisRentaveis.length - 5} outros itens faturados no mês
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -910,6 +1388,30 @@ export const Financeiro: React.FC = () => {
           {/* TAB 2: EXTRATO DESPESAS */}
           {financeTab === 'despesas' && (
             <>
+              {profissionalFiltro !== 'todas' && (
+                taxaComissaoProfFiltro < 100 ? (
+                  <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950 mb-3 flex items-start gap-2.5 shadow-2xs">
+                    <ShieldCheck size={17} className="text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-emerald-900">Custos Operacionais Exclusivos do Salão (Despesa: R$ 0,00)</p>
+                      <p className="text-[11px] text-emerald-800 leading-snug mt-0.5">
+                        Como <strong>{profSelecionadaFiltro?.nome}</strong> possui repasse comissionado ({taxaComissaoProfFiltro}%), as despesas operacionais do salão ({formatarMoeda(totalDespesasGerais)}) são custeadas pela cota-parte retida pelo salão e não recaem sobre a profissional.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-950 mb-3 flex items-start gap-2.5 shadow-2xs">
+                    <ShieldCheck size={17} className="text-amber-700 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-900">Rateio de Despesas do Salão ({formatarMoeda(totalDespesasMes)} por profissional)</p>
+                      <p className="text-[11px] text-amber-800 leading-snug mt-0.5">
+                        Como <strong>{profSelecionadaFiltro?.nome}</strong> recebe 100% da receita dos atendimentos, as despesas do salão ({formatarMoeda(totalDespesasGerais)}) são divididas igualmente entre as {totalProfsAtivas} profissionais ativas.
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+
               {despesasMes.map((d) => (
                 <div key={d.id} className="flex items-center justify-between p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors">
                   <div className="flex flex-col">
@@ -947,13 +1449,16 @@ export const Financeiro: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <ShieldCheck size={16} className="text-[#8C6D58]" />
                   <span>
-                    <strong>Cálculo Automático (Lei nº 13.352/2016):</strong> Discrimina a cota-parte do salão da comissão líquida a pagar para cada profissional parceira.
+                    <strong>Cálculo Automático (Lei nº 13.352/2016):</strong> A comissão líquida a pagar considera exclusivamente atendimentos <strong>concluídos</strong> no período, discriminando a cota-parte do salão.
                   </span>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {comissoesPorProfissional.map((item) => (
+                {(profissionalFiltro === 'todas' 
+                  ? comissoesPorProfissional 
+                  : comissoesPorProfissional.filter(item => item.profissional.id === profissionalFiltro)
+                ).map((item) => (
                   <div key={item.profissional.id} className="p-3.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs space-y-3 shadow-xs">
                     <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
                       <div>
@@ -962,7 +1467,7 @@ export const Financeiro: React.FC = () => {
                           {item.profissional.nome}
                         </h4>
                         <span className="text-[10px] text-[#8C7A6B]">
-                          {item.totalAtendimentos} atendimento(s) realizados em {nomeMesAtual}
+                          {item.totalAtendimentos} atendimento(s) concluídos em {nomeMesAtual}
                         </span>
                       </div>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#F6ECE8] text-[#8C6D58] border border-[#EFECE6]">
@@ -984,6 +1489,18 @@ export const Financeiro: React.FC = () => {
                         <strong className="text-emerald-700 text-xs">{formatarMoeda(item.valorComissaoBruta)}</strong>
                       </div>
                     </div>
+
+                    {item.totalPrevistos > 0 && (
+                      <div className="p-2 bg-amber-50/70 border border-amber-200/70 rounded-lg flex items-center justify-between text-[10.5px] text-amber-900">
+                        <span className="flex items-center gap-1">
+                          <span>🔮</span>
+                          <span><strong>Previsão de Agendados:</strong> {item.totalPrevistos} confirmado(s)</span>
+                        </span>
+                        <span className="font-bold text-amber-800">
+                          +{formatarMoeda(item.comissaoPrevista)} (após conclusão)
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between pt-1 w-full">
                       {item.fechamentoExistente ? (
