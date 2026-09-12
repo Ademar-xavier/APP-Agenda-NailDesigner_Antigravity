@@ -1417,36 +1417,44 @@ export const Configuracoes: React.FC = () => {
                       className="p-5 border border-[#EFECE6] rounded-2xl bg-white hover:border-[#8C6D58] transition-all shadow-xs space-y-3.5"
                     >
                       {/* Linha Superior: Perfil + Ações Principais */}
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-full bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-2xl bg-[#F6ECE8] text-[#8C6D58] border border-[#F3ECE0] flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs mt-0.5">
                             {iniciais}
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-sm font-bold text-[#5A4535]">{membro.nome}</h4>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6]">
-                                ✨ {membro.especialidade || (membro.perfil === 'admin' ? 'Especialista Master' : 'Designer')}
-                              </span>
+                          <div className="space-y-2">
+                            {/* Nome e Indicador Ativa/Inativa */}
+                            <div className="flex items-center gap-2.5">
+                              <h4 className="text-base font-bold text-[#5A4535]">{membro.nome}</h4>
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                membro.perfil === 'admin' 
-                                  ? 'bg-amber-50 text-amber-900 border-amber-200' 
-                                  : 'bg-[#F6ECE8] text-[#8C6D58] border-[#EFECE6]'
-                              }`}>
-                                {membro.perfil === 'admin' ? '👑 Administradora' : '💅 Profissional'}
-                              </span>
-                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                                 membro.ativo 
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                                   : 'bg-gray-100 text-gray-500 border-gray-200'
                               }`}>
                                 {membro.ativo ? 'Ativa' : 'Inativa'}
                               </span>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FAF4ED] text-[#8C6D58] border border-[#E8DEC9] flex items-center gap-1">
+                            </div>
+
+                            {/* Informações da Profissional (posicionadas uniformemente abaixo do nome) */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl border ${
+                                membro.perfil === 'admin' 
+                                  ? 'bg-amber-50 text-amber-900 border-amber-200' 
+                                  : 'bg-[#F6ECE8] text-[#8C6D58] border-[#EFECE6]'
+                              }`}>
+                                {membro.perfil === 'admin' ? '👑 Administradora' : '💅 Profissional'}
+                              </span>
+
+                              <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-[#FAF9F6] text-[#8C6D58] border border-[#EFECE6]">
+                                ✨ {membro.especialidade || (membro.perfil === 'admin' ? 'Especialista Master' : 'Designer')}
+                              </span>
+
+                              <span className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-[#FAF4ED] text-[#8C6D58] border border-[#E8DEC9] flex items-center gap-1.5">
                                 🍽️ {membro.horario_almoco_ativo !== false ? `${membro.horario_almoco_inicio || '12:00'} às ${membro.horario_almoco_fim || '13:00'}` : 'Almoço desativado'}
                               </span>
                             </div>
-                            <p className="text-xs text-[#8C7A6B] mt-0.5">
+
+                            <p className="text-xs text-[#8C7A6B]">
                               {membro.perfil === 'admin' 
                                 ? 'Acesso total a relatórios, configurações e financeiro' 
                                 : 'Acesso à agenda de atendimentos e clientes'}

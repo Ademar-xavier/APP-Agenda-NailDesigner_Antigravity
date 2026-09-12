@@ -55,7 +55,10 @@ import {
   calcularIntervaloVip,
   obterConfiguracaoSessaoVip,
   calcularDuracaoSessaoVip,
-  obterServicosIdsSessaoVip
+  obterServicosIdsSessaoVip,
+  obterProfissionaisDoServicoOuPacote,
+  obterTodasProfissionaisDosServicos,
+  calcularValorServicoProfissional
 } from '../utils/planoVipHelper';
 
 export const ENV_ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin';
@@ -161,9 +164,7 @@ interface AppStateContextType {
     },
     planoVipId?: string
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
-  updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
-  remarcarAgendamento: (id: string, novoInicio: string, novoFim?: string, novaProfissionalId?: string) => { success: boolean; error?: string };
-  atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
+  remarcarAgendamento: (id: string, novoInicio: string, novoFim?: string, novaProfissionalId?: string, ajustarFuturos?: boolean) => { success: boolean; error?: string };
   atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean) => void;
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
@@ -2772,6 +2773,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return false;
   };
 
+  // Helper para identificar agendamentos parceiros da mesma dupla / co-atendimento
+  const obterIdsParceirosDupla = (agAlvo: Agendamento, todosAgs: Agendamento[]): string[] => {
+    const idPrincipal = agAlvo.observacoes?.match(/\[AG_PRINCIPAL:(.*?)\]/)?.[1];
+    const idPar = agAlvo.observacoes?.match(/\[AG_PAR:(.*?)\]/)?.[1];
+    const ids = new Set<string>();
+    if (idPrincipal) ids.add(idPrincipal);
+    if (idPar) ids.add(idPar);
+    todosAgs.forEach(a => {
+      if (a.id === agAlvo.id) return;
+      if (a.observacoes?.includes(`[AG_PRINCIPAL:${agAlvo.id}]`) || a.observacoes?.includes(`[AG_PAR:${agAlvo.id}]`)) {
+        ids.add(a.id);
+      }
+      if (agAlvo.recorrencia_grupo_id?.startsWith('dupla_') && a.recorrencia_grupo_id === agAlvo.recorrencia_grupo_id) {
+        ids.add(a.id);
+      }
+    });
+    return Array.from(ids);
+  };
+
   // --- Ações de Agendamento ---
   const addAgendamento = (
     novoAgendamento: Omit<Agendamento, 'id' | 'criado_em' | 'fim'> & { fim?: string }, 
@@ -2813,25 +2833,63 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!fimStr || (fimStr.replace('Z', '').split('+')[0] <= novoAgendamento.inicio.replace('Z', '').split('+')[0])) {
       fimStr = calcularFimAgendamento(novoAgendamento.inicio, duracaoTotal);
     }
-    
-    const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, novoAgendamento.profissional_id);
-    if (conflito && novoAgendamento.cliente_id !== 'bloqueado') {
-      return { success: false, error: 'O horário selecionado conflita com outro agendamento ativo.' };
+
+    // Identifica todos os profissionais envolvidos neste atendimento (suporte a atendimentos em dupla / 2 profissionais)
+    const todasProfsIds = obterTodasProfissionaisDosServicos(
+      servicosSelecionados,
+      servicos,
+      equipe,
+      novoAgendamento.profissional_id
+    );
+
+    // Validação estrita de conflito para todas as profissionais envolvidas
+    if (novoAgendamento.cliente_id !== 'bloqueado') {
+      for (const profId of todasProfsIds) {
+        const conflito = checkConflitoHorario(novoAgendamento.inicio, fimStr, profId);
+        if (conflito) {
+          const pNome = equipe.find(u => u.id === profId)?.nome || 'profissional selecionada';
+          return { success: false, error: `O horário selecionado conflita com outro agendamento ativo de ${pNome}.` };
+        }
+      }
     }
 
     const id = gerarCodigoReserva();
     const grupoId = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
       ? 'rec_' + Math.random().toString(36).substring(2, 9)
-      : undefined;
+      : (todasProfsIds.length > 1 ? 'dupla_' + id : undefined);
 
-    const obsInicial = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
+    const nomesProfsFormatados = todasProfsIds
+      .map(pid => equipe.find(u => u.id === pid)?.nome || pid)
+      .join(' e ');
+
+    const tagDupla = todasProfsIds.length > 1
+      ? `[Co-atendimento: ${todasProfsIds.length} Profissionais (${nomesProfsFormatados})]`
+      : '';
+
+    let obsInicial = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
       ? `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão 1 de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes || ''}`.trim()
       : novoAgendamento.observacoes;
+
+    if (tagDupla && (!obsInicial || !obsInicial.includes('[Co-atendimento:'))) {
+      obsInicial = `${tagDupla} ${obsInicial || ''}`.trim();
+    }
     
+    // Calcula o valor específico do serviço realizado pela profissional principal
+    const valorPrincipalProf = (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado')
+      ? calcularValorServicoProfissional(
+          { ...novoAgendamento, id, fim: fimStr, criado_em: '' },
+          novoAgendamento.profissional_id,
+          servicos,
+          equipe,
+          servicosSelecionados
+        )
+      : novoAgendamento.valor_total;
+
     const agendamento: Agendamento = {
       ...novoAgendamento,
       id,
       fim: fimStr,
+      valor_total: valorPrincipalProf,
       recorrencia_grupo_id: grupoId,
       recorrencia_tipo: recorrenciaManual?.tipo,
       recorrencia_posicao: recorrenciaManual && recorrenciaManual.repeticoes > 1 ? `1 de ${recorrenciaManual.repeticoes}` : undefined,
@@ -2839,10 +2897,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       criado_em: new Date().toISOString()
     };
 
-    setItensAgendamento(prev => ({
-      ...prev,
-      [id]: servicosSelecionados
-    }));
+    // Cria agendamentos simultâneos para as demais profissionais envolvidas na dupla, atribuindo o valor do serviço que cada uma irá realizar
+    const coAgendamentosIniciais: Agendamento[] = [];
+    if (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado') {
+      const coProfs = todasProfsIds.filter(pid => pid !== novoAgendamento.profissional_id);
+      coProfs.forEach(coProfId => {
+        const coId = gerarCodigoReserva();
+        const valorCoProf = calcularValorServicoProfissional(
+          { ...novoAgendamento, id: coId, profissional_id: coProfId, fim: fimStr, criado_em: '' },
+          coProfId,
+          servicos,
+          equipe,
+          servicosSelecionados
+        );
+        const obsCo = `${tagDupla} [AG_PRINCIPAL:${id}] ${novoAgendamento.observacoes || ''}`.trim();
+        const coAg: Agendamento = {
+          ...novoAgendamento,
+          id: coId,
+          profissional_id: coProfId,
+          fim: fimStr,
+          valor_total: valorCoProf,
+          valor_sinal: 0,
+          recorrencia_grupo_id: grupoId,
+          recorrencia_tipo: recorrenciaManual?.tipo,
+          recorrencia_posicao: agendamento.recorrencia_posicao,
+          observacoes: obsCo,
+          criado_em: new Date().toISOString()
+        };
+        coAgendamentosIniciais.push(coAg);
+      });
+    }
+
+    setItensAgendamento(prev => {
+      const nextMap = { ...prev, [id]: servicosSelecionados };
+      coAgendamentosIniciais.forEach(co => {
+        nextMap[co.id] = servicosSelecionados;
+      });
+      return nextMap;
+    });
 
     if (agendamento.valor_sinal > 0) {
       const pagSinal: Pagamento = {
@@ -2896,7 +2988,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const fimRepStr = calcularFimAgendamento(inicioRepStr, duracaoTotal);
 
         const idRep = gerarCodigoReserva();
-        const obsRep = `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão ${rep + 1} de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes ? novoAgendamento.observacoes.replace(/\[🔁.*?\]\s*/g, '') : ''}`.trim();
+        const obsRepBase = `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão ${rep + 1} de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes ? novoAgendamento.observacoes.replace(/\[🔁.*?\]\s*/g, '') : ''}`.trim();
+        const obsRep = tagDupla ? `${tagDupla} ${obsRepBase}`.trim() : obsRepBase;
 
         const agRep: Agendamento = {
           ...novoAgendamento,
@@ -2904,7 +2997,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           inicio: inicioRepStr,
           fim: fimRepStr,
           status: novoAgendamento.status === 'bloqueado' ? 'bloqueado' : 'confirmado',
-          valor_total: novoAgendamento.valor_total,
+          valor_total: valorPrincipalProf,
           valor_sinal: 0,
           pago_com_clube: novoAgendamento.pago_com_clube,
           recorrencia_grupo_id: grupoId,
@@ -2917,15 +3010,54 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         novosRecorrentes.push(agRep);
         novosItensMap[idRep] = servicosSelecionados;
         salvarAgendamentoSupabase(agRep, servicosSelecionados);
+
+        // Se for atendimento em dupla, cria também a repetição da co-profissional com o valor do seu serviço
+        if (todasProfsIds.length > 1 && novoAgendamento.cliente_id !== 'bloqueado') {
+          const coProfs = todasProfsIds.filter(pid => pid !== novoAgendamento.profissional_id);
+          coProfs.forEach(coProfId => {
+            const coIdRep = gerarCodigoReserva();
+            const valorCoProfRep = calcularValorServicoProfissional(
+              { ...agRep, id: coIdRep, profissional_id: coProfId },
+              coProfId,
+              servicos,
+              equipe,
+              servicosSelecionados
+            );
+            const obsCoRep = `${tagDupla} [AG_PRINCIPAL:${idRep}] ${obsRepBase}`.trim();
+            const coAgRep: Agendamento = {
+              ...agRep,
+              id: coIdRep,
+              profissional_id: coProfId,
+              valor_total: valorCoProfRep,
+              valor_sinal: 0,
+              observacoes: obsCoRep
+            };
+            novosRecorrentes.push(coAgRep);
+            novosItensMap[coIdRep] = servicosSelecionados;
+            salvarAgendamentoSupabase(coAgRep, servicosSelecionados);
+          });
+        }
       }
     }
 
-    setAgendamentos(prev => [...prev, agendamento, ...novosRecorrentes]);
+    setAgendamentos(prev => [...prev, agendamento, ...coAgendamentosIniciais, ...novosRecorrentes]);
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
+    coAgendamentosIniciais.forEach(co => {
+      salvarAgendamentoSupabase(co, servicosSelecionados);
+    });
 
     if (novosRecorrentes.length > 0) {
       setItensAgendamento(prev => ({ ...prev, [id]: servicosSelecionados, ...novosItensMap }));
       mostrarNotificacaoGlobal(`🔁 1º agendamento e mais ${novosRecorrentes.length} repetições (${recorrenciaManual?.tipoLabel}) foram reservados na agenda!`);
+    } else if (coAgendamentosIniciais.length > 0) {
+      setItensAgendamento(prev => {
+        const nextMap = { ...prev, [id]: servicosSelecionados };
+        coAgendamentosIniciais.forEach(co => {
+          nextMap[co.id] = servicosSelecionados;
+        });
+        return nextMap;
+      });
+      mostrarNotificacaoGlobal(`✨ Atendimento em dupla reservado simultaneamente para ${nomesProfsFormatados}!`);
     } else {
       mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
     }
@@ -2943,7 +3075,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }, 100);
     }
 
-    return { success: true, agendamento, criados: 1 + novosRecorrentes.length };
+    return { success: true, agendamento, criados: 1 + coAgendamentosIniciais.length + novosRecorrentes.length };
   };
 
   const updateAgendamentoStatus = (
@@ -2953,8 +3085,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     motivo?: string,
     confirmadoPor?: 'cliente' | 'admin'
   ) => {
+    const agAlvo = agendamentos.find(a => a.id === id);
+    const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
+    const todosAlvoIds = [id, ...parceiros.map(p => p.id)];
+
     setAgendamentos(prev => prev.map(a => {
-      if (a.id === id) {
+      if (todosAlvoIds.includes(a.id)) {
         return { 
           ...a, 
           status,
@@ -2966,12 +3102,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return a;
     }));
 
+    todosAlvoIds.forEach(targetId => {
+      atualizarStatusAgendamentoSupabase(targetId, status, canceladoPor, motivo, confirmadoPor);
+      marcarAvisoComoLido(targetId);
+    });
+
     // Sincronização automática com a tabela de pagamentos
     if (status === 'confirmado') {
       setPagamentos(prev => {
-        const temPendente = prev.some(p => p.agendamento_id === id && p.status === 'pendente');
+        const temPendente = prev.some(p => todosAlvoIds.includes(p.agendamento_id) && p.status === 'pendente');
         if (temPendente) {
-          return prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
+          return prev.map(p => (todosAlvoIds.includes(p.agendamento_id) && p.status === 'pendente')
             ? { ...p, status: 'sinal pago', data_pagamento: new Date().toISOString() }
             : p
           );
@@ -2992,7 +3133,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         reservarRecorrenciaSemanalVip(id, agConfirmado, undefined, plano?.id);
       }, 300);
     } else if (status === 'cancelado') {
-      const agAlvo = agendamentos.find(a => a.id === id);
       const clienteId = agAlvo?.cliente_id;
       const cliAlvo = clientes.find(c => c.id === clienteId);
       const isVip = !!(
@@ -3007,7 +3147,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const sessoesVipParaExcluir = agendamentos.filter(a =>
           a.cliente_id === clienteId &&
           (a.status === 'pendente' || a.status === 'confirmado') &&
-          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑') || a.id === id)
+          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑') || todosAlvoIds.includes(a.id))
         );
 
         const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
@@ -3023,17 +3163,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             marcarAvisoComoLido(aid);
           });
           setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
-          mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
+          mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado para todas as profissionais e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
           return;
         }
       }
 
-      setPagamentos(prev => prev.map(p => (p.agendamento_id === id && p.status === 'pendente')
+      setPagamentos(prev => prev.map(p => (todosAlvoIds.includes(p.agendamento_id) && p.status === 'pendente')
         ? { ...p, status: 'estornado' }
         : p
       ));
     } else if (status === 'concluido') {
-      const agAlvo = agendamentos.find(a => a.id === id);
       const clienteId = agAlvo?.cliente_id;
       const cliAlvo = clientes.find(c => c.id === clienteId);
       const isVip = !!(
@@ -3065,9 +3204,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return [...prev, novoPag];
       });
     }
-
-    atualizarStatusAgendamentoSupabase(id, status, canceladoPor, motivo, confirmadoPor);
-    marcarAvisoComoLido(id);
   };
 
   const atualizarValorSinalAgendamento = (id: string, valorSinal: number) => {
@@ -3100,6 +3236,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const cancelAgendamento = (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => {
     const agAlvo = agendamentos.find(a => a.id === id);
+    const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
+    const todosAlvoIds = [id, ...parceiros.map(p => p.id)];
     const isVip = agAlvo?.pago_com_clube || agAlvo?.observacoes?.includes('Clube VIP');
     const clienteId = agAlvo?.cliente_id;
 
@@ -3108,7 +3246,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const sessoesVipParaExcluir = agendamentos.filter(a =>
         a.cliente_id === clienteId &&
         (a.status === 'pendente' || a.status === 'confirmado') &&
-        (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.id === id)
+        (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || todosAlvoIds.includes(a.id))
       );
 
       const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
@@ -3124,13 +3262,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           marcarAvisoComoLido(aid);
         });
         setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
-        mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
+        mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado para todas as profissionais e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
         return;
       }
     }
 
     setAgendamentos(prev => prev.map(a => {
-      if (a.id === id) {
+      if (todosAlvoIds.includes(a.id)) {
         return { 
           ...a, 
           status: 'cancelado',
@@ -3141,38 +3279,45 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return a;
     }));
 
-    atualizarStatusAgendamentoSupabase(id, 'cancelado', canceladoPor, motivo);
+    todosAlvoIds.forEach(targetId => {
+      atualizarStatusAgendamentoSupabase(targetId, 'cancelado', canceladoPor, motivo);
+      if (canceladoPor === 'admin') {
+        marcarAvisoComoLido(targetId);
+      }
+    });
 
     setPagamentos(prev => prev.map(p => {
-      if (p.agendamento_id === id) {
+      if (todosAlvoIds.includes(p.agendamento_id)) {
         if (canceladoPor === 'admin') {
           return { ...p, status: 'estornado' };
         }
       }
       return p;
     }));
-
-    if (canceladoPor === 'admin') {
-      marcarAvisoComoLido(id);
-    }
   };
 
   const deleteAgendamento = (id: string) => {
+    const agAlvo = agendamentos.find(a => a.id === id);
+    const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
+    const todosExcluir = [id, ...parceiros.map(p => p.id)];
+
     limparFocoAtivo();
     setAgendamentos(prev => {
-      const filtrados = prev.filter(a => a.id !== id);
+      const filtrados = prev.filter(a => !todosExcluir.includes(a.id));
       try { localStorage.setItem('nail_agendamentos', JSON.stringify(filtrados)); } catch (e) {}
       return filtrados;
     });
     setItensAgendamento(prev => {
       const copia = { ...prev };
-      delete copia[id];
+      todosExcluir.forEach(aid => delete copia[aid]);
       try { localStorage.setItem('nail_itens_agendamento', JSON.stringify(copia)); } catch (e) {}
       return copia;
     });
-    deletarAgendamentoSupabase(id);
-    marcarAvisoComoLido(id);
-    mostrarNotificacaoGlobal('✅ Agendamento excluído e sincronizado com a nuvem!');
+    todosExcluir.forEach(aid => {
+      deletarAgendamentoSupabase(aid);
+      marcarAvisoComoLido(aid);
+    });
+    mostrarNotificacaoGlobal('✅ Agendamento excluído da agenda de todas as profissionais e sincronizado com a nuvem!');
   };
 
   const confirmarSinal = (agendamentoId: string, valor: number, metodo: MetodoPagamento) => {
@@ -3325,6 +3470,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const mapaAtualizados = new Map<string, Agendamento>();
     mapaAtualizados.set(atualizado.id, atualizado);
+    
+    // Atualiza parceiros da mesma dupla
+    const parceiros = obterAgendamentosParceirosDupla(ag, agendamentos);
+    parceiros.forEach(p => {
+      const pAtualizado: Agendamento = {
+        ...p,
+        fim: fimStr,
+        observacoes: obsAtualizada
+      };
+      mapaAtualizados.set(p.id, pAtualizado);
+    });
+
     futurosAtualizados.forEach(item => mapaAtualizados.set(item.ag.id, item.ag));
 
     setAgendamentos(prev => {
@@ -3336,6 +3493,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     setItensAgendamento(prev => {
       const nextItens = { ...prev, [agendamentoId]: novosServicosIds };
+      parceiros.forEach(p => {
+        nextItens[p.id] = novosServicosIds;
+      });
       futurosAtualizados.forEach(item => {
         nextItens[item.ag.id] = item.servicosIds;
       });
@@ -3344,6 +3504,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     salvarAgendamentoSupabase(atualizado, novosServicosIds);
+    parceiros.forEach(p => {
+      const pAt = mapaAtualizados.get(p.id);
+      if (pAt) salvarAgendamentoSupabase(pAt, novosServicosIds);
+    });
     futurosAtualizados.forEach(item => {
       salvarAgendamentoSupabase(item.ag, item.servicosIds);
     });
@@ -3365,7 +3529,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     id: string,
     novoInicio: string,
     novoFim?: string,
-    novaProfissionalId?: string
+    novaProfissionalId?: string,
+    ajustarFuturos: boolean = false
   ): { success: boolean; error?: string } => {
     const ag = agendamentos.find(a => a.id === id);
     if (!ag) {
@@ -3381,16 +3546,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ? novoFim
       : calcularFimAgendamento(novoInicio, duracaoTotal);
 
-    // 1. Validação estrita de conflito de horário (ignorando o próprio agendamento sendo remarcado)
+    // 1. Identifica agendamentos parceiros da dupla
+    const parceiros = obterAgendamentosParceirosDupla(ag, agendamentos);
+    const todosIds = [ag.id, ...parceiros.map(p => p.id)];
+
+    // 2. Validação estrita de conflito de horário para a profissional do agendamento principal
     const conflito = checkConflitoHorario(novoInicio, fimEfetivo, profEfetiva, ag.id);
     if (conflito) {
+      const pNome = equipe.find(u => u.id === profEfetiva)?.nome || 'esta profissional';
       return {
         success: false,
-        error: 'Horário indisponível ou em conflito com outro agendamento desta profissional.'
+        error: `Horário indisponível ou em conflito com outro agendamento de ${pNome}.`
       };
     }
 
-    // 2. Se estava cancelado ou falta, reativa como confirmado; caso contrário mantém status atual
+    // 3. Validação estrita de conflito para cada parceira da dupla
+    for (const parc of parceiros) {
+      const conflitoParc = checkConflitoHorario(novoInicio, fimEfetivo, parc.profissional_id, parc.id);
+      if (conflitoParc) {
+        const nomeProf = equipe.find(u => u.id === parc.profissional_id)?.nome || 'profissional parceira';
+        return {
+          success: false,
+          error: `Horário indisponível para ${nomeProf} do atendimento em dupla.`
+        };
+      }
+    }
+
+    // 4. Se estava cancelado ou falta, reativa como confirmado; caso contrário mantém status atual
     const novoStatus: AgendamentoStatus = (ag.status === 'cancelado' || ag.status === 'falta')
       ? 'confirmado'
       : ag.status;
@@ -3403,20 +3585,98 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       status: novoStatus
     };
 
-    // 3. Atualizar estado de agendamentos e persistir
+    const parceirosAtualizados = parceiros.map(p => ({
+      ...p,
+      inicio: novoInicio,
+      fim: fimEfetivo,
+      status: novoStatus
+    }));
+
+    // 5. Se o usuário optou por propagar para a sequência de agendamentos futuros
+    const futurosAtualizados: Agendamento[] = [];
+    const conflitosFuturosDatas: string[] = [];
+
+    if (ajustarFuturos) {
+      const isVip = !!(
+        ag.pago_com_clube ||
+        ag.plano_id ||
+        ag.observacoes?.includes('Clube VIP') ||
+        ag.observacoes?.includes('👑')
+      );
+
+      const diffMs = new Date(novoInicio).getTime() - new Date(ag.inicio).getTime();
+
+      agendamentos.forEach(a => {
+        if (a.id === ag.id || todosIds.includes(a.id)) return;
+        if (a.status === 'cancelado' || a.status === 'concluido') return;
+        if (new Date(a.inicio) <= new Date(ag.inicio)) return;
+
+        let ehDaMesmaSerie = false;
+
+        if (ag.recorrencia_grupo_id && a.recorrencia_grupo_id === ag.recorrencia_grupo_id) {
+          ehDaMesmaSerie = true;
+        } else if (isVip && a.cliente_id === ag.cliente_id) {
+          const aIsVip = !!(
+            a.pago_com_clube ||
+            a.plano_id ||
+            a.observacoes?.includes('Clube VIP') ||
+            a.observacoes?.includes('👑')
+          );
+          if (aIsVip && (!ag.plano_id || !a.plano_id || ag.plano_id === a.plano_id)) {
+            ehDaMesmaSerie = true;
+          }
+        } else if (ag.cliente_id === a.cliente_id && ag.observacoes?.includes('Recorrência') && a.observacoes?.includes('Recorrência')) {
+          ehDaMesmaSerie = true;
+        }
+
+        if (ehDaMesmaSerie) {
+          const dFut = new Date(new Date(a.inicio).getTime() + diffMs);
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const novoInicioFut = `${dFut.getFullYear()}-${pad(dFut.getMonth() + 1)}-${pad(dFut.getDate())}T${pad(dFut.getHours())}:${pad(dFut.getMinutes())}:00`;
+          const duracaoFutMin = Math.max(30, Math.round((new Date(a.fim).getTime() - new Date(a.inicio).getTime()) / (60 * 1000))) || duracaoTotal;
+          const novoFimFut = calcularFimAgendamento(novoInicioFut, duracaoFutMin);
+
+          const temConflito = checkConflitoHorario(novoInicioFut, novoFimFut, a.profissional_id, a.id);
+          if (temConflito) {
+            const dataFmt = new Date(a.inicio).toLocaleDateString('pt-BR');
+            conflitosFuturosDatas.push(dataFmt);
+            return;
+          }
+
+          futurosAtualizados.push({
+            ...a,
+            inicio: novoInicioFut,
+            fim: novoFimFut
+          });
+        }
+      });
+    }
+
+    const mapaAtualizados = new Map<string, Agendamento>();
+    mapaAtualizados.set(atualizado.id, atualizado);
+    parceirosAtualizados.forEach(p => mapaAtualizados.set(p.id, p));
+    futurosAtualizados.forEach(f => mapaAtualizados.set(f.id, f));
+
+    // 6. Atualizar estado de agendamentos e persistir localmente
     setAgendamentos(prev => {
-      const next = prev.map(a => a.id === id ? atualizado : a);
+      const next = prev.map(a => mapaAtualizados.get(a.id) || a);
       try { localStorage.setItem('nail_agendamentos', JSON.stringify(next)); } catch (e) {}
       dbSetAll(STORES.AGENDAMENTOS, next);
       return next;
     });
 
-    // 4. Salvar no Supabase (atualiza início, fim, profissional_id imediatamente)
+    // 7. Salvar no Supabase (atualiza início, fim, profissional_id imediatamente) para todas as envolvidas
     salvarAgendamentoSupabase(atualizado, sIds);
+    parceirosAtualizados.forEach(p => {
+      salvarAgendamentoSupabase(p, itensAgendamento[p.id] || sIds);
+    });
+    futurosAtualizados.forEach(f => {
+      salvarAgendamentoSupabase(f, itensAgendamento[f.id] || sIds);
+    });
 
-    // 5. Atualizar data dos pagamentos pendentes associados
+    // 8. Atualizar data dos pagamentos pendentes associados
     setPagamentos(prev => prev.map(p => {
-      if (p.agendamento_id === id && p.status === 'pendente') {
+      if (todosIds.includes(p.agendamento_id) && p.status === 'pendente') {
         return { ...p, data_pagamento: novoInicio };
       }
       return p;
@@ -3426,7 +3686,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const dataBr = dParte ? dParte.split('-').reverse().join('/') : novoInicio;
     const horaFmt = hParte ? hParte.substring(0, 5) : '';
 
-    mostrarNotificacaoGlobal(`✅ Agendamento remarcado para ${dataBr} às ${horaFmt}!`);
+    if (conflitosFuturosDatas.length > 0) {
+      mostrarAlerta({
+        titulo: 'Aviso de Recorrências Conflitantes',
+        mensagem: `O agendamento foi remarcado para ${dataBr} às ${horaFmt}. Porém, ${conflitosFuturosDatas.length} sessão(ões) futura(s) (${conflitosFuturosDatas.join(', ')}) não puderam ser alteradas por colidirem com horários de outras clientes já agendadas!`,
+        tipo: 'aviso'
+      });
+    } else if (futurosAtualizados.length > 0) {
+      mostrarNotificacaoGlobal(`✅ Agendamento e mais ${futurosAtualizados.length} sessões futuras remarcados com sucesso para ${dataBr} às ${horaFmt}!`);
+    } else {
+      mostrarNotificacaoGlobal(
+        ajustarFuturos
+          ? `✅ Agendamento remarcado na agenda de todas as profissionais para ${dataBr} às ${horaFmt}!`
+          : `✅ Agendamento remarcado para ${dataBr} às ${horaFmt}! (Agendamentos futuros mantidos intactos)`
+      );
+    }
     return { success: true };
   };
 
@@ -3443,7 +3717,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const valorDesconto = Math.max(0, Number(desconto?.valor) || 0);
     const motivoDesconto = desconto?.motivo?.trim() || 'Desconto concedido';
 
-    // 1. Atualizar agendamento com status concluído, produtos, clube e desconto
+    const agAlvo = agendamentos.find(a => a.id === agendamentoId);
+    const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
+    const parceirosIds = parceiros.map(p => p.id);
+
+    // 1. Atualizar agendamento e suas parceiras com status concluído, produtos, clube e desconto
     setAgendamentos(prev => {
       const atualizados = prev.map(a => {
         if (a.id === agendamentoId) {
@@ -3466,6 +3744,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           salvarAgendamentoSupabase(atualizado);
           return atualizado;
         }
+
+        if (parceirosIds.includes(a.id)) {
+          const parcAtualizado: Agendamento = {
+            ...a,
+            status: 'concluido',
+            pago_com_clube: pagoComClube
+          };
+          salvarAgendamentoSupabase(parcAtualizado);
+          return parcAtualizado;
+        }
+
         return a;
       });
       return atualizados;
@@ -4486,6 +4775,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }];
       }
 
+      // Expande qualquer serviço da sessão que seja executado por 2 ou mais profissionais (ex: Manicure + Pedicure 2 Profissionais)
+      const procsExpandidos: typeof procsDestaSessao = [];
+      procsDestaSessao.forEach(p => {
+        const profsDoServico = obterProfissionaisDoServicoOuPacote(p.servico_id, servicos, equipe, p.profissional_id || agInicial.profissional_id);
+        if (profsDoServico.length > 1) {
+          profsDoServico.forEach(subP => {
+            procsExpandidos.push({
+              servico_id: subP.servico_id,
+              nome_servico: subP.nome_servico,
+              profissional_id: subP.profissional_id,
+              duracao_minutos: subP.duracao_minutos
+            });
+          });
+        } else {
+          procsExpandidos.push(p);
+        }
+      });
+      procsDestaSessao = procsExpandidos;
+
       // Agrupa procedimentos da sessão por profissional (para suportar procedimentos simultâneos / 4 mãos)
       const mapaPorProfissional = new Map<string, typeof procsDestaSessao>();
       procsDestaSessao.forEach(p => {
@@ -4496,6 +4804,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       const idTag = plano?.id ? ` [PLANO_ID:${plano.id}]` : '';
+      let idPrincipalSessaoRec = '';
 
       // Processa cada profissional alocado nesta sessão
       for (const [profId, procsDoProf] of mapaPorProfissional.entries()) {
@@ -4561,6 +4870,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
             if (!jaExisteSimultaneo) {
               const novoId = gerarCodigoReserva();
+              const tagParceiroSessao1 = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais] [AG_PRINCIPAL:${agInicial.id}]`;
+              const valorCoProf = calcularValorServicoProfissional(
+                { id: novoId, profissional_id: profId, inicio: inicioStr, fim: fimStr } as any,
+                profId,
+                servicos,
+                equipe,
+                servicosIds
+              );
+
               const novoAgendamento: Agendamento = {
                 id: novoId,
                 cliente_id: clienteIdFinal,
@@ -4568,12 +4886,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 inicio: inicioStr,
                 fim: fimStr,
                 status: 'confirmado',
-                valor_total: 0,
+                valor_total: valorCoProf,
                 valor_sinal: 0,
                 pago_com_clube: true,
                 plano_id: plano?.id,
                 origem: 'admin',
-                observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão 1 (${nomesServicosCombinados}) [Simultâneo]`,
+                recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
+                recorrencia_tipo: 'semanal',
+                recorrencia_posicao: `1 de ${maxSemanas}`,
+                observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão 1 (${nomesServicosCombinados}) ${tagParceiroSessao1}`.trim(),
                 criado_em: new Date().toISOString()
               };
               novosAgendamentos.push(novoAgendamento);
@@ -4600,6 +4921,24 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
           if (!jaExiste) {
             const novoId = gerarCodigoReserva();
+            let tagDuplaRec = '';
+            if (mapaPorProfissional.size > 1) {
+              if (!idPrincipalSessaoRec) {
+                idPrincipalSessaoRec = novoId;
+                tagDuplaRec = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais]`;
+              } else {
+                tagDuplaRec = `[Co-atendimento: ${mapaPorProfissional.size} Profissionais] [AG_PRINCIPAL:${idPrincipalSessaoRec}]`;
+              }
+            }
+
+            const valorCoProf = calcularValorServicoProfissional(
+              { id: novoId, profissional_id: profId, inicio: inicioStr, fim: fimStr } as any,
+              profId,
+              servicos,
+              equipe,
+              servicosIds
+            );
+
             const novoAgendamento: Agendamento = {
               id: novoId,
               cliente_id: clienteIdFinal,
@@ -4607,7 +4946,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               inicio: inicioStr,
               fim: fimStr,
               status: 'confirmado',
-              valor_total: 0,
+              valor_total: valorCoProf,
               valor_sinal: 0,
               pago_com_clube: true,
               plano_id: plano?.id,
@@ -4615,7 +4954,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
               recorrencia_tipo: 'semanal',
               recorrencia_posicao: `${sessaoNum} de ${maxSemanas}`,
-              observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados})`,
+              observacoes: `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados}) ${tagDuplaRec}`.trim(),
               criado_em: new Date().toISOString()
             };
             novosAgendamentos.push(novoAgendamento);

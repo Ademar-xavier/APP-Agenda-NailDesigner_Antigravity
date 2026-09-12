@@ -24,7 +24,13 @@ import { useAppState, calcularFimAgendamento } from '../context/AppStateContext'
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto } from '../types';
 import { obterConfigMetaWhatsApp, enviarMensagemBotaoMeta } from '../services/metaWhatsApp';
 import { getConfirmationUrl, getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp } from '../utils/urlHelper';
-import { encontrarPlanoVip, calcularIntervaloVip, obterTextoFrequenciaVip } from '../utils/planoVipHelper';
+import { 
+  encontrarPlanoVip, 
+  calcularIntervaloVip, 
+  obterTextoFrequenciaVip,
+  obterProfissionaisDoServicoOuPacote,
+  obterTodasProfissionaisDosServicos
+} from '../utils/planoVipHelper';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -82,6 +88,42 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const prof = equipe.find(u => u.id === agendamento?.profissional_id);
   const servs = (agendamento && !isBloqueio) ? obterServicosDeAgendamento(agendamento.id) : [];
 
+  // Agendamentos simultâneos vinculados (atendimento em dupla / 2 profissionais)
+  const coAgendamentosVinculados = useMemo(() => {
+    if (!agendamento) return [];
+    return agendamentos.filter(a => {
+      if (a.id === agendamento.id) return false;
+      if (agendamento.recorrencia_grupo_id && a.recorrencia_grupo_id === agendamento.recorrencia_grupo_id && a.inicio === agendamento.inicio && a.cliente_id === agendamento.cliente_id) return true;
+      if (a.observacoes?.includes(`[AG_PRINCIPAL:${agendamento.id}]`)) return true;
+      if (agendamento.observacoes?.includes(`[AG_PRINCIPAL:${a.id}]`)) return true;
+      if (a.observacoes?.includes(`[AG_PAR:${agendamento.id}]`)) return true;
+      if (agendamento.observacoes?.includes(`[AG_PAR:${a.id}]`)) return true;
+      return false;
+    });
+  }, [agendamento, agendamentos]);
+
+  // Todas as profissionais envolvidas no atendimento (Sheila, Lurdinha, etc.)
+  const nomesProfissionaisCompletos = useMemo(() => {
+    if (!agendamento) return [];
+    const profsMap = new Map<string, string>();
+    if (prof) profsMap.set(prof.id, prof.nome);
+
+    coAgendamentosVinculados.forEach(c => {
+      const coProf = equipe.find(u => u.id === c.profissional_id);
+      if (coProf) profsMap.set(coProf.id, coProf.nome);
+    });
+
+    servs.forEach(s => {
+      const procs = obterProfissionaisDoServicoOuPacote(s.id, servicos, equipe, agendamento.profissional_id);
+      procs.forEach(p => {
+        const pr = equipe.find(u => u.id === p.profissional_id);
+        if (pr) profsMap.set(pr.id, pr.nome);
+      });
+    });
+
+    return Array.from(profsMap.values());
+  }, [agendamento, prof, coAgendamentosVinculados, servs, servicos, equipe]);
+
   const isVip = !!(
     agendamento?.pago_com_clube ||
     agendamento?.plano_id ||
@@ -118,23 +160,28 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [profRemarcacaoId, setProfRemarcacaoId] = useState<string>(agendamento?.profissional_id || '');
   const [notificarWhatsAppRemarcacao, setNotificarWhatsAppRemarcacao] = useState<boolean>(true);
   const [errorRemarcacao, setErrorRemarcacao] = useState<string>('');
+  const [remarcarAjustarFuturos, setRemarcarAjustarFuturos] = useState<boolean>(false);
 
   useEffect(() => {
     if (agendamento) {
       setDataRemarcacao(agendamento.inicio.split('T')[0]);
       setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
       setProfRemarcacaoId(agendamento.profissional_id);
+      setRemarcarAjustarFuturos(false);
     }
   }, [agendamento]);
 
+  // Análise de horários disponíveis para a data e profissional selecionados
   const analiseHorariosRemarcacao = useMemo(() => {
-    if (!dataRemarcacao || !profRemarcacaoId) return { livres: [] as string[], ocupados: [] as string[], fechado: false };
+    if (!dataRemarcacao || !profRemarcacaoId) return { livres: [], ocupados: [], fechado: false };
 
-    const diaSemana = new Date(dataRemarcacao + 'T12:00:00').getDay();
-    const expediente = configSalao.horarios_trabalho?.[diaSemana];
+    const diasSemanaMap = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const diaIndex = new Date(`${dataRemarcacao}T12:00:00`).getDay();
+    const diaNome = diasSemanaMap[diaIndex];
 
-    if (!expediente || !expediente.ativo) {
-      return { livres: [] as string[], ocupados: [] as string[], fechado: true };
+    const expediente = configSalao?.expediente?.[diaNome];
+    if (!expediente || !expediente.aberto) {
+      return { livres: [], ocupados: [], fechado: true };
     }
 
     const [hIni, mIni] = (expediente.inicio || '08:00').split(':').map(Number);
@@ -189,7 +236,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const novoInicio = `${dataRemarcacao}T${horaRemarcacao}:00`;
     const novoFim = calcularFimAgendamento(novoInicio, duracaoMinutosAgendamento);
 
-    const res = remarcarAgendamento(agendamento.id, novoInicio, novoFim, profRemarcacaoId);
+    const res = remarcarAgendamento(agendamento.id, novoInicio, novoFim, profRemarcacaoId, remarcarAjustarFuturos);
     if (!res.success) {
       setErrorRemarcacao(res.error || 'Erro ao remarcar agendamento.');
       return;
@@ -401,43 +448,44 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const formatarObservacoesModal = (obs?: string, clienteNome?: string) => {
     if (!obs || !obs.trim()) return null;
 
-    // Remove tags técnicas como [PLANO_ID:xxx] de qualquer observação exibida na interface
-    let textoBase = obs
-      .replace(/\s*\[PLANO_ID:[a-zA-Z0-9_\-]+\]/gi, '')
-      .trim();
-
-    if (!textoBase) return null;
-
     const isGoogle = 
-      textoBase.includes('[Google Agenda Oficial]') || 
-      textoBase.includes('Google Agenda') || 
-      textoBase.includes('g_gen_');
+      obs.includes('[Google Agenda Oficial]') || 
+      obs.includes('Google Agenda') || 
+      obs.includes('g_gen_');
 
-    if (!isGoogle) {
-      return {
-        isGoogle: false,
-        nota: textoBase
-      };
-    }
-
-    // Limpa tags técnicas do Google e identificadores hash
-    let limpo = textoBase
+    // Remove todas as tags técnicas internas e metadados de sistema da observação
+    let limpo = obs
+      .replace(/\s*\[PLANO_ID:[^\]]+\]/gi, '')
+      .replace(/\s*\[AG_PAR:[^\]]+\]/gi, '')
+      .replace(/\s*\[AG_PRINCIPAL:[^\]]+\]/gi, '')
+      .replace(/\s*\[Co-atendimento:[^\]]+\]/gi, '')
+      .replace(/\s*\[Simultâneo\]/gi, '')
+      .replace(/\s*\[Atendente:[^\]]+\]/gi, '')
+      .replace(/\s*\[👑\s*Adesão Clube VIP:[^\]]+\]/gi, '')
+      .replace(/\s*\[\s*[^\]]*Recorrência[^\]]*\]/gi, '')
+      .replace(/\s*\[Almoço[^\]]*\]/gi, '')
+      .replace(/\s*\[Salão Completo\]/gi, '')
+      .replace(/👑\s*Clube VIP\s*(\([^)]*\))?\s*-\s*Sessão\s*\d+\s*(\([^)]*\))?/gi, '')
       .replace(/\[Google Agenda Oficial\]/gi, '')
       .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
       .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
       .replace(/g_gen_[a-zA-Z0-9_\-]+/gi, '')
       .trim();
 
-    // Se após a limpeza sobrou apenas hífen ou o próprio nome da cliente
-    if (limpo === '-' || limpo === '—') {
+    // Se após a limpeza sobrou apenas pontuação vazia ou o próprio nome da cliente
+    if (limpo === '-' || limpo === '—' || limpo === '.') {
       limpo = '';
     }
     if (clienteNome && (limpo.toLowerCase() === clienteNome.toLowerCase() || limpo.toLowerCase() === `- ${clienteNome.toLowerCase()}`)) {
       limpo = '';
     }
 
+    if (!isGoogle && !limpo) {
+      return null;
+    }
+
     return {
-      isGoogle: true,
+      isGoogle,
       nota: limpo
     };
   };
@@ -912,10 +960,21 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </p>
           </div>
           <div className="col-span-2">
-            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">Profissional</p>
-            <p className="font-semibold mt-0.5">
-              {prof?.nome || (agendamento.observacoes?.includes('[Salão Completo]') ? 'Todas as Profissionais (Salão Completo)' : 'Não definido')}
+            <p className="text-[10px] text-[#8C7A6B] uppercase font-bold">
+              {nomesProfissionaisCompletos.length > 1 ? 'Profissionais (Atendimento em Dupla)' : 'Profissional'}
             </p>
+            <div className="mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-sm text-[#5A4535]">
+                {nomesProfissionaisCompletos.length > 1 
+                  ? nomesProfissionaisCompletos.join(' e ') 
+                  : (prof?.nome || (agendamento.observacoes?.includes('[Salão Completo]') ? 'Todas as Profissionais (Salão Completo)' : 'Não definido'))}
+              </span>
+              {nomesProfissionaisCompletos.length > 1 && (
+                <span className="text-[9.5px] font-bold bg-[#FAF4ED] text-[#8C6D58] border border-[#E8DEC9] px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                  <Sparkles size={11} /> 2 Profissionais Simultâneas
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1052,23 +1111,45 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
             <div className="space-y-1.5 text-xs text-[#5A4535]">
               {servs.map((s) => (
-                <div key={s.id} className="flex justify-between items-center p-2 rounded-lg bg-white border border-[#EFECE6] shadow-2xs">
-                  <div>
-                    <span className="font-semibold text-stone-800 flex items-center gap-1.5">
-                      {s.nome}
-                      {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
-                    </span>
-                    <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
-                  </div>
-                  <div className="text-right">
-                    {agendamento.pago_com_clube ? (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        Incluso no VIP
+                <div key={s.id} className="p-2.5 rounded-xl bg-white border border-[#EFECE6] shadow-2xs space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                        {s.nome}
+                        {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
                       </span>
-                    ) : (
-                      <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
-                    )}
+                      <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
+                    </div>
+                    <div className="text-right">
+                      {agendamento.pago_com_clube ? (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                          Incluso no VIP
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-stone-700">{formatarMoeda(s.preco)}</span>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Detalhe de Procedimentos e Profissionais Escaladas se for combo/dupla */}
+                  {s.is_pacote && s.servicos_pacote_detalhes && s.servicos_pacote_detalhes.length > 0 && (
+                    <div className="pt-1.5 border-t border-[#FAF9F6] space-y-1">
+                      <span className="text-[9.5px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                        Procedimentos em Dupla:
+                      </span>
+                      {s.servicos_pacote_detalhes.map((det, dIdx) => {
+                        const sub = servicos.find(item => item.id === det.servico_id);
+                        const pIdEfetivo = det.profissional_id === 'u_yxnfmkow1' ? 'u2' : det.profissional_id;
+                        const profDet = equipe.find(u => u.id === pIdEfetivo);
+                        return (
+                          <div key={dIdx} className="flex items-center justify-between text-[10.5px] bg-[#FAF9F6] px-2 py-1 rounded-md border border-[#EFECE6]">
+                            <span className="font-medium text-[#5A4535]">• {sub?.nome || 'Procedimento'}</span>
+                            <span className="font-bold text-[#8C6D58]">{profDet?.nome || 'Profissional'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1558,6 +1639,71 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 </div>
               )}
             </div>
+
+            {/* Opções de Recorrência (se o agendamento for recorrente ou VIP) */}
+            {agendamentosFuturosRecorrencia.length > 0 && (
+              <div className="p-3 bg-[#FAF4ED]/70 border border-[#E8DEC9] rounded-xl space-y-2 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-[#5A4535] flex items-center gap-1.5">
+                    <Repeat size={13} className="text-[#8C6D58]" />
+                    <span>Recorrência ({agendamentosFuturosRecorrencia.length} sessões futuras)</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-[#8C6D58] bg-white px-2 py-0.5 rounded-md border border-[#E8DEC9]">
+                    {!remarcarAjustarFuturos ? 'Somente este dia' : 'Reagendar sequência'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRemarcarAjustarFuturos(false)}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      !remarcarAjustarFuturos
+                        ? 'bg-white border-[#8C6D58] ring-1.5 ring-[#8C6D58] shadow-xs'
+                        : 'bg-white/50 border-[#EFECE6] hover:bg-white text-[#8C7A6B]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
+                        !remarcarAjustarFuturos ? 'border-[#8C6D58] bg-[#8C6D58]' : 'border-gray-300'
+                      }`}>
+                        {!remarcarAjustarFuturos && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className={`font-bold text-xs ${!remarcarAjustarFuturos ? 'text-[#5A4535]' : 'text-stone-600'}`}>
+                        Apenas este dia
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-[#8C7A6B] leading-snug pl-5.5">
+                      Não altera os agendamentos futuros. Remarca exclusivamente este atendimento.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRemarcarAjustarFuturos(true)}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      remarcarAjustarFuturos
+                        ? 'bg-white border-[#8C6D58] ring-1.5 ring-[#8C6D58] shadow-xs'
+                        : 'bg-white/50 border-[#EFECE6] hover:bg-white text-[#8C7A6B]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${
+                        remarcarAjustarFuturos ? 'border-[#8C6D58] bg-[#8C6D58]' : 'border-gray-300'
+                      }`}>
+                        {remarcarAjustarFuturos && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className={`font-bold text-xs ${remarcarAjustarFuturos ? 'text-[#5A4535]' : 'text-stone-600'}`}>
+                        Este e todos os futuros
+                      </span>
+                    </div>
+                    <p className="text-[10.5px] text-[#8C7A6B] leading-snug pl-5.5">
+                      Reagenda este atendimento e projeta as próximas {agendamentosFuturosRecorrencia.length} sessões no novo dia/horário.
+                    </p>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Checkbox avisar cliente via WhatsApp */}
             {cliente?.telefone && (
