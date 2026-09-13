@@ -1,3 +1,4 @@
 # Gitleaks ignore rules
 android/app/google-services.json
 .env.example
+api/enviar-push-fcm.js
