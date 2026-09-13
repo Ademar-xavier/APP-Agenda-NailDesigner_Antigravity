@@ -1037,12 +1037,12 @@ export const Financeiro: React.FC = () => {
           </div>
           
           {/* Corpo do Gráfico com Eixo Y e Plot Separados */}
-          <div className="flex gap-2 pt-4 pb-1">
+          <div className="flex gap-1.5 sm:gap-2 pt-4 pb-1 overflow-hidden">
             {/* Coluna do Eixo Y */}
-            <div className="w-14 sm:w-16 shrink-0 flex flex-col justify-between text-right pr-2 select-none h-44 md:h-52">
-              <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia)}</span>
-              <span className="text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia * 0.5)}</span>
-              <span className="text-[9px] font-mono text-[#A39284] leading-none">R$ 0,00</span>
+            <div className="w-11 sm:w-16 shrink-0 flex flex-col justify-between text-right pr-1.5 sm:pr-2 select-none h-44 md:h-52">
+              <span className="text-[8px] sm:text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia)}</span>
+              <span className="text-[8px] sm:text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia * 0.5)}</span>
+              <span className="text-[8px] sm:text-[9px] font-mono text-[#A39284] leading-none">R$ 0,00</span>
             </div>
 
             {/* Área de Plotagem (Grid + Barras + Eixo X) */}
@@ -1066,7 +1066,7 @@ export const Financeiro: React.FC = () => {
                 )}
 
                 {/* Barras dos Dias */}
-                <div className="flex items-end justify-between gap-0.5 sm:gap-1 w-full h-full relative z-10">
+                <div className="flex items-end justify-between gap-px sm:gap-1 w-full h-full relative z-10">
                   {faturamentoPorDia.map((item) => {
                     const heightPct = (item.valor / maxValorDia) * 100;
                     const isPico = item.valor > 0 && item.valor === statsGrafico.diaPico?.valor;
@@ -1075,7 +1075,7 @@ export const Financeiro: React.FC = () => {
                     return (
                       <div 
                         key={item.dia} 
-                        className="flex-1 flex flex-col items-center h-full justify-end group cursor-pointer relative"
+                        className="flex-1 min-w-0 flex flex-col items-center h-full justify-end group cursor-pointer relative"
                         onMouseEnter={() => setDiaHover(item)}
                         onMouseLeave={() => setDiaHover(null)}
                         onClick={() => setDiaHover(diaHover?.dia === item.dia ? null : item)}
@@ -1083,8 +1083,8 @@ export const Financeiro: React.FC = () => {
                         <div className="w-full flex justify-center items-end h-full relative">
                           {/* Tooltip Interativo Premium Ampliado e Bem Distribuído */}
                           {isHovered && (
-                            <div className={`absolute bottom-full mb-2.5 bg-[#2D221A] text-white p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[220px] md:min-w-[240px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
-                              item.diaNum > 20 ? 'right-0' : item.diaNum < 6 ? 'left-0' : 'left-1/2 -translate-x-1/2'
+                            <div className={`absolute bottom-full mb-2.5 bg-[#2D221A] text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[200px] max-w-[260px] sm:min-w-[240px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
+                              item.diaNum > 20 ? 'right-0' : item.diaNum < 8 ? 'left-0' : 'left-1/2 -translate-x-1/2'
                             }`}>
                               {/* Header do Tooltip */}
                               <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
@@ -1134,7 +1134,7 @@ export const Financeiro: React.FC = () => {
                           {/* Barra com Gradiente e Destaque */}
                           <div 
                             style={{ height: `${item.valor > 0 ? Math.max(heightPct, 6) : 0}%` }} 
-                            className={`w-full max-w-[12px] sm:max-w-[16px] rounded-t-md transition-all duration-300 ${
+                            className={`w-full max-w-[8px] sm:max-w-[14px] rounded-t-md transition-all duration-300 ${
                               isPico
                                 ? 'bg-gradient-to-t from-[#8C6D58] via-[#B8977E] to-[#E5C378] shadow-[0_0_8px_rgba(229,195,120,0.5)] group-hover:brightness-110'
                                 : item.valor > 0
@@ -1156,16 +1156,25 @@ export const Financeiro: React.FC = () => {
               </div>
 
               {/* Rótulo do Dia no Eixo X (Abaixo da linha de base!) */}
-              <div className="flex justify-between gap-0.5 sm:gap-1 w-full pt-1.5">
+              <div className="flex justify-between gap-px sm:gap-1 w-full pt-1.5">
                 {faturamentoPorDia.map((item) => {
                   const isPico = item.valor > 0 && item.valor === statsGrafico.diaPico?.valor;
                   const isHovered = diaHover?.dia === item.dia;
+                  const mostrarLabelMobile = item.diaNum === 1 || item.diaNum % 5 === 0 || item.diaNum === faturamentoPorDia.length || isPico || isHovered;
+
                   return (
-                    <div key={item.dia} className="flex-1 flex flex-col items-center">
-                      <span className={`text-[8px] sm:text-[9px] font-bold tracking-tight ${
-                        isHovered ? 'text-[#5A4535] font-black' : isPico ? 'text-[#8A6218]' : item.isFimDeSemana ? 'text-[#B3A295]' : 'text-[#8C7A6B]'
+                    <div key={item.dia} className="flex-1 min-w-0 flex flex-col items-center justify-start">
+                      <span className={`text-[7px] sm:text-[9px] font-bold tracking-tighter sm:tracking-tight ${
+                        isHovered ? 'text-[#5A4535] font-black scale-110' : isPico ? 'text-[#8A6218]' : item.isFimDeSemana ? 'text-[#B3A295]' : 'text-[#8C7A6B]'
                       }`}>
-                        {item.dia}
+                        {/* No mobile: exibe apenas dias chave (1, 5, 10, 15, 20, 25, 30, fim de mês, pico ou selecionado) */}
+                        <span className="sm:hidden">
+                          {mostrarLabelMobile ? item.dia : '·'}
+                        </span>
+                        {/* Em telas maiores (sm em diante): exibe todos os dias */}
+                        <span className="hidden sm:inline">
+                          {item.dia}
+                        </span>
                       </span>
                       <span className="text-[7px] text-[#B8A89A] uppercase hidden sm:block">
                         {item.diaSemana[0]}

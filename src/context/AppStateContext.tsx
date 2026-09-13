@@ -1159,12 +1159,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         // Hidrata pago_com_clube, plano_id e reconcilia o valor do plano VIP na Sessão 1 se estiver zerado ou divergente
         const agsFormatados = agendamentosValidos.map((a: any) => {
-          const isVip = !!(a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑'));
-          const isSessao1Vip = isVip && (a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:')) && !a.observacoes?.includes('Sessão 2') && !a.observacoes?.includes('Sessão 3') && !a.observacoes?.includes('Sessão 4');
+          const isAvulso = Boolean(
+            a.pago_com_clube === false ||
+            a.observacoes?.includes('Avulso') ||
+            a.observacoes?.includes('avulso')
+          );
+          const isVip = !isAvulso && !!(a.pago_com_clube && (a.observacoes?.includes('Clube VIP') || a.plano_id));
+          const isSessao1Vip = isVip && !isAvulso && (a.observacoes?.includes('Sessão 1') || a.observacoes?.includes('[👑 Adesão Clube VIP:')) && !a.observacoes?.includes('Sessão 2') && !a.observacoes?.includes('Sessão 3') && !a.observacoes?.includes('Sessão 4');
 
           const cliCorrespondente = dados.clientes?.find((c: any) => c.id === a.cliente_id);
-          const planoIdTag = a.observacoes?.match(/\[PLANO_ID:([a-zA-Z0-9_\-]+)\]/i)?.[1];
-          const planoIdEfetivo = a.plano_id || planoIdTag || cliCorrespondente?.assinatura?.plano_id;
+          const planoIdTag = isAvulso ? undefined : a.observacoes?.match(/\[PLANO_ID:([a-zA-Z0-9_\-]+)\]/i)?.[1];
+          const planoIdEfetivo = isAvulso ? undefined : (a.plano_id || planoIdTag || (isVip ? cliCorrespondente?.assinatura?.plano_id : undefined));
 
           let valorEfetivo = Number(a.valor_total) || 0;
           let planoIdFinal = planoIdEfetivo;
@@ -3069,14 +3074,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
     }
 
-    // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP, agenda as sessões da assinatura
-    const isVipParaRecorrencia = Boolean(
-      agendamento.pago_com_clube ||
-      planoVipId ||
-      agendamento.observacoes?.includes('Clube VIP') ||
-      agendamento.observacoes?.includes('👑')
+    // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP (e NÃO for procedimento avulso), agenda as sessões da assinatura
+    const isAvulso = Boolean(
+      agendamento.pago_com_clube === false ||
+      agendamento.observacoes?.includes('Avulso') ||
+      agendamento.observacoes?.includes('avulso')
     );
-    if (!recorrenciaManual && (agendamento.status === 'confirmado' || isVipParaRecorrencia)) {
+    const isVipParaRecorrencia = !isAvulso && Boolean(
+      agendamento.pago_com_clube &&
+      (planoVipId || agendamento.plano_id || agendamento.observacoes?.includes('Clube VIP'))
+    );
+    if (!recorrenciaManual && !isAvulso && isVipParaRecorrencia) {
       setTimeout(() => {
         reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados, planoVipId);
       }, 100);
@@ -3127,52 +3135,43 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return prev;
       });
 
-      // Regra de Negócio: Se a cliente possui Clube VIP ativo, reserva os horários recorrentes conforme a frequência do plano
+      // Regra de Negócio: Se a cliente contratou Clube VIP, reserva os horários recorrentes conforme a frequência do plano
       setTimeout(() => {
         const agConfirmado = agendamentos.find(a => a.id === id);
         const cliConfirmado = clientes.find(c => c.id === agConfirmado?.cliente_id);
-        const plano = encontrarPlanoVip(
-          cliConfirmado?.assinatura?.plano_id,
-          cliConfirmado?.assinatura,
-          agConfirmado?.observacoes,
-          planosAssinatura
+        const isAvulso = Boolean(
+          agConfirmado?.pago_com_clube === false ||
+          agConfirmado?.observacoes?.includes('Avulso') ||
+          agConfirmado?.observacoes?.includes('avulso')
         );
-        reservarRecorrenciaSemanalVip(id, agConfirmado, undefined, plano?.id);
+        if (!isAvulso && agConfirmado?.pago_com_clube) {
+          const plano = encontrarPlanoVip(
+            cliConfirmado?.assinatura?.plano_id,
+            cliConfirmado?.assinatura,
+            agConfirmado?.observacoes,
+            planosAssinatura
+          );
+          reservarRecorrenciaSemanalVip(id, agConfirmado, undefined, plano?.id);
+        }
       }, 300);
     } else if (status === 'cancelado') {
-      const clienteId = agAlvo?.cliente_id;
-      const cliAlvo = clientes.find(c => c.id === clienteId);
-      const isVip = !!(
-        agAlvo?.pago_com_clube ||
-        agAlvo?.observacoes?.includes('Clube VIP') ||
-        agAlvo?.observacoes?.includes('👑') ||
-        (cliAlvo?.assinatura && cliAlvo.assinatura.status === 'ativo')
-      );
-
-      // Regra de Negócio: Ao cancelar um agendamento VIP, excluir automaticamente todas as sessões em aberto da agenda referente àquela cliente
-      if (isVip && clienteId) {
-        const sessoesVipParaExcluir = agendamentos.filter(a =>
-          a.cliente_id === clienteId &&
+      // Se for cancelamento de sessão de recorrência VIP, cancela as sessões futuras da mesma recorrência (mantendo no histórico como canceladas)
+      if (agAlvo?.recorrencia_grupo_id && agAlvo.pago_com_clube) {
+        const sessoesFuturas = agendamentos.filter(a =>
+          a.id !== id &&
+          a.recorrencia_grupo_id === agAlvo.recorrencia_grupo_id &&
           (a.status === 'pendente' || a.status === 'confirmado') &&
-          (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || a.observacoes?.includes('👑') || todosAlvoIds.includes(a.id))
+          a.inicio > agAlvo.inicio
         );
-
-        const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
-        if (idsExcluir.length > 0) {
-          setAgendamentos(prev => {
-            const restantes = prev.filter(a => !idsExcluir.includes(a.id));
-            try { localStorage.setItem('nail_agendamentos', JSON.stringify(restantes)); } catch (e) {}
-            dbSetAll(STORES.AGENDAMENTOS, restantes);
-            return restantes;
-          });
-          idsExcluir.forEach(aid => {
-            deletarAgendamentoSupabase(aid);
-            marcarAvisoComoLido(aid);
-          });
-          setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
-          mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado para todas as profissionais e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
-          return;
-        }
+        sessoesFuturas.forEach(sf => {
+          setAgendamentos(prev => prev.map(a => a.id === sf.id ? {
+            ...a,
+            status: 'cancelado',
+            motivo_cancelamento: motivo || 'Cancelado junto com a sessão principal',
+            cancelado_por: canceladoPor || 'admin'
+          } : a));
+          atualizarStatusAgendamentoSupabase(sf.id, 'cancelado', canceladoPor || 'admin', motivo || 'Cancelado junto com a sessão principal');
+        });
       }
 
       setPagamentos(prev => prev.map(p => (todosAlvoIds.includes(p.agendamento_id) && p.status === 'pendente')
@@ -3245,33 +3244,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const agAlvo = agendamentos.find(a => a.id === id);
     const parceiros = agAlvo ? obterAgendamentosParceirosDupla(agAlvo, agendamentos) : [];
     const todosAlvoIds = [id, ...parceiros.map(p => p.id)];
-    const isVip = agAlvo?.pago_com_clube || agAlvo?.observacoes?.includes('Clube VIP');
-    const clienteId = agAlvo?.cliente_id;
-
-    // Regra de Negócio: Ao cancelar um agendamento VIP, excluir automaticamente todas as sessões em aberto da agenda referente àquela cliente
-    if (isVip && clienteId) {
-      const sessoesVipParaExcluir = agendamentos.filter(a =>
-        a.cliente_id === clienteId &&
+    // Se for cancelamento de sessão de recorrência VIP, cancela as sessões futuras vinculadas (mantendo no histórico como canceladas)
+    if (agAlvo?.recorrencia_grupo_id && agAlvo.pago_com_clube) {
+      const sessoesFuturas = agendamentos.filter(a =>
+        a.id !== id &&
+        a.recorrencia_grupo_id === agAlvo.recorrencia_grupo_id &&
         (a.status === 'pendente' || a.status === 'confirmado') &&
-        (a.pago_com_clube || a.observacoes?.includes('Clube VIP') || todosAlvoIds.includes(a.id))
+        a.inicio > agAlvo.inicio
       );
-
-      const idsExcluir = sessoesVipParaExcluir.map(a => a.id);
-      if (idsExcluir.length > 0) {
-        setAgendamentos(prev => {
-          const restantes = prev.filter(a => !idsExcluir.includes(a.id));
-          try { localStorage.setItem('nail_agendamentos', JSON.stringify(restantes)); } catch (e) {}
-          dbSetAll(STORES.AGENDAMENTOS, restantes);
-          return restantes;
-        });
-        idsExcluir.forEach(aid => {
-          deletarAgendamentoSupabase(aid);
-          marcarAvisoComoLido(aid);
-        });
-        setPagamentos(prev => prev.map(p => idsExcluir.includes(p.agendamento_id) ? { ...p, status: 'estornado' } : p));
-        mostrarNotificacaoGlobal(`🗑️ Agendamento cancelado para todas as profissionais e ${idsExcluir.length} sessões em aberto do Clube VIP foram excluídas da agenda!`);
-        return;
-      }
+      sessoesFuturas.forEach(sf => {
+        setAgendamentos(prev => prev.map(a => a.id === sf.id ? {
+          ...a,
+          status: 'cancelado',
+          motivo_cancelamento: motivo || 'Cancelado junto com a sessão principal',
+          cancelado_por: canceladoPor
+        } : a));
+        atualizarStatusAgendamentoSupabase(sf.id, 'cancelado', canceladoPor, motivo || 'Cancelado junto com a sessão principal');
+        if (canceladoPor === 'admin') {
+          marcarAvisoComoLido(sf.id);
+        }
+      });
     }
 
     setAgendamentos(prev => prev.map(a => {
@@ -4640,9 +4632,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão semanal da recorrência.' };
     }
 
+    const isAvulso = Boolean(
+      agInicial.pago_com_clube === false ||
+      agInicial.observacoes?.includes('Avulso') ||
+      agInicial.observacoes?.includes('avulso')
+    );
+    if (isAvulso) {
+      return { success: false, criados: 0, mensagem: 'Agendamento de procedimento avulso. Recorrência VIP não aplicável.' };
+    }
+
     const cliente = clientes.find(c => c.id === agInicial.cliente_id);
     const temAssinatura = !!(cliente?.assinatura && cliente.assinatura.status === 'ativo');
-    const isVipAgendamento = !!(agInicial.pago_com_clube || agInicial.observacoes?.includes('Clube VIP') || agInicial.observacoes?.includes('👑') || planoIdOverride);
+    const isVipAgendamento = !!(agInicial.pago_com_clube || planoIdOverride);
 
     if (!temAssinatura && !isVipAgendamento) {
       return { success: false, criados: 0, mensagem: 'Cliente não possui plano Clube VIP ativo no momento.' };
