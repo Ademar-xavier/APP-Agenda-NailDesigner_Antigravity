@@ -866,6 +866,28 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   } catch (err) {
     console.error('Erro ao persistir aviso no Supabase:', err);
   }
+
+  // 4. Disparo de Push Notification FCM (Google) para celulares com app minimizado ou fechado
+  try {
+    const isVercelHost = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+    const endpoint = isVercelHost 
+      ? '/api/enviar-push-fcm' 
+      : 'https://sheilasantos-agenda.vercel.app/api/enviar-push-fcm';
+
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        titulo: notificacao.titulo,
+        mensagem: notificacao.mensagem,
+        detalhes: notificacao.detalhes,
+        agendamentoId: notificacao.agendamentoId,
+        tipo: notificacao.tipo
+      })
+    }).catch((err) => {
+      console.warn('[Push FCM] Falha silenciosa no envio:', err);
+    });
+  } catch (e) {}
 };
 
 // --- PERSISTIR LISTA DE AVISOS ATUALIZADA (QUANDO DER BAIXA / MARCAR COMO LIDO) ---

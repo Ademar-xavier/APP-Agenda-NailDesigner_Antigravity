@@ -40,7 +40,17 @@ export const inicializarPushNotificationsFCM = async () => {
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications');
 
-    // Cria canal dedicado de Push FCM no Android 8+
+    // Cria canais de alta prioridade de Push FCM no Android 8+
+    await PushNotifications.createChannel({
+      id: 'agendamentos_nail_v2',
+      name: 'Alertas de Agendamentos (FCM)',
+      description: 'Notificações em tempo real recebidas com aplicativo fechado ou aberto',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      lights: true
+    });
+
     await PushNotifications.createChannel({
       id: 'fcm_agendamentos_nail',
       name: 'Alertas em Segundo Plano (FCM)',
@@ -67,19 +77,22 @@ export const inicializarPushNotificationsFCM = async () => {
 
     // 3. Notificação recebida em primeiro plano
     PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('[FCM] Notificação recebida:', notification);
+      console.log('[FCM] Notificação recebida em primeiro plano:', notification);
     });
 
     // 4. Usuário clicou na notificação na barra de status
     PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-      console.log('[FCM] Ação executada:', notification);
+      console.log('[FCM] Ação executada ao tocar na notificação:', notification);
       try {
         window.focus();
       } catch (e) {}
     });
 
-    // Solicita permissão e registra
-    const perm = await PushNotifications.requestPermissions();
+    // Verifica permissão existente ou solicita
+    let perm = await PushNotifications.checkPermissions();
+    if (perm.receive !== 'granted') {
+      perm = await PushNotifications.requestPermissions();
+    }
     if (perm.receive === 'granted') {
       await PushNotifications.register();
       fcmInicializado = true;

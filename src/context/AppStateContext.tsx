@@ -594,6 +594,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Desbloqueia AudioContext na primeira interação e inicializa canal de Notificações
   useEffect(() => {
     inicializarCanalNotificacoes().catch(() => {});
+    solicitarPermissaoNotificacoes().catch(() => {});
 
     const unlockAudioAndNotification = () => {
       try {
