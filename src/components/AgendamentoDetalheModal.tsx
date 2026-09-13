@@ -154,7 +154,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   const isVip = !!(
     agendamento?.pago_com_clube ||
-    agendamento?.recorrencia_tipo === 'vip' ||
+    (agendamento?.recorrencia_tipo as any) === 'vip' ||
     (
       agendamento?.observacoes?.includes('Clube VIP') && 
       !agendamento?.observacoes?.includes('avulso') && 
@@ -1295,7 +1295,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   </div>
                   <div>
                     <span className="text-xs font-bold text-amber-950 block">
-                      Lembrete: Cliente com Assinatura VIP ({cliente?.assinatura?.plano_nome || 'Clube VIP'})
+                      Lembrete: Cliente com Assinatura VIP ({cliente?.assinatura?.nome_plano || (cliente?.assinatura as any)?.plano_nome || 'Clube VIP'})
                     </span>
                     <span className="text-[10px] text-amber-800">
                       Saldo disponível: {cliente?.assinatura?.itens_saldo?.reduce((acc, it) => acc + (it.saldo_restante || 0), 0) || 0} sessões. (Agendamento de serviço avulso com cobrança normal)

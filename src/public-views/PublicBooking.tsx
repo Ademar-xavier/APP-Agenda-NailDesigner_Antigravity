@@ -47,6 +47,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     servicos, 
     addAgendamento, 
     addCliente, 
+    updateCliente,
     addListaEspera,
     clientes, 
     configSalao,

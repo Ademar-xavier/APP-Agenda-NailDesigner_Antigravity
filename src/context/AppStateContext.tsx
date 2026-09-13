@@ -242,7 +242,7 @@ interface AppStateContextType {
 
   // Materiais
   materiais: Material[];
-  addMaterial: (material: Omit<Material, 'id' | 'custo_por_uso'>) => void;
+  addMaterial: (material: Omit<Material, 'id' | 'custo_por_uso'>) => Material;
   updateMaterial: (id: string, material: Partial<Material>) => void;
   deleteMaterial: (id: string) => void;
 
@@ -2798,7 +2798,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Ações de Materiais ---
-  const addMaterial = async (novo: Omit<Material, 'id' | 'custo_por_uso'>) => {
+  const addMaterial = (novo: Omit<Material, 'id' | 'custo_por_uso'>): Material => {
     const rend = Number(novo.rendimento) || 1;
     const preco = Number(novo.preco_compra) || 0;
     const custo = rend > 0 ? Number((preco / rend).toFixed(2)) : 0;
@@ -2813,12 +2813,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setMateriais(next);
     try { localStorage.setItem('nail_materiais', JSON.stringify(next)); } catch (e) {}
 
-    const res = await salvarMaterialSupabase(material);
-    if (res.sucesso) {
-      mostrarNotificacaoGlobal(`✅ Material "${material.nome}" salvo e verificado na nuvem!`);
-    } else {
-      mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao salvar na nuvem: ${res.erro}`);
-    }
+    salvarMaterialSupabase(material).then(res => {
+      if (res.sucesso) {
+        mostrarNotificacaoGlobal(`✅ Material "${material.nome}" salvo e verificado na nuvem!`);
+      } else {
+        mostrarNotificacaoGlobal(`⚠️ Salvo localmente. Erro ao salvar na nuvem: ${res.erro}`);
+      }
+    });
+
+    return material;
   };
 
   const updateMaterial = async (id: string, updated: Partial<Material>) => {
