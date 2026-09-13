@@ -25,7 +25,7 @@ import { useAppState } from '../context/AppStateContext';
 import { REGRA_DEVOLUCAO_PADRAO, QrCodeWhatsAppConfig } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 import { enviarMensagemWhatsAppQrCode } from '../services/qrCodeWhatsApp';
-import { gerarLinkGoogleCalendar, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { gerarLinkGoogleCalendar, getBookingUrl, gerarLinkWhatsApp, detectarGeneroPorNome, formatarTratamentoGenero } from '../utils/urlHelper';
 
 interface AgendamentoPublico {
   id: string;
@@ -454,7 +454,8 @@ export const PublicConfirmacao: React.FC = () => {
         const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
-        const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const isMasc = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
+        const artigoCliente = isMasc ? 'O cliente' : 'A cliente';
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ ${artigoCliente} *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
         if (telDest) {
           if (dadosSalao?.meta_whatsapp?.ativo) {
@@ -471,11 +472,12 @@ export const PublicConfirmacao: React.FC = () => {
       } catch (err) {}
 
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
-      const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+      const isMascNotif = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
+      const artigoClienteNotif = isMascNotif ? 'O cliente' : 'A cliente';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'confirmacao',
         titulo: 'Presença Confirmada! ✅',
-        mensagem: `${artigoCliente} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
+        mensagem: `${artigoClienteNotif} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
         detalhes: `Horário #${agendamento.id}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome
@@ -519,7 +521,8 @@ export const PublicConfirmacao: React.FC = () => {
         const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
-        const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const isMasc = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
+        const artigoCliente = isMasc ? 'O cliente' : 'A cliente';
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ ${artigoCliente} *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
         if (telDest) {
           if (dadosSalao?.meta_whatsapp?.ativo) {
@@ -536,11 +539,12 @@ export const PublicConfirmacao: React.FC = () => {
       } catch (err) {}
 
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
-      const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+      const isMascCancelNotif = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
+      const artigoClienteCancelNotif = isMascCancelNotif ? 'O cliente' : 'A cliente';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'cancelamento',
         titulo: 'Horário Cancelado ❌',
-        mensagem: `${artigoCliente} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
+        mensagem: `${artigoClienteCancelNotif} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
         detalhes: `Motivo: ${motivoFinal}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome

@@ -36,7 +36,7 @@ import {
   deletarFotoClienteSupabase,
   carregarFotosClienteSupabase
 } from '../services/supabase';
-import { getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp, formatarTratamentoGenero } from '../utils/urlHelper';
+import { getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp, formatarTratamentoGenero, detectarGeneroPorNome } from '../utils/urlHelper';
 import { gerarIdSeguro } from '../utils/cryptoHelper';
 import { ModalAnamnese } from '../components/ModalAnamnese';
 import { otimizarImagemWebP } from '../utils/imageOptimizer';
@@ -231,6 +231,7 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
   const [sexo, setSexo] = useState<'feminino' | 'masculino'>('feminino');
+  const [sexoAlteradoManualmente, setSexoAlteradoManualmente] = useState(false);
   const [aniversario, setAniversario] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [alergias, setAlergias] = useState('');
@@ -318,6 +319,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setTelefone('');
     setEmail('');
     setSexo('feminino');
+    setSexoAlteradoManualmente(false);
     setAniversario('');
     setObservacoes('');
     setAlergias('');
@@ -335,6 +337,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setTelefone(cli.telefone);
     setEmail(cli.email || '');
     setSexo(cli.sexo || cli.preferencias?.sexo || 'feminino');
+    setSexoAlteradoManualmente(true);
     setAniversario(cli.aniversario || '');
     setObservacoes(cli.observacoes || '');
     setAlergias(cli.alergias || '');
@@ -1671,7 +1674,14 @@ export const Clientes: React.FC<ClientesProps> = ({
                       type="text" 
                       required
                       value={nome}
-                      onChange={(e) => setNome(e.target.value)}
+                      onChange={(e) => {
+                        const novoNome = e.target.value;
+                        setNome(novoNome);
+                        if (!clienteEdicao && !sexoAlteradoManualmente) {
+                          const gen = detectarGeneroPorNome(novoNome);
+                          if (gen) setSexo(gen);
+                        }
+                      }}
                       placeholder="Ex: Amanda Santos"
                       className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
                     />
@@ -1715,7 +1725,10 @@ export const Clientes: React.FC<ClientesProps> = ({
                     <div className="grid grid-cols-2 gap-2.5">
                       <button
                         type="button"
-                        onClick={() => setSexo('feminino')}
+                        onClick={() => {
+                          setSexo('feminino');
+                          setSexoAlteradoManualmente(true);
+                        }}
                         className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                           sexo === 'feminino'
                             ? 'bg-[#F6ECE8] text-[#8C6D58] border-[#8C6D58] shadow-xs ring-1 ring-[#8C6D58]/30'
@@ -1728,7 +1741,10 @@ export const Clientes: React.FC<ClientesProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setSexo('masculino')}
+                        onClick={() => {
+                          setSexo('masculino');
+                          setSexoAlteradoManualmente(true);
+                        }}
                         className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                           sexo === 'masculino'
                             ? 'bg-[#F6ECE8] text-[#8C6D58] border-[#8C6D58] shadow-xs ring-1 ring-[#8C6D58]/30'
