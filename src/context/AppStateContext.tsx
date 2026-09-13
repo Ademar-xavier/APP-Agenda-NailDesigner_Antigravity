@@ -1709,7 +1709,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               tipo: 'agendamento',
               titulo: 'Novo Agendamento Recebido! 💅',
               mensagem: `${cliNome} agendou ${servsNomes ? `${servsNomes} ` : ''}para ${dataFmt} às ${horaFmt}.`,
-              detalhes: `${servsNomes ? `💅 ${servsNomes} • ` : ''}Código #${payload.new.id} • ${payload.new.valor_sinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
+              detalhes: `Código #${payload.new.id} • ${payload.new.valor_sinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
               agendamentoId: payload.new.id,
               clienteNome: cliNome,
               servicosNomes: servsNomes || undefined
