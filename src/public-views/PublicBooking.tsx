@@ -501,13 +501,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     });
     const isClienteNovo = !cliExistente;
 
-    const sexoFinal = obterGeneroEfetivo({
-      sexoInformado: sexo,
-      sexoClienteExistente: cliExistente?.sexo || cliExistente?.preferencias?.sexo,
-      sexoModificadoManualmente,
-      nome,
-      fallback: 'feminino'
-    });
+    // O sexo escolhido pelo usuário na tela tem prioridade total: atualiza clientes cadastrados e salva clientes novos
+    const sexoFinal = sexo;
 
     let cId = '';
     let clienteParaSalvar: any = undefined;
@@ -516,6 +511,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       if (cliExistente.sexo !== sexoFinal) {
         cliExistente.sexo = sexoFinal;
         updateCliente(cId, { sexo: sexoFinal, preferencias: { ...(cliExistente.preferencias || {}), sexo: sexoFinal } });
+        await salvarClienteSupabase(cliExistente);
       }
       clienteParaSalvar = cliExistente;
     } else {
@@ -701,19 +697,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       return cDigits === telDigits || (telDigits.length >= 8 && cDigits.endsWith(telDigits.slice(-8)));
     });
 
-    const sexoFinal = obterGeneroEfetivo({
-      sexoInformado: sexo,
-      sexoClienteExistente: cliExistente?.sexo || cliExistente?.preferencias?.sexo,
-      sexoModificadoManualmente,
-      nome,
-      fallback: 'feminino'
-    });
+    const sexoFinal = sexo;
 
     if (cliExistente) {
       cId = cliExistente.id;
       if (cliExistente.sexo !== sexoFinal) {
         cliExistente.sexo = sexoFinal;
         updateCliente(cId, { sexo: sexoFinal, preferencias: { ...(cliExistente.preferencias || {}), sexo: sexoFinal } });
+        await salvarClienteSupabase(cliExistente);
       }
       clienteParaSalvar = cliExistente;
     } else {
@@ -1628,7 +1619,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 <div className="flex items-center gap-1.5 p-2 bg-[#FFF0F5] border border-[#FAD0DC] rounded-xl text-[11px] text-[#8C6D58] mt-1.5 animate-in fade-in">
                   <span>✨</span>
                   <span>
-                    Olá, <strong>{clienteIdentificado.nome}</strong>! Identificamos seu cadastro ({clienteIdentificado.sexo === 'masculino' ? '👨 Masculino' : '👩 Feminino'}).
+                    Olá, <strong>{clienteIdentificado.nome}</strong>! Identificamos seu cadastro.
                   </span>
                 </div>
               )}
@@ -1700,7 +1691,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 if (!cliVip) return null;
 
                 const servsNomes = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
-                const isMasc = (cliVip.sexo || cliVip.preferencias?.sexo || (detectarGeneroPorNome(cliVip.nome) === 'masculino') || sexo) === 'masculino';
+                const isMasc = sexo === 'masculino';
 
                 return (
                   <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">

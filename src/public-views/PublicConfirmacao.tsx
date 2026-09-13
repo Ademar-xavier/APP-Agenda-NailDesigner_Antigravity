@@ -47,6 +47,10 @@ interface ClientePublico {
   nome: string;
   telefone: string;
   sexo?: 'feminino' | 'masculino';
+  preferencias?: {
+    sexo?: 'feminino' | 'masculino';
+    [key: string]: any;
+  };
 }
 
 interface ServicoPublico {
