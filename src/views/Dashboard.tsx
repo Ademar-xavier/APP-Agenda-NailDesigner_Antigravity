@@ -165,11 +165,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const agsDoDia = agendamentosFiltrados.filter(a => 
         a.inicio.startsWith(dataStr) && 
         a.status !== 'cancelado' && 
-        a.status !== 'falta' &&
         !a.observacoes?.includes('[AG_PRINCIPAL:')
       );
 
       const agsConcluidos = agsDoDia.filter(a => a.status === 'concluido');
+      const agsFaltas = agsDoDia.filter(a => a.status === 'falta');
 
       const realCalculado = agsConcluidos.reduce((acc, a) => {
         const sIds = obterServicosDeAgendamento(a.id).map(s => s.id);
@@ -210,6 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         real: valorRealizado,
         taxaConversao,
         qtdAtendimentos: agsDoDia.length,
+        qtdFaltas: agsFaltas.length,
         atendimentos: agsDoDia
       };
     });
@@ -774,8 +775,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                       <span className="text-[10px] text-stone-300 font-normal">Previsto:</span>
                                       <span className="font-mono">{formatarMoeda(item.valor)}</span>
                                     </div>
+                                    {item.qtdFaltas > 0 && (
+                                      <div className="flex items-center justify-between text-[10.5px] text-rose-300 font-medium">
+                                        <span className="text-stone-300 font-normal">Faltas:</span>
+                                        <span className="font-mono">{item.qtdFaltas} {item.qtdFaltas === 1 ? 'cliente' : 'clientes'}</span>
+                                      </div>
+                                    )}
                                     <div className="pt-1 border-t border-white/10 flex items-center justify-between text-[10px]">
-                                      <span className="text-stone-300">Atingido:</span>
+                                      <span className="text-stone-300">Conversão:</span>
                                       <span className="font-bold text-amber-300 font-mono">{item.taxaConversao}%</span>
                                     </div>
                                   </div>
