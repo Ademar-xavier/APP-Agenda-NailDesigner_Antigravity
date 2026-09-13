@@ -546,16 +546,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {msgExibicao}
                     </p>
 
-                    {servsNomes && (
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#FAF1E8] text-[#8C6D58] text-[11px] font-semibold border border-[#E8D9CE]/80 max-w-full">
-                        <span className="shrink-0">💅</span>
-                        <span className="truncate">{servsNomes}</span>
-                      </div>
-                    )}
-
                     {av.detalhes && (
                       <p className="text-[10px] text-[#8C7A6B] italic truncate">
-                        {av.detalhes}
+                        {av.detalhes.replace(/^💅\s*[^•]+•\s*/, '').trim()}
                       </p>
                     )}
                   </div>
@@ -1163,25 +1156,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </p>
                   </div>
 
-                  {servsNomesModal && (
-                    <div className="pt-2 border-t border-[#EFECE6]">
-                      <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
-                        Serviço(s) Contratado(s)
-                      </span>
-                      <div className="mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FAF1E8] text-[#8C6D58] font-bold text-xs border border-[#E8D9CE]">
-                        <span>💅</span>
-                        <span>{servsNomesModal}</span>
-                      </div>
-                    </div>
-                  )}
-
                   {avisoSelecionadoModal.detalhes && (
                     <div className="pt-2 border-t border-[#EFECE6]">
                       <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
                         Detalhes Adicionais
                       </span>
                       <p className="text-xs text-[#5A4535] mt-0.5">
-                        {avisoSelecionadoModal.detalhes}
+                        {avisoSelecionadoModal.detalhes.replace(/^💅\s*[^•]+•\s*/, '').trim()}
                       </p>
                     </div>
                   )}

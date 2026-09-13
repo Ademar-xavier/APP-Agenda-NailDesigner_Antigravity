@@ -483,7 +483,7 @@ export const PublicConfirmacao: React.FC = () => {
         tipo: 'confirmacao',
         titulo: 'Presença Confirmada! ✅',
         mensagem: `${artigoClienteNotif} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}${servsNomes ? ` (${servsNomes})` : ''}.`,
-        detalhes: `${servsNomes ? `💅 ${servsNomes} • ` : ''}Horário #${agendamento.id}`,
+        detalhes: `Horário #${agendamento.id}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome,
         servicosNomes: servsNomes || undefined
@@ -552,7 +552,7 @@ export const PublicConfirmacao: React.FC = () => {
         tipo: 'cancelamento',
         titulo: 'Horário Cancelado ❌',
         mensagem: `${artigoClienteCancelNotif} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}${servsCancelNomes ? ` (${servsCancelNomes})` : ''}.`,
-        detalhes: `${servsCancelNomes ? `💅 ${servsCancelNomes} • ` : ''}Motivo: ${motivoFinal}`,
+        detalhes: `Motivo: ${motivoFinal}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome,
         servicosNomes: servsCancelNomes || undefined
@@ -936,7 +936,7 @@ export const PublicConfirmacao: React.FC = () => {
                             tipo: 'pagamento_sinal',
                             titulo: 'Comprovante Pix Informado! 💵',
                             mensagem: `${cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente'} ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}${servsPixNomes ? ` (${servsPixNomes})` : ''}.`,
-                            detalhes: `${servsPixNomes ? `💅 ${servsPixNomes} • ` : ''}Agendamento #${agendamento.id}`,
+                            detalhes: `Agendamento #${agendamento.id}`,
                             agendamentoId: agendamento.id,
                             clienteNome: cliente?.nome,
                             servicosNomes: servsPixNomes || undefined
