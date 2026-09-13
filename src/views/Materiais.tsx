@@ -19,6 +19,9 @@ export const Materiais: React.FC = () => {
     deleteMaterial,
     confirmarAcao,
     addDespesa,
+    deleteDespesa,
+    deleteDespesaGrupo,
+    despesas,
     equipe
   } = useAppState();
 
@@ -94,7 +97,29 @@ export const Materiais: React.FC = () => {
     setPrecoCompra(mat.preco_compra);
     setRendimento(mat.rendimento);
     setErrorMaterial('');
-    setLancarDespesa(false);
+
+    // Busca se existe despesa já vinculada a este material
+    const despesaVinculada = despesas.find(d => 
+      d.material_id === mat.id || 
+      (d.categoria === 'Materiais' && d.descricao.includes(mat.nome))
+    );
+
+    if (despesaVinculada) {
+      setLancarDespesa(true);
+      setDespesaDestino(despesaVinculada.tipo_destino || 'salao');
+      setDespesaProfissionalId(despesaVinculada.profissional_id || '');
+      setDespesaForma(despesaVinculada.forma_pagamento || 'a_vista');
+      setDespesaParcelas(despesaVinculada.parcelas_total || 2);
+      setDespesaMesInicio(despesaVinculada.mes_inicio || despesaVinculada.data?.slice(0, 7) || new Date().toLocaleDateString('en-CA').slice(0, 7));
+    } else {
+      setLancarDespesa(false);
+      setDespesaDestino('salao');
+      setDespesaProfissionalId('');
+      setDespesaForma('a_vista');
+      setDespesaParcelas(2);
+      setDespesaMesInicio(new Date().toLocaleDateString('en-CA').slice(0, 7));
+    }
+
     setModalOpen(true);
   };
 
@@ -114,6 +139,50 @@ export const Materiais: React.FC = () => {
 
     if (materialEdicao) {
       updateMaterial(materialEdicao.id, dados);
+
+      // Localiza despesas prévias vinculadas a este material para atualizar ou remover
+      const despesasAnteriores = despesas.filter(d => 
+        d.material_id === materialEdicao.id || 
+        (d.categoria === 'Materiais' && d.descricao.includes(materialEdicao.nome))
+      );
+
+      if (lancarDespesa && precoCompra > 0) {
+        // Remove as despesas anteriores vinculadas para recriar com a nova configuração de valor/parcelas/destino
+        const gruposRemovidos = new Set<string>();
+        despesasAnteriores.forEach(d => {
+          if (d.parcelamento_grupo_id && !gruposRemovidos.has(d.parcelamento_grupo_id)) {
+            gruposRemovidos.add(d.parcelamento_grupo_id);
+            deleteDespesaGrupo(d.parcelamento_grupo_id);
+          } else if (!d.parcelamento_grupo_id) {
+            deleteDespesa(d.id);
+          }
+        });
+
+        // Lança a nova despesa atualizada
+        addDespesa({
+          descricao: `Material: ${nome} (${marca})`,
+          categoria: 'Materiais',
+          valor: precoCompra,
+          data: new Date().toLocaleDateString('en-CA'),
+          tipo_destino: despesaDestino,
+          profissional_id: despesaDestino === 'profissional' ? (despesaProfissionalId || equipe.find(u => u.ativo)?.id) : undefined,
+          forma_pagamento: despesaForma,
+          parcelas_total: despesaForma === 'parcelado' ? despesaParcelas : undefined,
+          mes_inicio: despesaForma === 'parcelado' ? despesaMesInicio : undefined,
+          material_id: materialEdicao.id
+        });
+      } else if (!lancarDespesa && despesasAnteriores.length > 0) {
+        // Usuário desmarcou a opção de despesa, então exclui as vinculadas
+        const gruposRemovidos = new Set<string>();
+        despesasAnteriores.forEach(d => {
+          if (d.parcelamento_grupo_id && !gruposRemovidos.has(d.parcelamento_grupo_id)) {
+            gruposRemovidos.add(d.parcelamento_grupo_id);
+            deleteDespesaGrupo(d.parcelamento_grupo_id);
+          } else if (!d.parcelamento_grupo_id) {
+            deleteDespesa(d.id);
+          }
+        });
+      }
     } else {
       const novo = addMaterial(dados);
       if (lancarDespesa && precoCompra > 0) {
@@ -127,7 +196,7 @@ export const Materiais: React.FC = () => {
           forma_pagamento: despesaForma,
           parcelas_total: despesaForma === 'parcelado' ? despesaParcelas : undefined,
           mes_inicio: despesaForma === 'parcelado' ? despesaMesInicio : undefined,
-          material_id: novo?.id
+          material_id: (novo as any)?.id
         });
       }
     }
@@ -383,19 +452,18 @@ export const Materiais: React.FC = () => {
                 </div>
 
                 {/* Opção de Lançar Compra no Financeiro */}
-                {!materialEdicao && (
-                  <div className="pt-3 border-t border-[#EFECE6] space-y-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={lancarDespesa}
-                        onChange={(e) => setLancarDespesa(e.target.checked)}
-                        className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
-                      />
-                      <span className="text-xs font-bold text-[#5A4535]">
-                        Lançar esta compra como despesa no Financeiro
-                      </span>
-                    </label>
+                <div className="pt-3 border-t border-[#EFECE6] space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={lancarDespesa}
+                      onChange={(e) => setLancarDespesa(e.target.checked)}
+                      className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                    />
+                    <span className="text-xs font-bold text-[#5A4535]">
+                      {materialEdicao ? 'Lançar ou atualizar despesa no Financeiro' : 'Lançar esta compra como despesa no Financeiro'}
+                    </span>
+                  </label>
 
                     {lancarDespesa && (
                       <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] space-y-3 animate-in fade-in duration-150">
@@ -500,7 +568,6 @@ export const Materiais: React.FC = () => {
                       </div>
                     )}
                   </div>
-                )}
 
                 {precoCompra > 0 && rendimento > 0 && (
                   <div className="p-3 bg-[#FFF9E6] border border-[#FFECB3] rounded-xl text-center">

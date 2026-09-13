@@ -690,20 +690,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* Badges de Resumo e Destaque Executivo 100% Uniformes em Linha Única */}
-                <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-2 shrink-0 flex-nowrap overflow-x-auto no-scrollbar py-0.5">
                   {dadosDesempenhoSemana.diaPico && dadosDesempenhoSemana.diaPico.real > 0 && (
-                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap shrink-0">
                       <Crown size={13} className="text-[#C9A227] shrink-0" />
                       <span>Pico: <strong className="font-bold">{dadosDesempenhoSemana.diaPico.dia} ({formatarMoeda(dadosDesempenhoSemana.diaPico.real)})</strong></span>
                     </div>
                   )}
                   {dadosDesempenhoSemana.mediaRealizadaDiaria > 0 && (
-                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                    <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap shrink-0">
                       <BarChart3 size={13} className="text-[#8C6D58] shrink-0" />
                       <span>Média: <strong className="font-bold">{formatarMoeda(dadosDesempenhoSemana.mediaRealizadaDiaria)}/dia</strong></span>
                     </div>
                   )}
-                  <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F2F8F4] border border-[#DCEFE3] text-[#2B7A4B] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                  <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F2F8F4] border border-[#DCEFE3] text-[#2B7A4B] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap shrink-0">
                     <TrendingUp size={13} className="text-[#4FA97A] shrink-0" />
                     <span>Conversão: <strong className="font-bold">{dadosDesempenhoSemana.taxaConversaoTotal}%</strong></span>
                   </div>

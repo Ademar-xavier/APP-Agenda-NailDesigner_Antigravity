@@ -895,32 +895,33 @@ export const Financeiro: React.FC = () => {
           <h2 className="font-serif font-bold text-xl md:text-2xl text-[#5A4535]">Financeiro</h2>
           <p className="text-xs text-[#8C7A6B]">Visão detalhada de receitas, custos de operação e lucratividade líquida</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <button
             type="button"
             onClick={handleExportarPdfAnual}
-            className="h-11 sm:h-10 px-3.5 flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="h-11 sm:h-10 px-3.5 flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap"
             title={`Gerar Relatório Executivo em PDF do ano ${anoNum}`}
           >
-            <Printer size={14} className="text-[#8C6D58]" />
+            <Printer size={14} className="text-[#8C6D58] shrink-0" />
             <span>Relatório Anual (PDF)</span>
           </button>
           
           <button
             type="button"
             onClick={handleExportarExcelAnual}
-            className="h-11 sm:h-10 px-3.5 flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#166534] hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="h-11 sm:h-10 px-3.5 flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#166534] hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap"
             title={`Baixar Planilha Excel com consolidado anual de ${anoNum}`}
           >
-            <Download size={14} className="text-[#166534]" />
+            <Download size={14} className="text-[#166534] shrink-0" />
             <span>Planilha Anual (Excel)</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setDespesaModal(true)}
             className="h-11 sm:h-10 w-full sm:w-auto px-4 rounded-xl text-xs font-bold bg-[#8C6D58] hover:bg-[#725743] text-white flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
           >
-            <Plus size={16} />
+            <Plus size={16} className="shrink-0" />
             <span>Registrar Despesa</span>
           </button>
         </div>
@@ -1051,15 +1052,15 @@ export const Financeiro: React.FC = () => {
             </div>
 
             {/* Badges de Resumo e Destaque Padronizados */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-2 shrink-0 flex-nowrap overflow-x-auto no-scrollbar py-0.5">
               {statsGrafico.diaPico && statsGrafico.diaPico.valor > 0 && (
-                <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                <div className="h-7 px-3 flex-1 sm:flex-initial inline-flex items-center justify-center sm:justify-start gap-1.5 bg-[#FBF6EE] border border-[#EEDBBA] text-[#8A6218] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap shrink-0">
                   <Crown size={13} className="text-[#C9A227] shrink-0" />
                   <span>Pico: <strong className="font-bold">Dia {statsGrafico.diaPico.dia} ({formatarMoeda(statsGrafico.diaPico.valor)})</strong></span>
                 </div>
               )}
               {statsGrafico.totalDiasAtivos > 0 && (
-                <div className="h-7 px-2.5 inline-flex items-center gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap">
+                <div className="h-7 px-3 flex-1 sm:flex-initial inline-flex items-center justify-center sm:justify-start gap-1.5 bg-[#F7F5F0] border border-[#E5DFD5] text-[#5A4535] rounded-xl text-[11px] font-medium shadow-2xs whitespace-nowrap shrink-0">
                   <BarChart3 size={13} className="text-[#8C6D58] shrink-0" />
                   <span>Média: <strong className="font-bold">{formatarMoeda(statsGrafico.mediaPorDiaAtivo)}/dia</strong></span>
                 </div>

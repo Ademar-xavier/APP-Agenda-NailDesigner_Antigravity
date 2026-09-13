@@ -389,7 +389,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   // Estados de Produtos na Comanda e Clube VIP
   const [produtosComanda, setProdutosComanda] = useState<ItemComandaProduto[]>(agendamento?.produtos || []);
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('');
-  const [produtoQtd, setProdutoQtd] = useState(1);
+  const [produtoQtdStr, setProdutoQtdStr] = useState<string>('1');
   const isVipAgendamento = isVip;
   const temAssinaturaAtiva = Boolean(
     clienteTemVipAtivo || isVipAgendamento
@@ -835,7 +835,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const prod = produtos.find(p => p.id === produtoSelecionadoId);
     if (!prod) return;
 
-    const qtd = Math.max(1, Number(produtoQtd) || 1);
+    const qtd = Math.max(1, parseInt(produtoQtdStr, 10) || 1);
     const subtotal = prod.preco_venda * qtd;
 
     setProdutosComanda(prev => {
@@ -858,7 +858,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     });
 
     setProdutoSelecionadoId('');
-    setProdutoQtd(1);
+    setProdutoQtdStr('1');
   };
 
   const handleRemoverProdutoComanda = (produtoId: string) => {
@@ -2312,11 +2312,20 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   <div className="flex items-center gap-1">
                     <span className="text-[10px] font-bold text-[#8C7A6B] uppercase">Qtd:</span>
                     <input
-                      type="number"
-                      min="1"
-                      value={produtoQtd}
-                      onChange={(e) => setProdutoQtd(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-14 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-center font-bold bg-[#FAF9F6] text-[#5A4535]"
+                      type="text"
+                      inputMode="numeric"
+                      value={produtoQtdStr}
+                      placeholder="1"
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '');
+                        setProdutoQtdStr(val);
+                      }}
+                      onBlur={() => {
+                        if (!produtoQtdStr || Number(produtoQtdStr) <= 0) {
+                          setProdutoQtdStr('1');
+                        }
+                      }}
+                      className="w-14 border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-center font-bold bg-[#FAF9F6] text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                     />
                   </div>
                   <button
