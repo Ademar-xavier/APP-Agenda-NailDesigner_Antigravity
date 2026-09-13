@@ -482,6 +482,16 @@ export const Configuracoes: React.FC = () => {
   const [editAlmocoAtivo, setEditAlmocoAtivo] = useState(true);
   const [editAlmocoInicio, setEditAlmocoInicio] = useState('12:00');
   const [editAlmocoFim, setEditAlmocoFim] = useState('13:00');
+  const [editModoAlmoco, setEditModoAlmoco] = useState<'todos' | 'dias'>('todos');
+  const [editHorariosAlmoco, setEditHorariosAlmoco] = useState<{ [dia: number]: { ativo: boolean; inicio: string; fim: string } }>({
+    1: { ativo: true, inicio: '12:00', fim: '13:00' },
+    2: { ativo: true, inicio: '12:00', fim: '13:00' },
+    3: { ativo: true, inicio: '12:00', fim: '13:00' },
+    4: { ativo: true, inicio: '12:00', fim: '13:00' },
+    5: { ativo: true, inicio: '12:00', fim: '13:00' },
+    6: { ativo: true, inicio: '12:00', fim: '13:00' },
+    0: { ativo: false, inicio: '12:00', fim: '13:00' }
+  });
 
   const formatarMoedaLocal = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
@@ -499,14 +509,46 @@ export const Configuracoes: React.FC = () => {
     setEditUsarPixProprio(membro.usar_pix_proprio || false);
     setEditComissao(membro.comissao_padrao_porcentagem ?? 50);
     setEditAlmocoAtivo(membro.horario_almoco_ativo ?? true);
-    setEditAlmocoInicio(membro.horario_almoco_inicio || '12:00');
-    setEditAlmocoFim(membro.horario_almoco_fim || '13:00');
+    const pInicio = membro.horario_almoco_inicio || '12:00';
+    const pFim = membro.horario_almoco_fim || '13:00';
+    const pAtivo = membro.horario_almoco_ativo ?? true;
+    setEditAlmocoInicio(pInicio);
+    setEditAlmocoFim(pFim);
+
+    if (membro.horarios_almoco && Object.keys(membro.horarios_almoco).length > 0) {
+      setEditHorariosAlmoco(membro.horarios_almoco);
+      setEditModoAlmoco('dias');
+    } else {
+      setEditHorariosAlmoco({
+        1: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        2: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        3: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        4: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        5: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        6: { ativo: pAtivo, inicio: pInicio, fim: pFim },
+        0: { ativo: false, inicio: pInicio, fim: pFim }
+      });
+      setEditModoAlmoco('todos');
+    }
     setIsEditarMembroModalOpen(true);
   };
 
   const handleSalvarEdicaoMembro = (e: React.FormEvent) => {
     e.preventDefault();
     if (!membroEditando || !editNome.trim()) return;
+
+    let horariosFinais = { ...editHorariosAlmoco };
+    if (editModoAlmoco === 'todos') {
+      horariosFinais = {
+        1: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        2: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        3: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        4: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        5: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        6: { ativo: editAlmocoAtivo, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' },
+        0: { ativo: false, inicio: editAlmocoInicio || '12:00', fim: editAlmocoFim || '13:00' }
+      };
+    }
 
     updateEquipe(membroEditando.id, {
       nome: editNome.trim(),
@@ -520,7 +562,8 @@ export const Configuracoes: React.FC = () => {
       comissao_padrao_porcentagem: Number(editComissao),
       horario_almoco_ativo: editAlmocoAtivo,
       horario_almoco_inicio: editAlmocoInicio || '12:00',
-      horario_almoco_fim: editAlmocoFim || '13:00'
+      horario_almoco_fim: editAlmocoFim || '13:00',
+      horarios_almoco: horariosFinais
     });
 
     setIsEditarMembroModalOpen(false);
@@ -2894,27 +2937,142 @@ export const Configuracoes: React.FC = () => {
                 </div>
 
                 {editAlmocoAtivo && (
-                  <div className="grid grid-cols-2 gap-3 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] animate-in fade-in duration-150">
-                    <div>
-                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Início do Almoço</label>
-                      <input
-                        type="time"
-                        value={editAlmocoInicio}
-                        onChange={(e) => setEditAlmocoInicio(e.target.value)}
-                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
-                        required={editAlmocoAtivo}
-                      />
+                  <div className="space-y-2.5 animate-in fade-in duration-150">
+                    {/* Segmented control: Geral vs Por dia da semana */}
+                    <div className="grid grid-cols-2 gap-1 bg-[#FAF9F6] p-1 rounded-xl border border-[#EFECE6]">
+                      <button
+                        type="button"
+                        onClick={() => setEditModoAlmoco('todos')}
+                        className={`py-1 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editModoAlmoco === 'todos'
+                            ? 'bg-[#8C6D58] text-white shadow-2xs'
+                            : 'text-[#5A4535] hover:bg-gray-100'
+                        }`}
+                      >
+                        Horário Padrão
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditModoAlmoco('dias')}
+                        className={`py-1 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          editModoAlmoco === 'dias'
+                            ? 'bg-[#8C6D58] text-white shadow-2xs'
+                            : 'text-[#5A4535] hover:bg-gray-100'
+                        }`}
+                      >
+                        Por Dia da Semana
+                      </button>
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Término do Almoço</label>
-                      <input
-                        type="time"
-                        value={editAlmocoFim}
-                        onChange={(e) => setEditAlmocoFim(e.target.value)}
-                        className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
-                        required={editAlmocoAtivo}
-                      />
-                    </div>
+
+                    {editModoAlmoco === 'todos' ? (
+                      <div className="grid grid-cols-2 gap-3 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6]">
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Início do Almoço</label>
+                          <input
+                            type="time"
+                            value={editAlmocoInicio}
+                            onChange={(e) => setEditAlmocoInicio(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                            required={editAlmocoAtivo}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">Término do Almoço</label>
+                          <input
+                            type="time"
+                            value={editAlmocoFim}
+                            onChange={(e) => setEditAlmocoFim(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none focus:border-[#8C6D58] font-bold"
+                            required={editAlmocoAtivo}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] space-y-2">
+                        <div className="flex items-center justify-between pb-1 border-b border-[#EFECE6]">
+                          <span className="text-[10px] font-bold text-[#8C7A6B] uppercase">Dia da Semana</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const base = editHorariosAlmoco[1] || { ativo: true, inicio: '12:00', fim: '13:00' };
+                              setEditHorariosAlmoco(prev => ({
+                                ...prev,
+                                2: { ...base },
+                                3: { ...base },
+                                4: { ...base },
+                                5: { ...base },
+                                6: { ...base }
+                              }));
+                            }}
+                            className="text-[10px] text-[#8C6D58] hover:underline font-bold cursor-pointer"
+                          >
+                            Copiar Segunda p/ Ter-Sáb
+                          </button>
+                        </div>
+                        {[
+                          { id: 1, nome: 'Segunda-feira' },
+                          { id: 2, nome: 'Terça-feira' },
+                          { id: 3, nome: 'Quarta-feira' },
+                          { id: 4, nome: 'Quinta-feira' },
+                          { id: 5, nome: 'Sexta-feira' },
+                          { id: 6, nome: 'Sábado' },
+                          { id: 0, nome: 'Domingo' }
+                        ].map(dia => {
+                          const conf = editHorariosAlmoco[dia.id] || { ativo: dia.id !== 0, inicio: '12:00', fim: '13:00' };
+                          return (
+                            <div key={dia.id} className="flex items-center justify-between gap-2 p-1.5 bg-white rounded-lg border border-[#EFECE6] text-xs">
+                              <label className="flex items-center gap-1.5 font-medium text-[#5A4535] cursor-pointer min-w-[100px]">
+                                <input
+                                  type="checkbox"
+                                  checked={conf.ativo}
+                                  onChange={(e) => {
+                                    const atv = e.target.checked;
+                                    setEditHorariosAlmoco(prev => ({
+                                      ...prev,
+                                      [dia.id]: { ...conf, ativo: atv }
+                                    }));
+                                  }}
+                                  className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                                />
+                                <span className={conf.ativo ? 'font-bold' : 'text-gray-400'}>{dia.nome}</span>
+                              </label>
+
+                              {conf.ativo ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="time"
+                                    value={conf.inicio}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setEditHorariosAlmoco(prev => ({
+                                        ...prev,
+                                        [dia.id]: { ...conf, inicio: v }
+                                      }));
+                                    }}
+                                    className="border border-[#EFECE6] rounded px-1.5 py-0.5 text-xs font-bold text-[#5A4535] bg-[#FAF9F6]"
+                                  />
+                                  <span className="text-gray-400 text-[10px]">às</span>
+                                  <input
+                                    type="time"
+                                    value={conf.fim}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setEditHorariosAlmoco(prev => ({
+                                        ...prev,
+                                        [dia.id]: { ...conf, fim: v }
+                                      }));
+                                    }}
+                                    className="border border-[#EFECE6] rounded px-1.5 py-0.5 text-xs font-bold text-[#5A4535] bg-[#FAF9F6]"
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-gray-400 italic">Sem intervalo</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

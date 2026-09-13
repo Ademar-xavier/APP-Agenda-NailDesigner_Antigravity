@@ -215,6 +215,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   // Cliente State
   const [nome, setNome] = useState<string>('');
   const [telefone, setTelefone] = useState<string>('');
+  const [sexo, setSexo] = useState<'feminino' | 'masculino'>('feminino');
   const [observacoes, setObservacoes] = useState<string>('');
   
   // Lista de Espera State
@@ -470,11 +471,17 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     let clienteParaSalvar: any = undefined;
     if (cliExistente) {
       cId = cliExistente.id;
+      if (cliExistente.sexo !== sexo) {
+        cliExistente.sexo = sexo;
+        updateCliente(cId, { sexo, preferencias: { ...(cliExistente.preferencias || {}), sexo } });
+      }
       clienteParaSalvar = cliExistente;
     } else {
       const novoCli = addCliente({
         nome,
         telefone,
+        sexo,
+        preferencias: { sexo },
         consentimento_imagem: true
       });
       cId = novoCli.id;
@@ -553,7 +560,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     const nomePlanoVip = planoVipEscolhido?.nome || 'Clube VIP';
     const obsVip = isContratandoVip 
       ? `[👑 Adesão Clube VIP: ${nomePlanoVip}${tagPlanoId}] ` 
-      : (isAssinanteVip ? `[👑 Cliente VIP (Procedimento Avulso)] ` : '');
+      : (isAssinanteVip ? `[Cliente VIP com serviço avulso] ` : '');
     const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
     const precoPlanoVip = Number(planoVipEscolhido?.preco_mensal) || 0;
@@ -589,7 +596,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       try {
         const profFinalObj = equipe.find(e => e.id === profFinalId);
         const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
-        const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
+        const artigo = sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! ${artigo} *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
 
         // 1. Envio via Meta Cloud API Oficial
         if (telDest && configSalao?.meta_whatsapp?.ativo) {
@@ -604,7 +612,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
           }
           if (telefone && cfgQr?.notificarClienteAoAgendar !== false) {
-            const msgCliente = `💅 Olá *${nome}*! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\nObrigada pela preferência!`;
+            const saudacaoCliente = sexo === 'masculino' ? 'Bem-vindo' : 'Bem-vinda';
+            const agradecimentoCliente = sexo === 'masculino' ? 'Obrigado pela preferência!' : 'Obrigada pela preferência!';
+            const msgCliente = `💅 Olá *${nome}*, seja ${saudacaoCliente.toLowerCase()}! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\n${agradecimentoCliente}`;
             enviarMensagemWhatsAppQrCode(telefone, msgCliente, cfgQr).catch(() => {});
           }
         }
@@ -1512,6 +1522,36 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                   className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-[#A88690] uppercase mb-1">Como prefere ser tratada(o)?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSexo('feminino')}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    sexo === 'feminino'
+                      ? 'bg-[#FFF0F5] text-[#DB7093] border-[#DB7093] ring-1 ring-[#DB7093]/30 shadow-2xs'
+                      : 'bg-white text-stone-500 border-[#FAD0DC]/50 hover:bg-stone-50'
+                  }`}
+                >
+                  <span className="text-sm">👩</span>
+                  <span>Feminino <small className="font-normal opacity-75">(Bem-vinda)</small></span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSexo('masculino')}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    sexo === 'masculino'
+                      ? 'bg-[#FFF0F5] text-[#DB7093] border-[#DB7093] ring-1 ring-[#DB7093]/30 shadow-2xs'
+                      : 'bg-white text-stone-500 border-[#FAD0DC]/50 hover:bg-stone-50'
+                  }`}
+                >
+                  <span className="text-sm">👨</span>
+                  <span>Masculino <small className="font-normal opacity-75">(Bem-vindo)</small></span>
+                </button>
+              </div>
 
               {/* Plano VIP Escolhido nesta Reserva */}
               {planoVipEscolhido && (
@@ -1544,13 +1584,14 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 if (!cliVip) return null;
 
                 const servsNomes = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
+                const isMasc = (cliVip.sexo || cliVip.preferencias?.sexo || sexo) === 'masculino';
 
                 return (
                   <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">
                     <Crown size={18} className="text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold text-amber-950 block">
-                        👑 Bem-vinda, {cliVip.nome}! Assinante VIP Reconhecida
+                        👑 {isMasc ? 'Bem-vindo' : 'Bem-vinda'}, {cliVip.nome}! Assinante VIP Reconhecid{isMasc ? 'o' : 'a'}
                       </span>
                       <p className="text-[11px] text-amber-900 mt-0.5 leading-snug">
                         Identificamos seu plano <strong>{cliVip.assinatura?.nome_plano}</strong> ativo. Mantivemos seu procedimento avulso <strong>({servsNomes || 'serviço escolhido'})</strong> com isenção de sinal Pix online! O valor será acertado no salão.

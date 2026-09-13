@@ -317,7 +317,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         chave_pix: chavePixEfetiva,
         link_reserva: linkReserva,
         link_confirmacao: linkReserva,
-        salao: configSalao.nome || 'Sheila Santos Nails'
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        sexo: cliente.sexo || 'feminino'
       });
 
       const valorSinalNum = Number(extra?.sinal || 0);
@@ -340,7 +341,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         limite_horas: String(configSalao.regras.cancelamento_limite_horas),
         link_confirmacao: linkReserva,
         link_reserva: linkReserva,
-        salao: configSalao.nome || 'Sheila Santos Nails'
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        sexo: cliente.sexo || 'feminino'
       });
 
       if (extra?.agendamentoId && !msg.includes(linkReserva)) {
@@ -352,7 +354,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         dias_visita: String(extra?.dias || 20),
         servico: extra?.servico || 'Alongamento',
         link_agendamento: getBookingUrl(),
-        salao: configSalao.nome || 'Sheila Santos Nails'
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        sexo: cliente.sexo || 'feminino'
       });
     }
 

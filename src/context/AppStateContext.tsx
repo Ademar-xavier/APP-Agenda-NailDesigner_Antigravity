@@ -181,8 +181,10 @@ interface AppStateContextType {
     produtosVendidos?: ItemComandaProduto[],
     pagoComClube?: boolean,
     servicoAbaterId?: string,
-    desconto?: { valor: number; motivo?: string }
+    desconto?: { valor: number; motivo?: string },
+    adicional?: { valor: number; motivo: string }
   ) => void;
+  atualizarAdicionalAgendamento: (id: string, valor?: number, motivo?: string) => void;
   
   // Ações de Lista de Espera
   addListaEspera: (item: Omit<ListaEspera, 'id' | 'criado_em' | 'status'>) => ListaEspera;
@@ -213,6 +215,7 @@ interface AppStateContextType {
   addDespesa: (despesa: Omit<Despesa, 'id'>) => void;
   updateDespesa: (id: string, despesa: Partial<Despesa>) => void;
   deleteDespesa: (id: string) => void;
+  deleteDespesaGrupo: (grupoId: string) => void;
   categoriasDespesa: string[];
   addCategoriaDespesa: (nome: string) => void;
   deleteCategoriaDespesa: (nome: string) => void;
@@ -1136,8 +1139,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               }
             }
 
+            const sexo = cNu.sexo || cNu.preferencias?.sexo || cLocal?.sexo || 'feminino';
+
             return {
               ...cNu,
+              sexo,
               anamnese,
               assinatura
             };
@@ -1224,6 +1230,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
 
+          // Extrair metadados de pagamento adicional se presentes em observações ou objeto
+          let adicVal = a.valor_adicional !== undefined ? Number(a.valor_adicional) : undefined;
+          let adicMot = a.motivo_adicional;
+          if ((adicVal === undefined || adicVal === 0) && a.observacoes?.includes('[ADICIONAL:')) {
+            const adicMatch = a.observacoes.match(/\[ADICIONAL:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+            if (adicMatch) {
+              adicVal = parseFloat(adicMatch[1]) || 0;
+              adicMot = adicMatch[2]?.trim();
+            }
+          }
+
           return {
             ...a,
             fim: fimEfetivo,
@@ -1232,6 +1249,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             plano_id: planoIdFinal,
             desconto_valor: descVal,
             desconto_motivo: descMot,
+            valor_adicional: adicVal,
+            motivo_adicional: adicMot,
             produtos: prods
           };
         });
@@ -1375,8 +1394,52 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // 8. Despesas da Nuvem
       if (dados.despesas && dados.despesas.length > 0) {
-        setDespesas(dados.despesas);
-        try { localStorage.setItem('nail_despesas', JSON.stringify(dados.despesas)); } catch (e) {}
+        const despsFormatadas: Despesa[] = dados.despesas.map((d: any) => {
+          let tipoDestino = d.tipo_destino || 'salao';
+          let profId = d.profissional_id;
+          let formaPgto = d.forma_pagamento || 'a_vista';
+          let parcTot = d.parcelas_total;
+          let parcAtu = d.parcela_atual;
+          let parcGrpId = d.parcelamento_grupo_id;
+          let mesIni = d.mes_inicio;
+          let matId = d.material_id;
+
+          if (d.descricao?.includes('[DESP_META:')) {
+            try {
+              const metaMatch = d.descricao.match(/\[DESP_META:(.*?)\]/);
+              if (metaMatch) {
+                const meta = JSON.parse(metaMatch[1]);
+                if (meta.td) tipoDestino = meta.td;
+                if (meta.pid) profId = meta.pid;
+                if (meta.fp) formaPgto = meta.fp;
+                if (meta.pt) parcTot = meta.pt;
+                if (meta.pa) parcAtu = meta.pa;
+                if (meta.gid) parcGrpId = meta.gid;
+                if (meta.mi) mesIni = meta.mi;
+                if (meta.mid) matId = meta.mid;
+              }
+            } catch (e) {}
+          }
+
+          // Descrição limpa sem tag técnica interna
+          const descLimpa = d.descricao?.replace(/\[DESP_META:.*?\]/gi, '').trim() || d.descricao || 'Despesa';
+
+          return {
+            ...d,
+            descricao: descLimpa,
+            valor: Number(d.valor) || 0,
+            tipo_destino: tipoDestino,
+            profissional_id: profId,
+            forma_pagamento: formaPgto,
+            parcelas_total: parcTot,
+            parcela_atual: parcAtu,
+            parcelamento_grupo_id: parcGrpId,
+            mes_inicio: mesIni,
+            material_id: matId
+          };
+        });
+        setDespesas(despsFormatadas);
+        try { localStorage.setItem('nail_despesas', JSON.stringify(despsFormatadas)); } catch (e) {}
       }
 
       // 9. Configurações Gerais do Salão (Técnicas, Formatos, Categorias)
@@ -2196,14 +2259,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mostrarNotificacaoGlobal(`✅ Horário de almoço de ${data} ajustado para ${inicio} às ${fim}!`);
 
     } else if (escopo === 'profissional') {
-      // Atualiza o cadastro padrão da profissional
+      // Atualiza o cadastro padrão da profissional (tanto o geral quanto o deste dia da semana)
+      const [anoD, mesD, diaD] = data.split('-').map(Number);
+      const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
+
       const nextEquipe = equipe.map(u => {
         if (u.id === profissionalId) {
+          const horariosAlmocoAtual = u.horarios_almoco || {};
           return {
             ...u,
             horario_almoco_ativo: true,
             horario_almoco_inicio: inicio,
-            horario_almoco_fim: fim
+            horario_almoco_fim: fim,
+            horarios_almoco: {
+              ...horariosAlmocoAtual,
+              [diaSemana]: { ativo: true, inicio, fim }
+            }
           };
         }
         return u;
@@ -2233,12 +2304,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     } else if (escopo === 'salao') {
       // Atualiza todas as profissionais da equipe
-      const nextEquipe = equipe.map(u => ({
-        ...u,
-        horario_almoco_ativo: true,
-        horario_almoco_inicio: inicio,
-        horario_almoco_fim: fim
-      }));
+      const [anoD, mesD, diaD] = data.split('-').map(Number);
+      const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
+
+      const nextEquipe = equipe.map(u => {
+        const horariosAlmocoAtual = u.horarios_almoco || {};
+        return {
+          ...u,
+          horario_almoco_ativo: true,
+          horario_almoco_inicio: inicio,
+          horario_almoco_fim: fim,
+          horarios_almoco: {
+            ...horariosAlmocoAtual,
+            [diaSemana]: { ativo: true, inicio, fim }
+          }
+        };
+      });
 
       setEquipe(nextEquipe);
       try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
@@ -2508,13 +2589,74 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // --- Ações de Despesas ---
   const addDespesa = (nova: Omit<Despesa, 'id'>) => {
-    const despesa: Despesa = {
-      ...nova,
-      id: 'd_' + gerarId()
-    };
-    setDespesas(prev => [...prev, despesa]);
-    salvarDespesaSupabase(despesa);
-    mostrarNotificacaoGlobal(`✅ Despesa "${despesa.descricao}" registrada na nuvem!`);
+    const numParcelas = nova.forma_pagamento === 'parcelado' ? Math.max(1, Number(nova.parcelas_total) || 1) : 1;
+
+    if (numParcelas <= 1) {
+      const despesa: Despesa = {
+        ...nova,
+        id: 'd_' + gerarId(),
+        tipo_destino: nova.tipo_destino || 'salao',
+        forma_pagamento: nova.forma_pagamento || 'a_vista',
+        parcelas_total: 1,
+        parcela_atual: 1
+      };
+      setDespesas(prev => [...prev, despesa]);
+      salvarDespesaSupabase(despesa);
+      mostrarNotificacaoGlobal(`✅ Despesa "${despesa.descricao}" registrada na nuvem!`);
+      return;
+    }
+
+    // Gerar N parcelas distribuídas mês a mês
+    const grupoId = nova.parcelamento_grupo_id || ('grp_' + gerarId());
+    const valorParcela = Number((nova.valor / numParcelas).toFixed(2));
+    const [anoIniStr, mesIniStr] = (nova.mes_inicio || nova.data.substring(0, 7)).split('-');
+    const anoBase = parseInt(anoIniStr, 10);
+    const mesBase = parseInt(mesIniStr, 10) - 1; // 0-indexed
+    const diaBase = nova.data.length >= 10 ? nova.data.substring(8, 10) : '01';
+
+    const novasParcelas: Despesa[] = [];
+
+    for (let i = 1; i <= numParcelas; i++) {
+      const dataParcela = new Date(anoBase, mesBase + (i - 1), parseInt(diaBase, 10) || 1);
+      const anoP = dataParcela.getFullYear();
+      const mesP = String(dataParcela.getMonth() + 1).padStart(2, '0');
+      const diaP = String(dataParcela.getDate()).padStart(2, '0');
+      const dataFormatada = `${anoP}-${mesP}-${diaP}`;
+
+      // Ajusta centavos na última parcela se houver dízima
+      const valorFinal = (i === numParcelas)
+        ? Number((nova.valor - valorParcela * (numParcelas - 1)).toFixed(2))
+        : valorParcela;
+
+      const parc: Despesa = {
+        ...nova,
+        id: 'd_' + gerarId(),
+        descricao: `${nova.descricao} (${i}/${numParcelas})`,
+        valor: valorFinal,
+        data: dataFormatada,
+        tipo_destino: nova.tipo_destino || 'salao',
+        profissional_id: nova.profissional_id,
+        forma_pagamento: 'parcelado',
+        parcelas_total: numParcelas,
+        parcela_atual: i,
+        parcelamento_grupo_id: grupoId,
+        mes_inicio: `${anoIniStr}-${mesIniStr}`
+      };
+
+      novasParcelas.push(parc);
+      salvarDespesaSupabase(parc);
+    }
+
+    setDespesas(prev => [...prev, ...novasParcelas]);
+    mostrarNotificacaoGlobal(`✅ Despesa registrada em ${numParcelas}x de R$ ${valorParcela.toFixed(2)}!`);
+  };
+
+  const deleteDespesaGrupo = (grupoId: string) => {
+    limparFocoAtivo();
+    const despesasGrupo = despesas.filter(d => d.parcelamento_grupo_id === grupoId);
+    setDespesas(prev => prev.filter(d => d.parcelamento_grupo_id !== grupoId));
+    despesasGrupo.forEach(d => deletarDespesaSupabase(d.id));
+    mostrarNotificacaoGlobal(`✅ Todas as ${despesasGrupo.length} parcelas foram excluídas da nuvem!`);
   };
 
   const updateDespesa = (id: string, updated: Partial<Despesa>) => {
@@ -2822,10 +2964,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     const prof = equipe.find(u => u.id === profissionalId);
-    if (!prof || prof.horario_almoco_ativo === false) return false;
+    if (!prof) return false;
 
-    const almocoInicioStr = prof.horario_almoco_inicio || '12:00';
-    const almocoFimStr = prof.horario_almoco_fim || '13:00';
+    // Obtém o dia da semana local da data do agendamento (0=Dom, 1=Seg, ..., 6=Sáb)
+    const [anoD, mesD, diaD] = dataStr.split('-').map(Number);
+    const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
+
+    const configDia = prof.horarios_almoco?.[diaSemana];
+    const almocoAtivo = configDia !== undefined ? configDia.ativo : (prof.horario_almoco_ativo !== false);
+    if (!almocoAtivo) return false;
+
+    const almocoInicioStr = configDia?.inicio || prof.horario_almoco_inicio || '12:00';
+    const almocoFimStr = configDia?.fim || prof.horario_almoco_fim || '13:00';
 
     // Se houver cancelamento/liberação pontual de almoço para esta profissional nesta data, NÃO gera conflito com o almoço padrão
     const almocoCanceladoNesteDia = agendamentos.some(a => 
@@ -3744,7 +3894,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     produtosVendidos?: ItemComandaProduto[],
     pagoComClube?: boolean,
     servicoAbaterId?: string,
-    desconto?: { valor: number; motivo?: string }
+    desconto?: { valor: number; motivo?: string },
+    adicional?: { valor: number; motivo: string }
   ) => {
     const agAlvo = agendamentos.find(a => a.id === agendamentoId);
     const servsDoAg = obterServicosDeAgendamento(agendamentoId);
@@ -3754,13 +3905,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const precoOriginal = (agAlvo?.observacoes?.includes('Co-atendimento') || agAlvo?.observacoes?.includes('2 Profissionais'))
       ? Math.max(agAlvo.valor_total, servsDoAg[0]?.preco || 0)
       : Math.max(agAlvo?.valor_total || 0, totalServicos);
-    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalAdicionalProdutos;
+    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalAdicionalProdutos + (adicional?.valor || 0);
 
     let valorDesconto = Math.max(0, Number(desconto?.valor) || 0);
     let motivoDesconto = desconto?.motivo?.trim() || 'Desconto Concedido';
 
     // Se o desconto não foi passado explicitamente, mas o valor recebido for menor que o esperado (e não for VIP isento)
-    const isVipIsento = Boolean(pagoComClube || agAlvo?.pago_com_clube || agAlvo?.plano_id || agAlvo?.observacoes?.includes('👑') || agAlvo?.observacoes?.includes('Clube VIP'));
+    const isVipIsento = Boolean(pagoComClube || agAlvo?.pago_com_clube || agAlvo?.plano_id || (agAlvo?.observacoes?.includes('Clube VIP') && !agAlvo?.observacoes?.includes('avulso') && !agAlvo?.observacoes?.includes('Avulso')));
     if (!isVipIsento && valorDesconto <= 0 && valorRestante < baseEsperada) {
       valorDesconto = Math.max(0, baseEsperada - valorRestante);
       motivoDesconto = valorRestante === 0 ? 'Cortesia' : 'Desconto Concedido';
@@ -3776,7 +3927,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Se a sessão VIP possui valor_total (mensalidade cobrada na 1ª sessão), preserva o valor recebido
           const isMensalidadeVipCobrada = a.valor_total > 0 && valorRestante > 0;
           const novoValorTotal = (pagoComClube && !isMensalidadeVipCobrada)
-            ? totalAdicionalProdutos 
+            ? (totalAdicionalProdutos + (adicional?.valor || 0)) 
             : valorRestante;
 
           const atualizado: Agendamento = {
@@ -3786,7 +3937,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             pago_com_clube: pagoComClube,
             valor_total: novoValorTotal,
             desconto_valor: valorDesconto > 0 ? valorDesconto : undefined,
-            desconto_motivo: valorDesconto > 0 ? motivoDesconto : undefined
+            desconto_motivo: valorDesconto > 0 ? motivoDesconto : undefined,
+            valor_adicional: adicional && adicional.valor > 0 ? adicional.valor : undefined,
+            motivo_adicional: adicional && adicional.valor > 0 ? (adicional.motivo || 'Adicional') : undefined
           };
           const sIds = (itensAgendamento[a.id] && itensAgendamento[a.id].length > 0) 
             ? itensAgendamento[a.id] 
@@ -3829,7 +3982,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    // 4. Registrar pagamento do valor recebido (restante do serviço + produtos)
+    // 4. Registrar pagamento do valor recebido (restante do serviço + produtos + adicional)
     if (valorRestante > 0) {
       const pagFinal: Pagamento = {
         id: 'p_' + gerarId(),
@@ -3852,6 +4005,31 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     marcarAvisoComoLido(agendamentoId);
     mostrarNotificacaoGlobal('✅ Atendimento concluído com sucesso e sincronizado na nuvem!');
+  };
+
+  const atualizarAdicionalAgendamento = (id: string, valor?: number, motivo?: string) => {
+    setAgendamentos(prev => prev.map(a => {
+      if (a.id === id) {
+        const valAntigo = Number(a.valor_adicional) || 0;
+        const novoVal = valor && valor > 0 ? valor : undefined;
+        const novoMot = novoVal ? (motivo?.trim() || 'Adicional') : undefined;
+        const diff = (novoVal || 0) - valAntigo;
+        const novoTotal = Math.max(0, (a.valor_total || 0) + diff);
+        const atualizado: Agendamento = {
+          ...a,
+          valor_total: a.status === 'concluido' ? novoTotal : a.valor_total,
+          valor_adicional: novoVal,
+          motivo_adicional: novoMot
+        };
+        const sIds = (itensAgendamento[a.id] && itensAgendamento[a.id].length > 0)
+          ? itensAgendamento[a.id]
+          : obterServicosDeAgendamento(a.id).map(s => s.id);
+        salvarAgendamentoSupabase(atualizado, sIds);
+        return atualizado;
+      }
+      return a;
+    }));
+    mostrarNotificacaoGlobal('✅ Pagamento adicional atualizado com sucesso!');
   };
 
   // --- Ações de Lista de Espera ---
@@ -5069,6 +5247,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       remarcarAgendamento,
       atualizarValorSinalAgendamento,
       atualizarServicosEProfissionalAgendamento,
+      atualizarAdicionalAgendamento,
       cancelAgendamento,
       deleteAgendamento,
       confirmarSinal,
@@ -5099,6 +5278,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addDespesa,
       updateDespesa,
       deleteDespesa,
+      deleteDespesaGrupo,
       categoriasDespesa,
       addCategoriaDespesa,
       deleteCategoriaDespesa,

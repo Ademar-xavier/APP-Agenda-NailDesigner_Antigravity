@@ -46,6 +46,7 @@ interface ClientePublico {
   id: string;
   nome: string;
   telefone: string;
+  sexo?: 'feminino' | 'masculino';
 }
 
 interface ServicoPublico {
@@ -220,7 +221,7 @@ export const PublicConfirmacao: React.FC = () => {
         if (agendamentoData.cliente_id) {
           const { data: clienteData } = await supabase
             .from('clientes')
-            .select('id, nome, telefone')
+            .select('id, nome, telefone, sexo')
             .eq('id', agendamentoData.cliente_id)
             .maybeSingle();
           if (clienteData && isMounted) {
@@ -453,7 +454,8 @@ export const PublicConfirmacao: React.FC = () => {
         const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
-        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ A cliente *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
+        const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ ${artigoCliente} *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
         if (telDest) {
           if (dadosSalao?.meta_whatsapp?.ativo) {
             enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
@@ -469,10 +471,11 @@ export const PublicConfirmacao: React.FC = () => {
       } catch (err) {}
 
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+      const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'confirmacao',
         titulo: 'Presença Confirmada! ✅',
-        mensagem: `A cliente ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
+        mensagem: `${artigoCliente} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
         detalhes: `Horário #${agendamento.id}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome
@@ -516,7 +519,8 @@ export const PublicConfirmacao: React.FC = () => {
         const telDest = dadosProfissional?.telefone ? dadosProfissional.telefone.replace(/\D/g, '') : dadosSalao.telefone;
         const dataFormatada = new Date(agendamento.inicio).toLocaleDateString('pt-BR');
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
-        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ A cliente *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
+        const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ ${artigoCliente} *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
         if (telDest) {
           if (dadosSalao?.meta_whatsapp?.ativo) {
             enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
@@ -532,10 +536,11 @@ export const PublicConfirmacao: React.FC = () => {
       } catch (err) {}
 
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+      const artigoCliente = cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'cancelamento',
         titulo: 'Horário Cancelado ❌',
-        mensagem: `A cliente ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
+        mensagem: `${artigoCliente} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
         detalhes: `Motivo: ${motivoFinal}`,
         agendamentoId: agendamento.id,
         clienteNome: cliente?.nome
@@ -917,7 +922,7 @@ export const PublicConfirmacao: React.FC = () => {
                           enviarNotificacaoRealtimeMultiDispositivos({
                             tipo: 'pagamento_sinal',
                             titulo: 'Comprovante Pix Informado! 💵',
-                            mensagem: `A cliente ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
+                            mensagem: `${cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente'} ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
                             detalhes: `Agendamento #${agendamento.id}`,
                             agendamentoId: agendamento.id,
                             clienteNome: cliente?.nome
@@ -1086,7 +1091,7 @@ export const PublicConfirmacao: React.FC = () => {
               className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] hover:underline transition-colors flex items-center gap-1.5 bg-white border border-[#EFECE6] px-3.5 py-1.5 rounded-full shadow-2xs"
             >
               <CalendarIcon size={13} />
-              <span>Agendamento Online · Página da Cliente</span>
+              <span>Agendamento Online · {cliente?.sexo === 'masculino' ? 'Página do Cliente' : 'Página da Cliente'}</span>
             </a>
             <a 
               href="#admin" 

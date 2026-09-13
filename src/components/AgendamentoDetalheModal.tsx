@@ -75,7 +75,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     mostrarAlerta,
     produtos,
     planosAssinatura,
-    reservarRecorrenciaSemanalVip
+    reservarRecorrenciaSemanalVip,
+    atualizarAdicionalAgendamento
   } = useAppState();
 
   const [acao, setAcao] = useState<Acao>(null);
@@ -153,10 +154,20 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   const isVip = !!(
     agendamento?.pago_com_clube ||
-    agendamento?.plano_id ||
-    agendamento?.observacoes?.includes('Clube VIP') ||
-    agendamento?.observacoes?.includes('👑')
+    agendamento?.recorrencia_tipo === 'vip' ||
+    (
+      agendamento?.observacoes?.includes('Clube VIP') && 
+      !agendamento?.observacoes?.includes('avulso') && 
+      !agendamento?.observacoes?.includes('Avulso')
+    ) ||
+    (
+      agendamento?.observacoes?.includes('👑') && 
+      !agendamento?.observacoes?.includes('avulso') && 
+      !agendamento?.observacoes?.includes('Avulso')
+    )
   );
+
+  const clienteTemVipAtivo = Boolean(cliente?.assinatura && cliente.assinatura.status === 'ativo');
 
   const duracaoMinutosAgendamento = useMemo(() => {
     if (!agendamento?.inicio || !agendamento?.fim) return 60;
@@ -367,19 +378,21 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [descontoValor, setDescontoValor] = useState<number>(agendamento?.desconto_valor || 0);
   const [descontoMotivo, setDescontoMotivo] = useState<string>(agendamento?.desconto_motivo || 'Desconto acordado');
 
+  // Estados de Pagamento Adicional (Extra / Procedimentos Adicionais)
+  const [adicionalValorStr, setAdicionalValorStr] = useState<string>(
+    agendamento?.valor_adicional ? String(agendamento.valor_adicional) : ''
+  );
+  const [adicionalMotivo, setAdicionalMotivo] = useState<string>(
+    agendamento?.motivo_adicional || ''
+  );
+
   // Estados de Produtos na Comanda e Clube VIP
   const [produtosComanda, setProdutosComanda] = useState<ItemComandaProduto[]>(agendamento?.produtos || []);
   const [produtoSelecionadoId, setProdutoSelecionadoId] = useState('');
   const [produtoQtd, setProdutoQtd] = useState(1);
-  const isVipAgendamento = Boolean(
-    agendamento?.pago_com_clube ||
-    agendamento?.observacoes?.includes('Clube VIP') ||
-    agendamento?.observacoes?.includes('👑') ||
-    (cliente?.assinatura && cliente.assinatura.status === 'ativo')
-  );
+  const isVipAgendamento = isVip;
   const temAssinaturaAtiva = Boolean(
-    (cliente?.assinatura && cliente.assinatura.status === 'ativo') ||
-    isVipAgendamento
+    clienteTemVipAtivo || isVipAgendamento
   );
   const sessaoNumRawCalculado = agendamento?.recorrencia_posicao || (agendamento?.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
   const sessaoNumCalculado = sessaoNumRawCalculado ? Number(sessaoNumRawCalculado) : null;
@@ -433,6 +446,18 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       }
       setProdutosComanda(prods);
 
+      let adicVal = agendamento.valor_adicional !== undefined ? Number(agendamento.valor_adicional) : 0;
+      let adicMot = agendamento.motivo_adicional || '';
+      if ((!adicVal || adicVal === 0) && agendamento.observacoes?.includes('[ADICIONAL:')) {
+        const m = agendamento.observacoes.match(/\[ADICIONAL:\s*([\d.]+)\s*\|\s*([^\]]+)\]/i);
+        if (m) {
+          adicVal = parseFloat(m[1]) || 0;
+          adicMot = m[2]?.trim() || '';
+        }
+      }
+      setAdicionalValorStr(adicVal > 0 ? String(adicVal) : '');
+      setAdicionalMotivo(adicMot);
+
       if (agendamento.status === 'falta' && agendamento.motivo_cancelamento) {
         setMotivoFalta(agendamento.motivo_cancelamento);
       }
@@ -450,7 +475,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         }
       }
     }
-  }, [agendamento?.id, agendamento?.valor_sinal, agendamento?.profissional_id, agendamento?.desconto_valor, agendamento?.observacoes, servs.length]);
+  }, [agendamento?.id, agendamento?.valor_sinal, agendamento?.profissional_id, agendamento?.desconto_valor, agendamento?.valor_adicional, agendamento?.observacoes, servs.length]);
 
   useEffect(() => {
     if (servs && servs.length > 0) {
@@ -471,9 +496,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
   useEffect(() => {
     if (agendamento) {
-      // Calcula o valor total a receber considerando sinal, clube vip, desconto e produtos de balcão
+      // Calcula o valor total a receber considerando sinal, clube vip, desconto, produtos de balcão e adicional
       const jaPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
       const totalProdutos = produtosComanda.reduce((acc, p) => acc + p.subtotal, 0);
+      const adicNum = Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0);
       const precoContratado = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
         ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
         : agendamento.valor_total;
@@ -484,9 +510,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       // Na 1ª Sessão com valor_total > 0, o valor cobrado é a mensalidade do plano VIP (não é isenta)
       const isSessaoIsentaClube = usarSaldoClube && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
       const valorServico = isSessaoIsentaClube ? 0 : valorServicoComDesconto;
-      setValorRecebido(valorServico + totalProdutos);
+      setValorRecebido(valorServico + totalProdutos + adicNum);
     }
-  }, [agendamento, produtosComanda, usarSaldoClube, descontoValor, isPrimeiraSessaoVip]);
+  }, [agendamento, produtosComanda, usarSaldoClube, descontoValor, isPrimeiraSessaoVip, adicionalValorStr]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -606,6 +632,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
           cliente: cliente.nome,
+          sexo: cliente.sexo || 'feminino',
           servico: servText,
           profissional: prof?.nome || 'Sheila',
           data: dataFormatada,
@@ -634,6 +661,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         msg = preencherTemplateWhatsApp(templateLembrete, {
           cliente: cliente.nome,
+          sexo: cliente.sexo || 'feminino',
           servico: servText,
           dia_relativo: diaRelativo,
           data: dataFormatada,
@@ -737,6 +765,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
     let msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.confirmacao, {
       cliente: cliente.nome,
+      sexo: cliente.sexo || 'feminino',
       servico: servText,
       profissional: prof?.nome || 'Sheila',
       data: dataFormatada,
@@ -875,13 +904,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   };
 
   const handleConcluir = () => {
-    // Calcula a base esperada dos serviços + produtos menos sinal
+    // Calcula a base esperada dos serviços + produtos + adicional menos sinal
     const precoOriginal = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
       ? Math.max(agendamento.valor_total, servs[0]?.preco || 0)
       : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
     const totalProdutos = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
     const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
-    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalProdutos;
+    const adicNum = Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0);
+    const baseEsperada = Math.max(0, precoOriginal - sinalPago) + totalProdutos + adicNum;
 
     let finalDescValor = Math.max(0, Number(descontoValor) || 0);
     let finalDescMotivo = (descontoMotivo || '').trim() || 'Desconto Concedido';
@@ -901,7 +931,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       produtosComanda.length > 0 ? produtosComanda : undefined, 
       usarSaldoClube,
       usarSaldoClube ? servicoAbaterId : undefined,
-      finalDescValor > 0 ? { valor: finalDescValor, motivo: finalDescMotivo } : undefined
+      finalDescValor > 0 ? { valor: finalDescValor, motivo: finalDescMotivo } : undefined,
+      adicNum > 0 ? { valor: adicNum, motivo: adicionalMotivo || 'Adicional' } : undefined
     );
     setAcao(null);
     onClose();
@@ -1256,6 +1287,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
             )}
 
+            {!isVip && clienteTemVipAtivo && (
+              <div className="mb-2.5 p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 border border-amber-200 shrink-0">
+                    <Crown size={15} />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-amber-950 block">
+                      Lembrete: Cliente com Assinatura VIP ({cliente?.assinatura?.plano_nome || 'Clube VIP'})
+                    </span>
+                    <span className="text-[10px] text-amber-800">
+                      Saldo disponível: {cliente?.assinatura?.itens_saldo?.reduce((acc, it) => acc + (it.saldo_restante || 0), 0) || 0} sessões. (Agendamento de serviço avulso com cobrança normal)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Lista de Procedimentos / Serviços */}
             {servs.length === 0 ? (
               <div className="p-3 bg-white border border-dashed border-[#E8DEC9] rounded-xl text-center space-y-1.5 my-1">
@@ -1362,6 +1411,44 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         <span className="font-bold text-[#8C6D58]">{formatarMoeda(p.subtotal || (p.quantidade * p.preco_unitario))}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Pagamento Adicional (Extra / Procedimento Adicional - Histórico) */}
+            {(() => {
+              const adicVal = agendamento.valor_adicional || (acao === 'concluir' && Number(adicionalValorStr.replace(',', '.')) > 0 ? Number(adicionalValorStr.replace(',', '.')) : 0);
+              const adicMot = agendamento.motivo_adicional || adicionalMotivo || 'Adicional';
+              if (!adicVal || adicVal <= 0) return null;
+
+              return (
+                <div className="mt-2.5 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between text-xs text-amber-900 shadow-2xs">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Plus size={12} className="text-amber-700" />
+                    <span>Pagamento Adicional ({adicMot}):</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-amber-800">+{formatarMoeda(adicVal)}</span>
+                    {agendamento.status === 'concluido' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          confirmarAcao({
+                            titulo: 'Remover Adicional',
+                            mensagem: `Deseja remover a cobrança adicional de ${formatarMoeda(adicVal)} deste agendamento?`,
+                            tipo: 'aviso',
+                            textoConfirmar: 'Remover',
+                            textoCancelar: 'Cancelar',
+                            onConfirm: () => atualizarAdicionalAgendamento(agendamento.id, undefined, undefined)
+                          });
+                        }}
+                        className="text-red-500 hover:text-red-700 p-0.5 rounded cursor-pointer"
+                        title="Remover cobrança adicional"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -2270,6 +2357,60 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
             </div>
 
+            {/* Campo de Pagamento Adicional (Extra / Procedimentos Adicionais) */}
+            <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Plus size={13} className="text-amber-600" />
+                  <label className="block text-[10px] font-bold text-[#8C6D58] uppercase">
+                    Pagamento Adicional
+                  </label>
+                </div>
+                <span className="text-[10px] text-[#8C7A6B]">Decoração, reparo ou extra</span>
+              </div>
+
+              {/* Botões rápidos de motivo adicional */}
+              <div className="flex flex-wrap gap-1">
+                {['Decoração', 'Alongamento Extra', 'Esmaltação Gel', 'Conserto de Unha', 'Taxa Extra'].map(mot => (
+                  <button
+                    key={mot}
+                    type="button"
+                    onClick={() => setAdicionalMotivo(mot)}
+                    className={`text-[10px] px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                      adicionalMotivo === mot
+                        ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                        : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                    }`}
+                  >
+                    {mot}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-amber-700">R$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={adicionalValorStr}
+                    onChange={(e) => {
+                      setAdicionalValorStr(e.target.value);
+                    }}
+                    className="w-full pl-8 pr-2 py-1.5 border border-[#EFECE6] rounded-lg text-xs font-bold text-amber-900 bg-[#FAF9F6] focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Motivo (ex: Unha decorada)"
+                  value={adicionalMotivo}
+                  onChange={(e) => setAdicionalMotivo(e.target.value)}
+                  className="w-full px-2.5 py-1.5 border border-[#EFECE6] rounded-lg text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                />
+              </div>
+            </div>
+
             {/* Campo de Desconto na Comanda (Negociação no Fechamento) */}
             {(() => {
               const precoOriginalServ = (agendamento.observacoes?.includes('Co-atendimento') || agendamento.observacoes?.includes('2 Profissionais'))
@@ -2277,7 +2418,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
               const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
               const totalProdsComanda = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
-              const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda;
+              const adicNum = Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0);
+              const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda + adicNum;
 
               return (
                 <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2">
@@ -2358,6 +2500,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   <span>R$ 0,00 (Sessão inclusa no plano)</span>
                 </div>
               )}
+              {Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0) > 0 && (
+                <div className="flex justify-between text-amber-800 font-semibold">
+                  <span>Adicional ({adicionalMotivo || 'Extra'}):</span>
+                  <span>+{formatarMoeda(Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0))}</span>
+                </div>
+              )}
               {descontoValor > 0 && !usarSaldoClube && (
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Desconto concedido ({descontoMotivo}):</span>
@@ -2416,7 +2564,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                       : (servs.length > 0 ? servs.reduce((acc, s) => acc + (Number(s.preco) || 0), 0) : agendamento.valor_total);
                     const sinalPago = agendamento.status === 'confirmado' ? (Number(agendamento.valor_sinal) || 0) : 0;
                     const totalProdsComanda = produtosComanda.reduce((acc, p) => acc + (p.subtotal || (p.quantidade * p.preco_unitario)), 0);
-                    const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda;
+                    const adicNum = Math.max(0, parseFloat(adicionalValorStr.replace(',', '.')) || 0);
+                    const baseParaCalculo = Math.max(0, precoOriginalServ - sinalPago) + totalProdsComanda + adicNum;
 
                     const isSessaoIsentaClube = (isVip || usarSaldoClube) && (!isPrimeiraSessaoVip || agendamento.valor_total === 0);
                     if (!isSessaoIsentaClube && baseParaCalculo > novoVal) {
