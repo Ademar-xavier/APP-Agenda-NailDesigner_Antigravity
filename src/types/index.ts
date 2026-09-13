@@ -274,6 +274,7 @@ export interface NotificacaoClienteAcao {
   titulo: string;
   mensagem: string;
   detalhes?: string;
+  servicosNomes?: string;
   hora: string;
   agendamentoId?: string;
   listaEsperaId?: string;
@@ -286,6 +287,7 @@ export interface AvisoCliente {
   titulo: string;
   mensagem: string;
   detalhes?: string;
+  servicosNomes?: string;
   hora: string;
   criadoEm: string;
   agendamentoId?: string;

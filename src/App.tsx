@@ -29,7 +29,8 @@ function AppContent() {
     fecharAlerta, 
     mostrarNotificacaoGlobal,
     notificacaoClienteAcao,
-    fecharNotificacaoClienteAcao
+    fecharNotificacaoClienteAcao,
+    obterServicosDeAgendamento
   } = useAppState();
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
@@ -798,8 +799,26 @@ function AppContent() {
                   {notificacaoClienteAcao.titulo}
                 </h4>
                 <p className="text-xs text-zinc-300 mt-1 leading-snug">
-                  {notificacaoClienteAcao.mensagem}
+                  {(() => {
+                    const servsNomes = notificacaoClienteAcao.servicosNomes || 
+                      (notificacaoClienteAcao.agendamentoId ? obterServicosDeAgendamento(notificacaoClienteAcao.agendamentoId).map(s => s.nome).join(' + ') : '');
+                    if (servsNomes && notificacaoClienteAcao.mensagem.includes(' agendou para ') && !notificacaoClienteAcao.mensagem.includes(servsNomes)) {
+                      return notificacaoClienteAcao.mensagem.replace(' agendou para ', ` agendou ${servsNomes} para `);
+                    }
+                    return notificacaoClienteAcao.mensagem;
+                  })()}
                 </p>
+                {(() => {
+                  const servsNomes = notificacaoClienteAcao.servicosNomes || 
+                    (notificacaoClienteAcao.agendamentoId ? obterServicosDeAgendamento(notificacaoClienteAcao.agendamentoId).map(s => s.nome).join(' + ') : '');
+                  if (!servsNomes) return null;
+                  return (
+                    <div className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-lg bg-pink-500/20 border border-pink-400/30 text-pink-200 text-[11px] font-semibold max-w-full">
+                      <span className="shrink-0">💅</span>
+                      <span className="truncate">{servsNomes}</span>
+                    </div>
+                  );
+                })()}
                 {notificacaoClienteAcao.detalhes && (
                   <p className="text-[11px] text-[#E0A899] font-medium mt-0.5">
                     {notificacaoClienteAcao.detalhes}
