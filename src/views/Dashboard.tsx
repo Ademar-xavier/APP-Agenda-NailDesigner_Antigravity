@@ -507,44 +507,58 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-72 overflow-y-auto pr-1">
-            {avisosNaoLidos.map((av) => (
-              <div
-                key={av.id}
-                onClick={() => setAvisoSelecionadoModal(av)}
-                className="p-3.5 rounded-xl border border-[#EFECE6] hover:border-[#8C6D58] bg-[#FAF9F6] hover:bg-white transition-all cursor-pointer shadow-2xs group flex flex-col justify-between gap-2 text-left"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                      av.tipo === 'confirmacao'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : av.tipo === 'cancelamento'
-                        ? 'bg-rose-100 text-rose-800'
-                        : av.tipo === 'espera'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-pink-100 text-pink-800'
-                    }`}>
-                      {av.tipo === 'confirmacao' ? 'Presença Confirmada' :
-                       av.tipo === 'cancelamento' ? 'Cancelamento' :
-                       av.tipo === 'espera' ? 'Fila de Espera' : 'Novo Agendamento'}
-                    </span>
-                    <span className="text-[10px] text-[#8C7A6B] font-mono">{av.hora}</span>
-                  </div>
+            {avisosNaoLidos.map((av) => {
+              const servs = av.agendamentoId ? obterServicosDeAgendamento(av.agendamentoId) : [];
+              const servsNomes = av.servicosNomes || (servs.length > 0 ? servs.map(s => s.nome).join(' + ') : '');
+              const msgExibicao = servsNomes && av.mensagem.includes(' agendou para ') && !av.mensagem.includes(servsNomes)
+                ? av.mensagem.replace(' agendou para ', ` agendou ${servsNomes} para `)
+                : av.mensagem;
 
-                  <h4 className="font-bold text-xs text-[#5A4535] group-hover:text-[#8C6D58] transition-colors line-clamp-1">
-                    {av.titulo}
-                  </h4>
+              return (
+                <div
+                  key={av.id}
+                  onClick={() => setAvisoSelecionadoModal(av)}
+                  className="p-3.5 rounded-xl border border-[#EFECE6] hover:border-[#8C6D58] bg-[#FAF9F6] hover:bg-white transition-all cursor-pointer shadow-2xs group flex flex-col justify-between gap-2 text-left"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                        av.tipo === 'confirmacao'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : av.tipo === 'cancelamento'
+                          ? 'bg-rose-100 text-rose-800'
+                          : av.tipo === 'espera'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-pink-100 text-pink-800'
+                      }`}>
+                        {av.tipo === 'confirmacao' ? 'Presença Confirmada' :
+                         av.tipo === 'cancelamento' ? 'Cancelamento' :
+                         av.tipo === 'espera' ? 'Fila de Espera' : 'Novo Agendamento'}
+                      </span>
+                      <span className="text-[10px] text-[#8C7A6B] font-mono">{av.hora}</span>
+                    </div>
 
-                  <p className="text-xs text-[#5A4535] leading-snug line-clamp-2">
-                    {av.mensagem}
-                  </p>
+                    <h4 className="font-bold text-xs text-[#5A4535] group-hover:text-[#8C6D58] transition-colors line-clamp-1">
+                      {av.titulo}
+                    </h4>
 
-                  {av.detalhes && (
-                    <p className="text-[10px] text-[#8C7A6B] italic truncate">
-                      {av.detalhes}
+                    <p className="text-xs text-[#5A4535] leading-snug line-clamp-2">
+                      {msgExibicao}
                     </p>
-                  )}
-                </div>
+
+                    {servsNomes && (
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#FAF1E8] text-[#8C6D58] text-[11px] font-semibold border border-[#E8D9CE]/80 max-w-full">
+                        <span className="shrink-0">💅</span>
+                        <span className="truncate">{servsNomes}</span>
+                      </div>
+                    )}
+
+                    {av.detalhes && (
+                      <p className="text-[10px] text-[#8C7A6B] italic truncate">
+                        {av.detalhes}
+                      </p>
+                    )}
+                  </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-[#EFECE6]/60 text-[11px]">
                   <span className="font-semibold text-[#8C6D58] group-hover:underline flex items-center gap-1">
@@ -565,7 +579,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </button>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
       ) : (
@@ -1130,27 +1145,49 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4">
-              <div>
-                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
-                  Mensagem
-                </span>
-                <p className="text-sm font-semibold text-[#5A4535] mt-1 leading-relaxed">
-                  {avisoSelecionadoModal.mensagem}
-                </p>
-              </div>
+            {(() => {
+              const servsModal = avisoSelecionadoModal.agendamentoId ? obterServicosDeAgendamento(avisoSelecionadoModal.agendamentoId) : [];
+              const servsNomesModal = avisoSelecionadoModal.servicosNomes || (servsModal.length > 0 ? servsModal.map(s => s.nome).join(' + ') : '');
+              const msgModalExibicao = servsNomesModal && avisoSelecionadoModal.mensagem.includes(' agendou para ') && !avisoSelecionadoModal.mensagem.includes(servsNomesModal)
+                ? avisoSelecionadoModal.mensagem.replace(' agendou para ', ` agendou ${servsNomesModal} para `)
+                : avisoSelecionadoModal.mensagem;
 
-              {avisoSelecionadoModal.detalhes && (
-                <div className="pt-2 border-t border-[#EFECE6]">
-                  <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
-                    Detalhes Adicionais
-                  </span>
-                  <p className="text-xs text-[#5A4535] mt-0.5">
-                    {avisoSelecionadoModal.detalhes}
-                  </p>
+              return (
+                <div className="space-y-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                      Mensagem
+                    </span>
+                    <p className="text-sm font-semibold text-[#5A4535] mt-1 leading-relaxed">
+                      {msgModalExibicao}
+                    </p>
+                  </div>
+
+                  {servsNomesModal && (
+                    <div className="pt-2 border-t border-[#EFECE6]">
+                      <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                        Serviço(s) Contratado(s)
+                      </span>
+                      <div className="mt-1 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#FAF1E8] text-[#8C6D58] font-bold text-xs border border-[#E8D9CE]">
+                        <span>💅</span>
+                        <span>{servsNomesModal}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {avisoSelecionadoModal.detalhes && (
+                    <div className="pt-2 border-t border-[#EFECE6]">
+                      <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                        Detalhes Adicionais
+                      </span>
+                      <p className="text-xs text-[#5A4535] mt-0.5">
+                        {avisoSelecionadoModal.detalhes}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
             <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
               <button

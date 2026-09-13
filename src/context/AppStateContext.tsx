@@ -559,7 +559,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       hora: horaAgora,
       agendamentoId: notif.agendamentoId,
       listaEsperaId: notif.listaEsperaId,
-      clienteNome: notif.clienteNome
+      clienteNome: notif.clienteNome,
+      servicosNomes: notif.servicosNomes
     });
 
     // Verifica se os alertas estão habilitados nas configurações (padrão true)
@@ -1478,6 +1479,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     titulo: av.titulo,
                     mensagem: av.mensagem,
                     detalhes: av.detalhes,
+                    servicosNomes: av.servicosNomes,
                     agendamentoId: av.agendamentoId,
                     listaEsperaId: av.listaEsperaId,
                     clienteNome: av.clienteNome
@@ -1654,18 +1656,63 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return [payload.new as Agendamento, ...prev];
           });
           if (payload.new?.origem === 'cliente') {
-            const cli = clientes.find(c => c.id === payload.new.cliente_id);
-            const cliNome = cli?.nome || 'Cliente';
+            let cliNome = 'Cliente';
+            try {
+              const cli = clientes.find(c => c.id === payload.new.cliente_id);
+              if (cli?.nome) {
+                cliNome = cli.nome;
+              } else {
+                const raw = localStorage.getItem('nail_clientes');
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  const found = parsed.find((c: any) => c.id === payload.new.cliente_id);
+                  if (found?.nome) cliNome = found.nome;
+                }
+              }
+            } catch (e) {}
+
             const dataFmt = payload.new.inicio ? new Date(payload.new.inicio).toLocaleDateString('pt-BR') : '';
             const horaFmt = payload.new.inicio?.split('T')[1]?.substring(0, 5) || '';
+
+            // Resolução inteligente dos nomes dos serviços
+            let servsNomes = '';
+            const itensServ = Array.isArray(payload.new.itens_servicos) ? payload.new.itens_servicos : [];
+            let todosServicos = servicos;
+            if (!todosServicos || todosServicos.length === 0) {
+              try {
+                const raw = localStorage.getItem('nail_servicos');
+                if (raw) todosServicos = JSON.parse(raw);
+              } catch (e) {}
+            }
+            if (itensServ.length > 0 && todosServicos) {
+              servsNomes = itensServ
+                .map((sid: string) => todosServicos.find(s => s.id === sid)?.nome)
+                .filter(Boolean)
+                .join(' + ');
+            }
+            if (!servsNomes && payload.new.servico_id && todosServicos) {
+              servsNomes = todosServicos.find(s => s.id === payload.new.servico_id)?.nome || '';
+            }
+            if (!servsNomes && payload.new.plano_id) {
+              let todosPlanos = planosAssinatura;
+              if (!todosPlanos || todosPlanos.length === 0) {
+                try {
+                  const raw = localStorage.getItem('nail_planos_vip');
+                  if (raw) todosPlanos = JSON.parse(raw);
+                } catch (e) {}
+              }
+              const plano = todosPlanos?.find(p => p.id === payload.new.plano_id);
+              if (plano) servsNomes = `Plano VIP: ${plano.nome}`;
+            }
 
             dispararNotificacaoCliente({
               tipo: 'agendamento',
               titulo: 'Novo Agendamento Recebido! 💅',
-              mensagem: `${cliNome} agendou para ${dataFmt} às ${horaFmt}.`,
-              detalhes: `Código #${payload.new.id} • ${payload.new.valor_sinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
+              mensagem: `${cliNome} agendou ${servsNomes ? `${servsNomes} ` : ''}para ${dataFmt} às ${horaFmt}.`,
+              detalhes: `${servsNomes ? `💅 ${servsNomes} • ` : ''}Código #${payload.new.id} • ${payload.new.valor_sinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
               agendamentoId: payload.new.id,
-              clienteNome: cliNome
+              clienteNome: cliNome,
+              servicosNomes: servsNomes || undefined
             });
           }
         } else if (payload.eventType === 'UPDATE') {
@@ -1872,6 +1919,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                     titulo: av.titulo,
                     mensagem: av.mensagem,
                     detalhes: av.detalhes,
+                    servicosNomes: av.servicosNomes,
                     agendamentoId: av.agendamentoId,
                     listaEsperaId: av.listaEsperaId,
                     clienteNome: av.clienteNome

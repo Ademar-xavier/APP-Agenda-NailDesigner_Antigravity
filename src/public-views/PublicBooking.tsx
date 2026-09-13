@@ -658,22 +658,25 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         }
       } catch (err) {}
 
+      const servDesc = isContratandoVip ? `Plano VIP: ${planoVipEscolhido?.nome || 'Assinatura'}` : servsText;
+
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'agendamento',
         titulo: 'Novo Agendamento Recebido! 💅',
-        mensagem: `${nome} agendou para ${dataFmt} às ${horarioSelecionado}.`,
-        detalhes: `Código #${res.agendamento.id} • ${valorSinalFinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
+        mensagem: `${nome} agendou ${servDesc ? `${servDesc} ` : ''}para ${dataFmt} às ${horarioSelecionado}.`,
+        detalhes: `${servDesc ? `💅 ${servDesc} • ` : ''}Código #${res.agendamento.id} • ${valorSinalFinal > 0 ? 'Aguardando sinal Pix' : 'Confirmado'}`,
         agendamentoId: res.agendamento.id,
         clienteId: cId,
-        clienteNome: nome
+        clienteNome: nome,
+        servicosNomes: servDesc
       });
 
       // Dispara notificação na barra de status / notification tray do aparelho
       dispararNotificacaoBarraStatus(
         'Novo Agendamento Registrado! 💅',
-        `${nome} agendou para ${dataFmt} às ${horarioSelecionado}.`,
-        isContratandoVip ? `Plano VIP: ${planoVipEscolhido.nome}` : `${servsText} • ${formatarMoeda(precoTotal)}`,
+        `${nome} agendou ${servDesc ? `${servDesc} ` : ''}para ${dataFmt} às ${horarioSelecionado}.`,
+        isContratandoVip ? `Plano VIP: ${planoVipEscolhido?.nome || 'Assinatura'}` : `${servsText} • ${formatarMoeda(precoTotal)}`,
         res.agendamento.id
       ).catch(() => {});
     }
@@ -756,14 +759,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     } catch (err) {}
 
     // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
+    const servsEsperaText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
     enviarNotificacaoRealtimeMultiDispositivos({
       tipo: 'espera',
       titulo: 'Nova Inscrição na Lista de Espera ⏳',
-      mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}.`,
-      detalhes: `Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`,
+      mensagem: `${nome} entrou na fila para ${formatarDataLocal(dataSelecionada)}${servsEsperaText ? ` (${servsEsperaText})` : ''}.`,
+      detalhes: `${servsEsperaText ? `💅 ${servsEsperaText} • ` : ''}Período: ${periodoPreferido === 'qualquer' ? 'Qualquer' : periodoPreferido}`,
       listaEsperaId: waitlistItem?.id,
       clienteId: cId,
-      clienteNome: nome
+      clienteNome: nome,
+      servicosNomes: servsEsperaText
     });
 
     setStep(7);

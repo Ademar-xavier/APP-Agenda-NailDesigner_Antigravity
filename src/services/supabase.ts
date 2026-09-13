@@ -841,6 +841,7 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
   titulo: string;
   mensagem: string;
   detalhes?: string;
+  servicosNomes?: string;
   agendamentoId?: string;
   listaEsperaId?: string;
   clienteNome?: string;

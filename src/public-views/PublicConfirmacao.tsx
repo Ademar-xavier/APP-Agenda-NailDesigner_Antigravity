@@ -478,13 +478,15 @@ export const PublicConfirmacao: React.FC = () => {
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
       const isMascNotif = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
       const artigoClienteNotif = isMascNotif ? 'O cliente' : 'A cliente';
+      const servsNomes = (servicos && servicos.length > 0) ? servicos.map(s => s.nome).join(' + ') : '';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'confirmacao',
         titulo: 'Presença Confirmada! ✅',
-        mensagem: `${artigoClienteNotif} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}.`,
-        detalhes: `Horário #${agendamento.id}`,
+        mensagem: `${artigoClienteNotif} ${cliente?.nome || 'Cliente'} confirmou presença para o dia ${new Date(agendamento.inicio).toLocaleDateString('pt-BR')}${servsNomes ? ` (${servsNomes})` : ''}.`,
+        detalhes: `${servsNomes ? `💅 ${servsNomes} • ` : ''}Horário #${agendamento.id}`,
         agendamentoId: agendamento.id,
-        clienteNome: cliente?.nome
+        clienteNome: cliente?.nome,
+        servicosNomes: servsNomes || undefined
       });
     } catch (e) {
       console.error('Erro ao confirmar:', e);
@@ -545,13 +547,15 @@ export const PublicConfirmacao: React.FC = () => {
       // Dispara notificação em tempo real para todos os celulares e aparelhos conectados à nuvem
       const isMascCancelNotif = cliente?.sexo === 'masculino' || cliente?.preferencias?.sexo === 'masculino' || (detectarGeneroPorNome(cliente?.nome || '') === 'masculino');
       const artigoClienteCancelNotif = isMascCancelNotif ? 'O cliente' : 'A cliente';
+      const servsCancelNomes = (servicos && servicos.length > 0) ? servicos.map(s => s.nome).join(' + ') : '';
       enviarNotificacaoRealtimeMultiDispositivos({
         tipo: 'cancelamento',
         titulo: 'Horário Cancelado ❌',
-        mensagem: `${artigoClienteCancelNotif} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}.`,
-        detalhes: `Motivo: ${motivoFinal}`,
+        mensagem: `${artigoClienteCancelNotif} ${cliente?.nome || 'Cliente'} cancelou o agendamento #${agendamento.id}${servsCancelNomes ? ` (${servsCancelNomes})` : ''}.`,
+        detalhes: `${servsCancelNomes ? `💅 ${servsCancelNomes} • ` : ''}Motivo: ${motivoFinal}`,
         agendamentoId: agendamento.id,
-        clienteNome: cliente?.nome
+        clienteNome: cliente?.nome,
+        servicosNomes: servsCancelNomes || undefined
       });
     } catch (e) {
       console.error('Erro ao cancelar:', e);
@@ -927,13 +931,15 @@ export const PublicConfirmacao: React.FC = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={() => {
+                          const servsPixNomes = (servicos && servicos.length > 0) ? servicos.map(s => s.nome).join(' + ') : '';
                           enviarNotificacaoRealtimeMultiDispositivos({
                             tipo: 'pagamento_sinal',
                             titulo: 'Comprovante Pix Informado! 💵',
-                            mensagem: `${cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente'} ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}.`,
-                            detalhes: `Agendamento #${agendamento.id}`,
+                            mensagem: `${cliente?.sexo === 'masculino' ? 'O cliente' : 'A cliente'} ${cliente?.nome || 'Cliente'} enviou o comprovante do sinal de R$ ${agendamento.valor_sinal}${servsPixNomes ? ` (${servsPixNomes})` : ''}.`,
+                            detalhes: `${servsPixNomes ? `💅 ${servsPixNomes} • ` : ''}Agendamento #${agendamento.id}`,
                             agendamentoId: agendamento.id,
-                            clienteNome: cliente?.nome
+                            clienteNome: cliente?.nome,
+                            servicosNomes: servsPixNomes || undefined
                           });
                         }}
                         className="w-full py-3.5 px-4 bg-[#25D366] hover:bg-[#20bd5a] active:scale-[0.99] text-white rounded-2xl font-bold text-sm transition-all shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2"
