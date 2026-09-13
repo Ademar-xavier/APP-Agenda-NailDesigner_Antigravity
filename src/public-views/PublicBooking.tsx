@@ -548,12 +548,12 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     }
 
     const profNome = equipe.find(p => p.id === profFinalId)?.nome || profissionaisAptas.find(p => p.id === profFinalId)?.nome || 'Sheila Santos';
-    const idPlanoEfetivo = planoVipEscolhido?.id || cliExistente?.assinatura?.plano_id;
+    const idPlanoEfetivo = isContratandoVip ? (planoVipEscolhido?.id || undefined) : undefined;
     const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
-    const nomePlanoVip = planoVipEscolhido?.nome || cliExistente?.assinatura?.nome_plano || 'Clube VIP';
+    const nomePlanoVip = planoVipEscolhido?.nome || 'Clube VIP';
     const obsVip = isContratandoVip 
       ? `[👑 Adesão Clube VIP: ${nomePlanoVip}${tagPlanoId}] ` 
-      : (isAssinanteVip ? `[👑 Assinante VIP: ${nomePlanoVip}${tagPlanoId} (Serviço Avulso)] ` : '');
+      : (isAssinanteVip ? `[👑 Cliente VIP (Procedimento Avulso)] ` : '');
     const obsComProf = `${obsVip}[Atendente: ${profNome}]${observacoes ? ' ' + observacoes : ''}`;
 
     const precoPlanoVip = Number(planoVipEscolhido?.preco_mensal) || 0;
@@ -567,10 +567,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       valor_total: valorTotalParaSalvar,
       valor_sinal: valorSinalFinal,
       pago_com_clube: isContratandoVip,
-      plano_id: idPlanoEfetivo,
+      plano_id: isContratandoVip ? idPlanoEfetivo : undefined,
       observacoes: obsComProf,
       origem: 'cliente'
-    }, servicosSelecionados, undefined, planoVipEscolhidoId || undefined);
+    }, servicosSelecionados, undefined, isContratandoVip ? (planoVipEscolhidoId || undefined) : undefined);
 
     if (res.success && res.agendamento) {
       // Garante persistência no Supabase com integridade referencial antes de mudar de etapa

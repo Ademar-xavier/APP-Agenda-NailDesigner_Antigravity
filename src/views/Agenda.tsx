@@ -1031,7 +1031,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       ? 'bloqueado'
       : (isVipFinal ? 'confirmado' : (cobrarSinal ? 'pendente' : 'confirmado'));
 
-    const idPlanoEfetivo = planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id;
+    const idPlanoEfetivo = isVipFinal ? (planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id) : undefined;
     const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
     const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
     const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
@@ -1107,10 +1107,10 @@ export const Agenda: React.FC<AgendaProps> = ({
       valor_total: totalFinal,
       valor_sinal: valorSinalFinal,
       pago_com_clube: isVipFinal,
-      plano_id: idPlanoEfetivo,
+      plano_id: isVipFinal ? idPlanoEfetivo : undefined,
       observacoes: obsFinal,
       origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, idPlanoEfetivo);
+    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, isVipFinal ? idPlanoEfetivo : undefined);
 
     if (res.success) {
       // Limpar formulário
