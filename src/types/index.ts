@@ -18,6 +18,13 @@ export interface Usuario {
   horario_almoco_ativo?: boolean; // Se o horário de almoço padrão está ativado
   horario_almoco_inicio?: string; // Horário de início do almoço (ex: '12:00')
   horario_almoco_fim?: string; // Horário de término do almoço (ex: '13:00')
+  horarios_almoco?: {
+    [diaSemana: number]: {
+      ativo: boolean;
+      inicio: string;
+      fim: string;
+    };
+  };
 }
 
 export interface Cliente {
@@ -26,10 +33,12 @@ export interface Cliente {
   nome: string;
   telefone: string;
   email?: string;
+  sexo?: 'feminino' | 'masculino'; // Feminino (padrão) ou Masculino
   aniversario?: string; // YYYY-MM-DD
   observacoes?: string;
   alergias?: string;
   preferencias?: {
+    sexo?: 'feminino' | 'masculino';
     formato?: string; // Quadrada, Amendoada, Stiletto, etc.
     tamanho?: string; // Curto, Médio, Longo
     tecnica?: string; // Gel, Fibra de Vidro, Acrílico, Esmaltação em Gel
@@ -92,6 +101,8 @@ export interface Agendamento {
   plano_id?: string; // ID interno imutável do plano VIP vinculado
   desconto_valor?: number; // Valor de desconto concedido no fechamento
   desconto_motivo?: string; // Motivo do desconto (ex: Cortesia, Fidelidade)
+  valor_adicional?: number; // Valor adicional cobrado no fechamento (ex: Nail Art, Reparo)
+  motivo_adicional?: string; // Motivo do adicional (ex: Decoração extra, Unhas extras)
   recorrencia_grupo_id?: string; // ID comum compartilhado entre agendamentos da mesma série recorrente
   recorrencia_tipo?: 'nenhuma' | 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado';
   recorrencia_posicao?: string; // Ex: "1 de 4", "2 de 4"
@@ -291,6 +302,14 @@ export interface Despesa {
   valor: number;
   data: string;
   fechamento_id?: string;
+  tipo_destino?: 'salao' | 'profissional'; // 'salao' ou 'profissional'
+  profissional_id?: string; // Profissional a quem a despesa se destina
+  forma_pagamento?: 'a_vista' | 'parcelado';
+  parcelas_total?: number; // Ex: 3
+  parcela_atual?: number; // Ex: 1 (1/3), 2 (2/3), 3 (3/3)
+  parcelamento_grupo_id?: string; // ID compartilhado entre parcelas da mesma despesa
+  mes_inicio?: string; // YYYY-MM de início
+  material_id?: string; // Se a despesa foi originada da compra de um material
 }
 
 export interface Material {

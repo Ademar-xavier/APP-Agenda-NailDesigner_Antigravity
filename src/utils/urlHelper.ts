@@ -112,7 +112,21 @@ export const gerarLinkWhatsApp = (telefone?: string, mensagem: string = ''): str
 };
 
 /**
+ * Auxiliar para concordância de gênero (Masculino / Feminino)
+ */
+export const formatarTratamentoGenero = (sexo?: 'feminino' | 'masculino') => {
+  const isMasc = sexo === 'masculino';
+  return {
+    bemVindo: isMasc ? 'Bem-vindo' : 'Bem-vinda',
+    obrigado: isMasc ? 'Obrigado' : 'Obrigada',
+    querido: isMasc ? 'Querido' : 'Querida',
+    amigo: isMasc ? 'Amigo' : 'Amiga',
+  };
+};
+
+/**
  * Preenche templates de WhatsApp substituindo TODAS as ocorrências de tags dinâmicas ({cliente}, {servico}, etc.)
+ * e aplicando concordância de gênero gramatical de acordo com o sexo do cliente.
  */
 export const preencherTemplateWhatsApp = (
   template: string,
@@ -121,7 +135,19 @@ export const preencherTemplateWhatsApp = (
   if (!template) return '';
   let resultado = template;
 
-  const valorSinalNum = Number(variaveis.sinal || 0);
+  const isMasc = variaveis.sexo === 'masculino';
+  const genero = formatarTratamentoGenero(isMasc ? 'masculino' : 'feminino');
+
+  // Variáveis automáticas de gênero
+  const varsCompletas: Record<string, string | number | undefined | null> = {
+    saudacao: genero.bemVindo,
+    saudacao_genero: genero.bemVindo,
+    agradecimento: genero.obrigado,
+    agradecimento_genero: genero.obrigado,
+    ...variaveis
+  };
+
+  const valorSinalNum = Number(varsCompletas.sinal || 0);
 
   // Se o sinal for zero ou não informado, remove menção a pagamento de sinal de R$ 0
   if (valorSinalNum <= 0) {
@@ -131,11 +157,32 @@ export const preencherTemplateWhatsApp = (
   }
 
   // Substitui cada variável em todas as posições do texto
-  for (const [chave, valor] of Object.entries(variaveis)) {
+  for (const [chave, valor] of Object.entries(varsCompletas)) {
     if (valor !== undefined && valor !== null) {
       const regex = new RegExp(`\\{${chave}\\}`, 'gi');
       resultado = resultado.replace(regex, String(valor));
     }
+  }
+
+  // Ajuste contextual de concordância de gênero direto no texto
+  if (isMasc) {
+    resultado = resultado
+      .replace(/\bBem-vinda\b/g, 'Bem-vindo')
+      .replace(/\bbem-vinda\b/g, 'bem-vindo')
+      .replace(/\bObrigada\b/g, 'Obrigado')
+      .replace(/\bobrigada\b/g, 'obrigado')
+      .replace(/\bQuerida\b/g, 'Querido')
+      .replace(/\bquerida\b/g, 'querido')
+      .replace(/\bAmiga\b/g, 'Amigo')
+      .replace(/\bamiga\b/g, 'amigo');
+  } else {
+    resultado = resultado
+      .replace(/\bBem-vindo\b/g, 'Bem-vinda')
+      .replace(/\bbem-vindo\b/g, 'bem-vinda')
+      .replace(/\bObrigado\b/g, 'Obrigada')
+      .replace(/\bobrigado\b/g, 'obrigada')
+      .replace(/\bQuerido\b/g, 'Querida')
+      .replace(/\bquerido\b/g, 'querida');
   }
 
   // Limpa espaços duplos e quebras de linha acumuladas
@@ -144,3 +191,4 @@ export const preencherTemplateWhatsApp = (
 
   return resultado;
 };
+

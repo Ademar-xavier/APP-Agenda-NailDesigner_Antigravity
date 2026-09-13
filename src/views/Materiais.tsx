@@ -17,7 +17,9 @@ export const Materiais: React.FC = () => {
     addMaterial, 
     updateMaterial, 
     deleteMaterial,
-    confirmarAcao
+    confirmarAcao,
+    addDespesa,
+    equipe
   } = useAppState();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -33,6 +35,14 @@ export const Materiais: React.FC = () => {
   const [precoCompra, setPrecoCompra] = useState(0);
   const [rendimento, setRendimento] = useState(1);
   const [errorMaterial, setErrorMaterial] = useState('');
+
+  // Estados de Despesa Vinculada
+  const [lancarDespesa, setLancarDespesa] = useState(true);
+  const [despesaDestino, setDespesaDestino] = useState<'salao' | 'profissional'>('salao');
+  const [despesaProfissionalId, setDespesaProfissionalId] = useState('');
+  const [despesaForma, setDespesaForma] = useState<'a_vista' | 'parcelado'>('a_vista');
+  const [despesaParcelas, setDespesaParcelas] = useState(2);
+  const [despesaMesInicio, setDespesaMesInicio] = useState(new Date().toLocaleDateString('en-CA').slice(0, 7));
 
   const formatarMoeda = (val: any) => {
     const num = Number(val);
@@ -69,6 +79,11 @@ export const Materiais: React.FC = () => {
     setPrecoCompra(0);
     setRendimento(10);
     setErrorMaterial('');
+    setLancarDespesa(true);
+    setDespesaDestino('salao');
+    setDespesaForma('a_vista');
+    setDespesaParcelas(2);
+    setDespesaMesInicio(new Date().toLocaleDateString('en-CA').slice(0, 7));
     setModalOpen(true);
   };
 
@@ -79,6 +94,7 @@ export const Materiais: React.FC = () => {
     setPrecoCompra(mat.preco_compra);
     setRendimento(mat.rendimento);
     setErrorMaterial('');
+    setLancarDespesa(false);
     setModalOpen(true);
   };
 
@@ -99,7 +115,21 @@ export const Materiais: React.FC = () => {
     if (materialEdicao) {
       updateMaterial(materialEdicao.id, dados);
     } else {
-      addMaterial(dados);
+      const novo = addMaterial(dados);
+      if (lancarDespesa && precoCompra > 0) {
+        addDespesa({
+          descricao: `Material: ${nome} (${marca})`,
+          categoria: 'Materiais',
+          valor: precoCompra,
+          data: new Date().toLocaleDateString('en-CA'),
+          tipo_destino: despesaDestino,
+          profissional_id: despesaDestino === 'profissional' ? (despesaProfissionalId || equipe.find(u => u.ativo)?.id) : undefined,
+          forma_pagamento: despesaForma,
+          parcelas_total: despesaForma === 'parcelado' ? despesaParcelas : undefined,
+          mes_inicio: despesaForma === 'parcelado' ? despesaMesInicio : undefined,
+          material_id: novo?.id
+        });
+      }
     }
 
     setModalOpen(false);
@@ -351,6 +381,126 @@ export const Materiais: React.FC = () => {
                     />
                   </div>
                 </div>
+
+                {/* Opção de Lançar Compra no Financeiro */}
+                {!materialEdicao && (
+                  <div className="pt-3 border-t border-[#EFECE6] space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={lancarDespesa}
+                        onChange={(e) => setLancarDespesa(e.target.checked)}
+                        className="rounded text-[#8C6D58] focus:ring-[#8C6D58]"
+                      />
+                      <span className="text-xs font-bold text-[#5A4535]">
+                        Lançar esta compra como despesa no Financeiro
+                      </span>
+                    </label>
+
+                    {lancarDespesa && (
+                      <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EFECE6] space-y-3 animate-in fade-in duration-150">
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Destino do Custo</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDespesaDestino('salao')}
+                              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                despesaDestino === 'salao'
+                                  ? 'bg-[#8C6D58] text-white border-[#8C6D58]'
+                                  : 'bg-white text-[#5A4535] border-[#EFECE6]'
+                              }`}
+                            >
+                              🏢 Salão
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDespesaDestino('profissional')}
+                              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                despesaDestino === 'profissional'
+                                  ? 'bg-[#8C6D58] text-white border-[#8C6D58]'
+                                  : 'bg-white text-[#5A4535] border-[#EFECE6]'
+                              }`}
+                            >
+                              👤 Profissional
+                            </button>
+                          </div>
+
+                          {despesaDestino === 'profissional' && (
+                            <select
+                              value={despesaProfissionalId || equipe.find(u => u.ativo)?.id || ''}
+                              onChange={(e) => setDespesaProfissionalId(e.target.value)}
+                              className="w-full mt-2 border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                            >
+                              {equipe.filter(u => u.ativo).map(p => (
+                                <option key={p.id} value={p.id}>{p.nome}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">Forma de Pagamento</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDespesaForma('a_vista')}
+                              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                despesaForma === 'a_vista'
+                                  ? 'bg-[#8C6D58] text-white border-[#8C6D58]'
+                                  : 'bg-white text-[#5A4535] border-[#EFECE6]'
+                              }`}
+                            >
+                              À vista
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDespesaForma('parcelado')}
+                              className={`py-1.5 px-2 rounded-lg border text-xs font-semibold cursor-pointer ${
+                                despesaForma === 'parcelado'
+                                  ? 'bg-[#8C6D58] text-white border-[#8C6D58]'
+                                  : 'bg-white text-[#5A4535] border-[#EFECE6]'
+                              }`}
+                            >
+                              Parcelado
+                            </button>
+                          </div>
+
+                          {despesaForma === 'parcelado' && (
+                            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-[#EFECE6]">
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#8C7A6B] mb-1">Nº Parcelas</label>
+                                <select
+                                  value={despesaParcelas}
+                                  onChange={(e) => setDespesaParcelas(Number(e.target.value))}
+                                  className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
+                                >
+                                  {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map(n => (
+                                    <option key={n} value={n}>{n}x</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-semibold text-[#8C7A6B] mb-1">Mês Início</label>
+                                <input
+                                  type="month"
+                                  value={despesaMesInicio}
+                                  onChange={(e) => setDespesaMesInicio(e.target.value)}
+                                  className="w-full border border-[#EFECE6] rounded-lg px-2 py-1 text-xs text-[#5A4535] bg-white"
+                                />
+                              </div>
+                              {precoCompra > 0 && (
+                                <div className="col-span-2 text-[10.5px] text-[#8C6D58] font-bold text-center">
+                                  {despesaParcelas}x de {formatarMoeda(precoCompra / despesaParcelas)} / mês
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {precoCompra > 0 && rendimento > 0 && (
                   <div className="p-3 bg-[#FFF9E6] border border-[#FFECB3] rounded-xl text-center">

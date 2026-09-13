@@ -36,7 +36,7 @@ import {
   deletarFotoClienteSupabase,
   carregarFotosClienteSupabase
 } from '../services/supabase';
-import { getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
+import { getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp, formatarTratamentoGenero } from '../utils/urlHelper';
 import { gerarIdSeguro } from '../utils/cryptoHelper';
 import { ModalAnamnese } from '../components/ModalAnamnese';
 import { otimizarImagemWebP } from '../utils/imageOptimizer';
@@ -214,10 +214,13 @@ export const Clientes: React.FC<ClientesProps> = ({
       'Oi {cliente}, que saudade de você! ✨ Percebemos que faz {dias} dias desde o seu último atendimento. Preparamos um carinho especial para seu retorno: agende nesta semana e ganhe um mimo exclusivo! Vamos marcar seu horário? 👉 {link_agendamento}';
 
     const bookingUrl = getBookingUrl();
-    const msg = template
-      .replace(/{cliente}/g, item.cliente.nome.split(' ')[0])
-      .replace(/{dias}/g, item.diasSemVisita.toString())
-      .replace(/{link_agendamento}/g, bookingUrl);
+    const msg = preencherTemplateWhatsApp(template, {
+      cliente: item.cliente.nome.split(' ')[0],
+      dias: item.diasSemVisita.toString(),
+      link_agendamento: bookingUrl,
+      sexo: item.cliente.sexo || 'feminino',
+      salao: configSalao.nome || 'Sheila Santos Nails'
+    });
 
     const url = gerarLinkWhatsApp(item.cliente.telefone, msg);
     window.open(url, '_blank');
@@ -227,6 +230,7 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
+  const [sexo, setSexo] = useState<'feminino' | 'masculino'>('feminino');
   const [aniversario, setAniversario] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [alergias, setAlergias] = useState('');
@@ -313,6 +317,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setNome('');
     setTelefone('');
     setEmail('');
+    setSexo('feminino');
     setAniversario('');
     setObservacoes('');
     setAlergias('');
@@ -329,6 +334,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     setNome(cli.nome);
     setTelefone(cli.telefone);
     setEmail(cli.email || '');
+    setSexo(cli.sexo || cli.preferencias?.sexo || 'feminino');
     setAniversario(cli.aniversario || '');
     setObservacoes(cli.observacoes || '');
     setAlergias(cli.alergias || '');
@@ -348,10 +354,13 @@ export const Clientes: React.FC<ClientesProps> = ({
       nome,
       telefone,
       email: email || undefined,
+      sexo,
       aniversario: aniversario || undefined,
       observacoes: observacoes || undefined,
       alergias: alergias || undefined,
       preferencias: {
+        ...(clienteEdicao?.preferencias || {}),
+        sexo,
         formato,
         tamanho,
         tecnica,
@@ -605,20 +614,26 @@ export const Clientes: React.FC<ClientesProps> = ({
     let msg = '';
     const linkAgendamento = getBookingUrl();
 
+    const sexoCli = cliente.sexo || cliente.preferencias?.sexo || 'feminino';
+
     if (tipo === 'retorno_manutencao') {
-      msg = configSalao.templates_whatsapp.retorno_manutencao
-        .replace(/{cliente}/g, cliente.nome)
-        .replace(/{dias_visita}/g, String(extra?.dias || 20))
-        .replace(/{servico}/g, extra?.servico || 'Alongamento')
-        .replace(/{link_agendamento}/g, linkAgendamento);
+      msg = preencherTemplateWhatsApp(configSalao.templates_whatsapp.retorno_manutencao, {
+        cliente: cliente.nome,
+        dias_visita: String(extra?.dias || 20),
+        servico: extra?.servico || 'Alongamento',
+        link_agendamento: linkAgendamento,
+        sexo: sexoCli
+      });
     } else {
       const templateGeral = configSalao.templates_whatsapp.contato_geral || 
         'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no {salao}? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}';
 
-      msg = templateGeral
-        .replace(/{cliente}/g, cliente.nome)
-        .replace(/{salao}/g, configSalao.nome || 'Sheila Santos Nails')
-        .replace(/{link_agendamento}/g, linkAgendamento);
+      msg = preencherTemplateWhatsApp(templateGeral, {
+        cliente: cliente.nome,
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        link_agendamento: linkAgendamento,
+        sexo: sexoCli
+      });
 
       if (!msg.includes(linkAgendamento)) {
         msg += `\n\n📅 Agende seu horário online em 1 toque:\n${linkAgendamento}`;
@@ -699,6 +714,10 @@ export const Clientes: React.FC<ClientesProps> = ({
                 </h3>
                 
                 <div className="space-y-3 text-xs text-[#5A4535]">
+                  <div className="flex items-center gap-2">
+                    <User size={14} className="text-[#8C6D58]" />
+                    <span>Tratamento: <strong className="font-semibold text-[#8C6D58]">{clienteSelecionado.sexo === 'masculino' ? '👨 Masculino (Bem-vindo / Obrigado)' : '👩 Feminino (Bem-vinda / Obrigada)'}</strong></span>
+                  </div>
                   <div className="flex items-center gap-2">
                     <Phone size={14} className="text-[#8C6D58]" />
                     <span>{clienteSelecionado.telefone}</span>
@@ -1686,6 +1705,40 @@ export const Clientes: React.FC<ClientesProps> = ({
                       onChange={(e) => setAniversario(e.target.value)}
                       className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] bg-[#FAF9F6]"
                     />
+                  </div>
+
+                  {/* Seletor de Sexo / Tratamento Gramatical */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase mb-1.5">
+                      Sexo & Tratamento (WhatsApp e Agenda)
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setSexo('feminino')}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          sexo === 'feminino'
+                            ? 'bg-[#F6ECE8] text-[#8C6D58] border-[#8C6D58] shadow-xs ring-1 ring-[#8C6D58]/30'
+                            : 'bg-[#FAF9F6] text-[#8C7A6B] border-[#EFECE6] hover:bg-white'
+                        }`}
+                      >
+                        <span className="text-sm">👩</span>
+                        <span>Feminino <small className="text-[10px] font-normal opacity-80">(Bem-vinda / Obrigada)</small></span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSexo('masculino')}
+                        className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          sexo === 'masculino'
+                            ? 'bg-[#F6ECE8] text-[#8C6D58] border-[#8C6D58] shadow-xs ring-1 ring-[#8C6D58]/30'
+                            : 'bg-[#FAF9F6] text-[#8C7A6B] border-[#EFECE6] hover:bg-white'
+                        }`}
+                      >
+                        <span className="text-sm">👨</span>
+                        <span>Masculino <small className="text-[10px] font-normal opacity-80">(Bem-vindo / Obrigado)</small></span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

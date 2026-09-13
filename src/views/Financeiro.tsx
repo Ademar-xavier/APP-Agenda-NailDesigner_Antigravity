@@ -47,6 +47,7 @@ export const Financeiro: React.FC = () => {
     despesas,
     addDespesa,
     deleteDespesa,
+    deleteDespesaGrupo,
     categoriasDespesa,
     addCategoriaDespesa,
     deleteCategoriaDespesa,
@@ -93,6 +94,11 @@ export const Financeiro: React.FC = () => {
   const [categoria, setCategoria] = useState('Materiais');
   const [valorDespesa, setValorDespesa] = useState(0);
   const [dataDespesa, setDataDespesa] = useState(new Date().toLocaleDateString('en-CA'));
+  const [tipoDestino, setTipoDestino] = useState<'salao' | 'profissional'>('salao');
+  const [despesaProfissionalId, setDespesaProfissionalId] = useState<string>('');
+  const [formaPagamento, setFormaPagamento] = useState<'a_vista' | 'parcelado'>('a_vista');
+  const [parcelasTotal, setParcelasTotal] = useState<number>(2);
+  const [mesInicio, setMesInicio] = useState<string>(new Date().toLocaleDateString('en-CA').slice(0, 7));
 
   // Adicionar Categoria Field
   const [showNovaCat, setShowNovaCat] = useState(false);
@@ -112,29 +118,54 @@ export const Financeiro: React.FC = () => {
       catFinal = novaCatNome.trim();
     }
 
+    const profAlvoId = tipoDestino === 'profissional' 
+      ? (despesaProfissionalId || equipe.find(u => u.ativo)?.id) 
+      : undefined;
+
     addDespesa({
       descricao,
       categoria: catFinal,
       valor: valorDespesa,
-      data: dataDespesa
+      data: dataDespesa,
+      tipo_destino: tipoDestino,
+      profissional_id: profAlvoId,
+      forma_pagamento: formaPagamento,
+      parcelas_total: formaPagamento === 'parcelado' ? parcelasTotal : undefined,
+      mes_inicio: formaPagamento === 'parcelado' ? (mesInicio || dataDespesa.slice(0, 7)) : undefined
     });
 
     setDescricao('');
     setValorDespesa(0);
     setCategoria('Materiais');
+    setTipoDestino('salao');
+    setFormaPagamento('a_vista');
+    setParcelasTotal(2);
     setNovaCatNome('');
     setShowNovaCat(false);
     setDespesaModal(false);
   };
 
-  const handleExcluirDespesa = (id: string) => {
+  const handleExcluirDespesa = (d: any) => {
+    if (d.parcelamento_grupo_id && d.parcelas_total && d.parcelas_total > 1) {
+      confirmarAcao({
+        titulo: 'Excluir Despesa Parcelada',
+        mensagem: `Esta despesa faz parte de uma compra parcelada (${d.parcela_atual || 1}/${d.parcelas_total}). Deseja excluir apenas esta parcela ou todas as parcelas deste grupo?`,
+        tipo: 'aviso',
+        textoConfirmar: 'Excluir Todas do Grupo',
+        textoCancelar: 'Excluir Apenas Esta',
+        onConfirm: () => deleteDespesaGrupo(d.parcelamento_grupo_id),
+        onCancel: () => deleteDespesa(d.id)
+      });
+      return;
+    }
+
     confirmarAcao({
       titulo: 'Excluir Despesa',
       mensagem: 'Deseja realmente excluir esta despesa?',
       tipo: 'erro',
       textoConfirmar: 'Excluir',
       textoCancelar: 'Cancelar',
-      onConfirm: () => deleteDespesa(id)
+      onConfirm: () => deleteDespesa(d.id)
     });
   };
 
@@ -868,7 +899,7 @@ export const Financeiro: React.FC = () => {
           <button
             type="button"
             onClick={handleExportarPdfAnual}
-            className="flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="h-11 sm:h-10 px-3.5 flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#5A4535] hover:bg-[#FAF9F6] rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
             title={`Gerar Relatório Executivo em PDF do ano ${anoNum}`}
           >
             <Printer size={14} className="text-[#8C6D58]" />
@@ -878,7 +909,7 @@ export const Financeiro: React.FC = () => {
           <button
             type="button"
             onClick={handleExportarExcelAnual}
-            className="flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#166534] hover:bg-emerald-50 px-3.5 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+            className="h-11 sm:h-10 px-3.5 flex items-center justify-center gap-1.5 bg-white border border-[#EFECE6] text-[#166534] hover:bg-emerald-50 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
             title={`Baixar Planilha Excel com consolidado anual de ${anoNum}`}
           >
             <Download size={14} className="text-[#166534]" />
@@ -887,7 +918,7 @@ export const Financeiro: React.FC = () => {
 
           <button
             onClick={() => setDespesaModal(true)}
-            className="flex items-center justify-center gap-1.5 bg-[#8C6D58] hover:bg-[#725743] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all"
+            className="h-11 sm:h-10 w-full sm:w-auto px-4 rounded-xl text-xs font-bold bg-[#8C6D58] hover:bg-[#725743] text-white flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
           >
             <Plus size={16} />
             <span>Registrar Despesa</span>
@@ -1037,7 +1068,7 @@ export const Financeiro: React.FC = () => {
           </div>
           
           {/* Corpo do Gráfico com Eixo Y e Plot Separados */}
-          <div className="flex gap-1.5 sm:gap-2 pt-4 pb-1 overflow-hidden">
+          <div className="flex gap-1.5 sm:gap-2 pt-6 pb-1 overflow-visible relative">
             {/* Coluna do Eixo Y */}
             <div className="w-11 sm:w-16 shrink-0 flex flex-col justify-between text-right pr-1.5 sm:pr-2 select-none h-44 md:h-52">
               <span className="text-[8px] sm:text-[9px] font-mono text-[#A39284] leading-none">{formatarMoeda(maxValorDia)}</span>
@@ -1046,9 +1077,9 @@ export const Financeiro: React.FC = () => {
             </div>
 
             {/* Área de Plotagem (Grid + Barras + Eixo X) */}
-            <div className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1 min-w-0 flex flex-col overflow-visible">
               {/* Container das Barras e Linhas Guias */}
-              <div className="relative h-44 md:h-52 flex items-end">
+              <div className="relative h-44 md:h-52 flex items-end overflow-visible">
                 {/* Linhas de Grade Horizontais */}
                 <div className="absolute inset-0 pointer-events-none flex flex-col justify-between">
                   <div className="border-t border-[#FAF2EB] w-full"></div>
@@ -1066,7 +1097,7 @@ export const Financeiro: React.FC = () => {
                 )}
 
                 {/* Barras dos Dias */}
-                <div className="flex items-end justify-between gap-px sm:gap-1 w-full h-full relative z-10">
+                <div className="flex items-end justify-between gap-px sm:gap-1 w-full h-full relative z-20 overflow-visible">
                   {faturamentoPorDia.map((item) => {
                     const heightPct = (item.valor / maxValorDia) * 100;
                     const isPico = item.valor > 0 && item.valor === statsGrafico.diaPico?.valor;
@@ -1083,8 +1114,8 @@ export const Financeiro: React.FC = () => {
                         <div className="w-full flex justify-center items-end h-full relative">
                           {/* Tooltip Interativo Premium Ampliado e Bem Distribuído */}
                           {isHovered && (
-                            <div className={`absolute bottom-full mb-2.5 bg-[#2D221A] text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[200px] max-w-[260px] sm:min-w-[240px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
-                              item.diaNum > 20 ? 'right-0' : item.diaNum < 8 ? 'left-0' : 'left-1/2 -translate-x-1/2'
+                            <div className={`absolute bottom-full mb-2 bg-[#2D221A] text-white p-3 sm:p-3.5 rounded-2xl shadow-2xl z-50 text-left min-w-[190px] max-w-[260px] sm:min-w-[240px] animate-in fade-in zoom-in-95 pointer-events-none border border-[#5A4535] ${
+                              item.diaNum > (diasNoMes - 7) ? 'right-0' : item.diaNum < 7 ? 'left-0' : 'left-1/2 -translate-x-1/2'
                             }`}>
                               {/* Header do Tooltip */}
                               <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
@@ -1424,11 +1455,25 @@ export const Financeiro: React.FC = () => {
               {despesasMes.map((d) => (
                 <div key={d.id} className="flex items-center justify-between p-2.5 border border-[#EFECE6] rounded-xl bg-[#FAF9F6] text-xs hover:border-[#8C6D58] transition-colors">
                   <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-[#5A4535]">{d.descricao}</span>
                       <span className="text-[8px] bg-red-50 text-red-600 border border-red-100 font-bold px-1.5 py-0.2 rounded-md">
                         {d.categoria}
                       </span>
+                      {d.tipo_destino === 'profissional' ? (
+                        <span className="text-[8px] bg-purple-50 text-purple-700 border border-purple-200 font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                          👤 {equipe.find(u => u.id === d.profissional_id)?.nome || 'Profissional'}
+                        </span>
+                      ) : (
+                        <span className="text-[8px] bg-blue-50 text-blue-700 border border-blue-200 font-bold px-1.5 py-0.2 rounded-md flex items-center gap-0.5">
+                          🏢 Salão
+                        </span>
+                      )}
+                      {d.forma_pagamento === 'parcelado' && d.parcelas_total && (
+                        <span className="text-[8px] bg-amber-50 text-amber-800 border border-amber-200 font-bold px-1.5 py-0.2 rounded-md">
+                          Parcela {d.parcela_atual || 1}/{d.parcelas_total}
+                        </span>
+                      )}
                     </div>
                     <span className="text-[10px] text-[#8C7A6B] mt-0.5">
                       Paga em: {new Date(d.data + 'T00:00:00').toLocaleDateString('pt-BR')}
@@ -1437,8 +1482,9 @@ export const Financeiro: React.FC = () => {
                   <div className="flex items-center gap-3">
                     <span className="font-extrabold text-red-600">-{formatarMoeda(d.valor)}</span>
                     <button
-                      onClick={() => handleExcluirDespesa(d.id)}
-                      className="p-1.5 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-[#EFECE6] hover:border-red-200 bg-white"
+                      onClick={() => handleExcluirDespesa(d)}
+                      className="p-1.5 hover:bg-red-50 text-[#8C7A6B] hover:text-red-600 rounded-lg transition-colors border border-[#EFECE6] hover:border-red-200 bg-white cursor-pointer"
+                      title="Excluir despesa"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -1646,6 +1692,110 @@ export const Financeiro: React.FC = () => {
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  {/* Destino do Custo */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Destino do Custo</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTipoDestino('salao')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          tipoDestino === 'salao'
+                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                        }`}
+                      >
+                        🏢 Salão (Geral)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTipoDestino('profissional')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          tipoDestino === 'profissional'
+                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                        }`}
+                      >
+                        👤 Profissional
+                      </button>
+                    </div>
+
+                    {tipoDestino === 'profissional' && (
+                      <div className="pt-1.5 animate-in fade-in duration-150">
+                        <label className="block text-[11px] font-semibold text-[#8C7A6B] mb-1">Profissional Responsável</label>
+                        <select
+                          value={despesaProfissionalId || equipe.find(u => u.ativo)?.id || ''}
+                          onChange={(e) => setDespesaProfissionalId(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-xs text-[#5A4535] bg-[#FAF9F6] focus:outline-none focus:border-[#8C6D58]"
+                        >
+                          {equipe.filter(u => u.ativo).map(p => (
+                            <option key={p.id} value={p.id}>{p.nome} ({p.especialidade || 'Profissional'})</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Forma de Pagamento & Parcelamento */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="block text-xs font-bold text-[#8C7A6B] uppercase">Forma de Pagamento</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormaPagamento('a_vista')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          formaPagamento === 'a_vista'
+                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                        }`}
+                      >
+                        À vista
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormaPagamento('parcelado')}
+                        className={`py-2 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          formaPagamento === 'parcelado'
+                            ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-2xs'
+                            : 'bg-[#FAF9F6] text-[#5A4535] border-[#EFECE6] hover:bg-gray-100'
+                        }`}
+                      >
+                        Parcelado
+                      </button>
+                    </div>
+
+                    {formaPagamento === 'parcelado' && (
+                      <div className="grid grid-cols-2 gap-2 pt-1.5 bg-[#FAF9F6] p-2.5 rounded-xl border border-[#EFECE6] animate-in fade-in duration-150">
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-[#8C7A6B] mb-1">Nº Parcelas</label>
+                          <select
+                            value={parcelasTotal}
+                            onChange={(e) => setParcelasTotal(Number(e.target.value))}
+                            className="w-full border border-[#EFECE6] rounded-lg px-2.5 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                          >
+                            {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 24].map(n => (
+                              <option key={n} value={n}>{n}x</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10.5px] font-bold text-[#8C7A6B] mb-1">Mês Início</label>
+                          <input
+                            type="month"
+                            value={mesInicio}
+                            onChange={(e) => setMesInicio(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-lg px-2 py-1.5 text-xs text-[#5A4535] bg-white focus:outline-none"
+                          />
+                        </div>
+                        {valorDespesa > 0 && (
+                          <div className="col-span-2 text-[10.5px] text-[#8C6D58] font-bold text-center pt-1 border-t border-[#EFECE6]">
+                            {parcelasTotal}x de {formatarMoeda(valorDespesa / parcelasTotal)} / mês
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

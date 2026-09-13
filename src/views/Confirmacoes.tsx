@@ -120,7 +120,8 @@ export const Confirmacoes: React.FC = () => {
           chave_pix: chavePixEfetiva,
           link_reserva: linkConfirmacao,
           link_confirmacao: linkConfirmacao,
-          salao: configSalao.nome || 'Sheila Santos Nails'
+          salao: configSalao.nome || 'Sheila Santos Nails',
+          sexo: client?.sexo || 'feminino'
         });
 
         const valorSinalNum = Number(a.valor_sinal || 0);
@@ -148,7 +149,8 @@ export const Confirmacoes: React.FC = () => {
           limite_horas: String(configSalao.regras.cancelamento_limite_horas),
           link_confirmacao: linkConfirmacao,
           link_reserva: linkConfirmacao,
-          salao: configSalao.nome || 'Sheila Santos Nails'
+          salao: configSalao.nome || 'Sheila Santos Nails',
+          sexo: client?.sexo || 'feminino'
         });
 
         if (!msg.includes(linkConfirmacao)) {
@@ -559,7 +561,8 @@ export const Confirmacoes: React.FC = () => {
       servico: rec.servico.nome,
       dias_visita: diasTexto,
       link_agendamento: linkAgendamento,
-      salao: configSalao.nome || 'Sheila Santos Nails'
+      salao: configSalao.nome || 'Sheila Santos Nails',
+      sexo: rec.cliente.sexo || 'feminino'
     });
 
     if (!msg.includes(dataFormatada)) {
@@ -610,7 +613,8 @@ export const Confirmacoes: React.FC = () => {
         chave_pix: chavePixEfetiva,
         link_reserva: linkConfirmacao,
         link_confirmacao: linkConfirmacao,
-        salao: configSalao.nome || 'Sheila Santos Nails'
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        sexo: client.sexo || 'feminino'
       });
 
       const valorSinalNum = Number(a.valor_sinal || 0);
@@ -639,7 +643,8 @@ export const Confirmacoes: React.FC = () => {
         limite_horas: String(configSalao.regras.cancelamento_limite_horas),
         link_confirmacao: linkConfirmacao,
         link_reserva: linkConfirmacao,
-        salao: configSalao.nome || 'Sheila Santos Nails'
+        salao: configSalao.nome || 'Sheila Santos Nails',
+        sexo: client.sexo || 'feminino'
       });
 
       if (!msg.includes(linkConfirmacao)) {

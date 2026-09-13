@@ -346,22 +346,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     });
   }, [servicos, profSelecionada, isVipMode, servicosVipIds, planoAtivoModal, equipe]);
 
-  // Quando seleciona um cliente VIP ou plano VIP, pré-ativa o modo VIP, seleciona os serviços da 1ª sessão e isenta de sinal
+  // Quando seleciona explicitamente a contratação de um novo plano VIP, ativa o modo VIP
   useEffect(() => {
-    if (hasVipAtivo) {
-      setAgendarComoVip(true);
-      setCobrarSinal(false);
-      setValorSinalManual(0);
-      const sIds = obterServicosIdsSessaoVip(planoClienteObj, 1, servicos);
-      if (sIds.length > 0) {
-        setServicosSelecionados(sIds);
-      }
-      const procsS1 = obterConfiguracaoSessaoVip(planoClienteObj, 1, servicos);
-      const profDesignada = procsS1[0]?.profissional_id || planoClienteObj?.itens_servicos?.[0]?.profissional_id || assCliente?.itens_saldo?.[0]?.profissional_id;
-      if (profDesignada) {
-        setProfissionalId(profDesignada);
-      }
-    } else if (planoVipContratarId) {
+    if (planoVipContratarId) {
       setAgendarComoVip(true);
       setCobrarSinal(false);
       setValorSinalManual(0);
@@ -378,7 +365,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     } else {
       setAgendarComoVip(false);
     }
-  }, [clienteId, hasVipAtivo, planoClienteObj, assCliente, planoVipContratarId, planosAssinatura, servicos]);
+  }, [clienteId, planoVipContratarId, planosAssinatura, servicos]);
 
   // Resumo Inteligente de Tempo Total e Retorno de Manutenção
   const resumoServicosSelecionados = useMemo(() => {

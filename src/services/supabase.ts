@@ -20,13 +20,15 @@ export const CURRENT_SALAO_ID = 'salao_principal';
 // --- SALVAR / ATUALIZAR CLIENTES ---
 export const salvarClienteSupabase = async (cliente: Cliente) => {
   try {
+    const sexoFinal = cliente.sexo || (cliente.preferencias as any)?.sexo || 'feminino';
     const prefs = {
       ...(cliente.preferencias || {}),
+      sexo: sexoFinal,
       anamnese: cliente.anamnese || (cliente.preferencias as any)?.anamnese || null,
       assinatura: cliente.assinatura || (cliente.preferencias as any)?.assinatura || null
     };
 
-    const { error } = await supabase.from('clientes').upsert({
+    const payload: any = {
       id: cliente.id,
       nome: cliente.nome,
       telefone: cliente.telefone,
@@ -37,8 +39,13 @@ export const salvarClienteSupabase = async (cliente: Cliente) => {
       preferencias: prefs,
       consentimento_imagem: !!cliente.consentimento_imagem,
       criado_em: cliente.criado_em || new Date().toISOString()
-    });
-    if (error) console.error('Erro ao salvar cliente no Supabase:', error);
+    };
+
+    const { error } = await supabase.from('clientes').upsert({ ...payload, sexo: sexoFinal });
+    if (error) {
+      // Se houver erro de coluna sexo ausente no banco relacional, tenta sem a coluna (já salvo em preferências)
+      await supabase.from('clientes').upsert(payload);
+    }
   } catch (e) {
     console.error('Falha na requisição salvarClienteSupabase:', e);
   }
@@ -217,6 +224,11 @@ export const salvarAgendamentoSupabase = async (
       const motivo = agendamento.desconto_motivo || 'Desconto Concedido';
       obsFinal = obsFinal.replace(/\[DESCONTO:\s*[\d.]+\s*\|\s*[^\]]+\]/gi, '').trim();
       obsFinal = `${obsFinal} [DESCONTO:${Number(agendamento.desconto_valor).toFixed(2)}|${motivo}]`.trim();
+    }
+    if (agendamento.valor_adicional && Number(agendamento.valor_adicional) > 0) {
+      const motivoAdic = agendamento.motivo_adicional || 'Adicional';
+      obsFinal = obsFinal.replace(/\[ADICIONAL:\s*[\d.]+\s*\|\s*[^\]]+\]/gi, '').trim();
+      obsFinal = `${obsFinal} [ADICIONAL:${Number(agendamento.valor_adicional).toFixed(2)}|${motivoAdic}]`.trim();
     }
     if (agendamento.produtos && agendamento.produtos.length > 0) {
       try {
@@ -597,9 +609,25 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
 // --- SALVAR / ATUALIZAR DESPESA ---
 export const salvarDespesaSupabase = async (despesa: any) => {
   try {
+    let descFinal = despesa.descricao || '';
+    if (despesa.tipo_destino || despesa.forma_pagamento || despesa.parcelamento_grupo_id || despesa.material_id) {
+      const meta = {
+        td: despesa.tipo_destino,
+        pid: despesa.profissional_id,
+        fp: despesa.forma_pagamento,
+        pt: despesa.parcelas_total,
+        pa: despesa.parcela_atual,
+        gid: despesa.parcelamento_grupo_id,
+        mi: despesa.mes_inicio,
+        mid: despesa.material_id
+      };
+      descFinal = descFinal.replace(/\[DESP_META:.*?\]/gi, '').trim();
+      descFinal = `${descFinal} [DESP_META:${JSON.stringify(meta)}]`.trim();
+    }
+
     const { error } = await supabase.from('despesas').upsert({
       id: despesa.id,
-      descricao: despesa.descricao,
+      descricao: descFinal,
       categoria: despesa.categoria,
       valor: Number(despesa.valor) || 0,
       data: despesa.data,
