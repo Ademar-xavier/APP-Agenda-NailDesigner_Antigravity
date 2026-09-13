@@ -22,8 +22,9 @@ import {
 } from 'lucide-react';
 import { supabase, atualizarStatusAgendamentoSupabase, enviarNotificacaoRealtimeMultiDispositivos } from '../services/supabase';
 import { useAppState } from '../context/AppStateContext';
-import { REGRA_DEVOLUCAO_PADRAO } from '../types';
+import { REGRA_DEVOLUCAO_PADRAO, QrCodeWhatsAppConfig } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
+import { enviarMensagemWhatsAppQrCode } from '../services/qrCodeWhatsApp';
 import { gerarLinkGoogleCalendar, getBookingUrl, gerarLinkWhatsApp } from '../utils/urlHelper';
 
 interface AgendamentoPublico {
@@ -72,7 +73,20 @@ export const PublicConfirmacao: React.FC = () => {
   const [cliente, setCliente] = useState<ClientePublico | null>(null);
   const [servicos, setServicos] = useState<ServicoPublico[]>([]);
   const [profissionalNome, setProfissionalNome] = useState<string>('Sheila Santos');
-  const [dadosSalao, setDadosSalao] = useState({
+  const [dadosSalao, setDadosSalao] = useState<{
+    nome: string;
+    proprietaria: string;
+    telefone: string;
+    endereco: string;
+    instagram: string;
+    chave_pix: string;
+    instrucoes_pix: string;
+    regra_devolucao_sinal: string;
+    cancelamento_limite_horas: number;
+    limite_horas_sinal: number;
+    meta_whatsapp?: { phoneNumberId: string; accessToken: string; ativo: boolean };
+    qrcode_whatsapp?: QrCodeWhatsAppConfig;
+  }>({
     nome: 'Sheila Santos Nails',
     proprietaria: 'Sheila Santos',
     telefone: '3597141856',
@@ -83,7 +97,8 @@ export const PublicConfirmacao: React.FC = () => {
     regra_devolucao_sinal: REGRA_DEVOLUCAO_PADRAO,
     cancelamento_limite_horas: 24,
     limite_horas_sinal: 2,
-    meta_whatsapp: undefined as { phoneNumberId: string; accessToken: string; ativo: boolean } | undefined
+    meta_whatsapp: undefined,
+    qrcode_whatsapp: undefined
   });
   const [dadosProfissional, setDadosProfissional] = useState<{
     id?: string;
@@ -282,7 +297,8 @@ export const PublicConfirmacao: React.FC = () => {
             regra_devolucao_sinal: configSalaoContext.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
             cancelamento_limite_horas: configSalaoContext.regras?.cancelamento_limite_horas || 24,
             limite_horas_sinal: configSalaoContext.regras?.limite_horas_sinal || 2,
-            meta_whatsapp: configSalaoContext.meta_whatsapp
+            meta_whatsapp: configSalaoContext.meta_whatsapp,
+            qrcode_whatsapp: configSalaoContext.qrcode_whatsapp
           });
         } else {
           const { data: configData } = await supabase
@@ -303,7 +319,8 @@ export const PublicConfirmacao: React.FC = () => {
               regra_devolucao_sinal: cs.regra_devolucao_sinal || REGRA_DEVOLUCAO_PADRAO,
               cancelamento_limite_horas: cs.regras?.cancelamento_limite_horas || 24,
               limite_horas_sinal: cs.regras?.limite_horas_sinal || 2,
-              meta_whatsapp: cs.meta_whatsapp
+              meta_whatsapp: cs.meta_whatsapp,
+              qrcode_whatsapp: cs.qrcode_whatsapp
             });
 
             // Fallback para dados da equipe salvos em configuracoes
@@ -438,7 +455,13 @@ export const PublicConfirmacao: React.FC = () => {
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n✅ A cliente *${cliente?.nome || 'Cliente'}* confirmou presença no agendamento #${agendamento.id} para *${dataFormatada} às ${horaFormatada}*!\n\n👉 O status foi atualizado para "Confirmado" no sistema.`;
         if (telDest) {
-          enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
+          if (dadosSalao?.meta_whatsapp?.ativo) {
+            enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
+          }
+          if (dadosSalao?.qrcode_whatsapp?.ativo) {
+            const numAlerta = dadosSalao.qrcode_whatsapp.numeroAlertaProfissional || telDest;
+            enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, dadosSalao.qrcode_whatsapp).catch(() => {});
+          }
         }
       } catch (err) {}
 
@@ -492,7 +515,13 @@ export const PublicConfirmacao: React.FC = () => {
         const horaFormatada = agendamento.inicio.split('T')[1].substring(0, 5);
         const textoNotif = `🔔 *Notificação do App Sheila Nails*\n\n❌ A cliente *${cliente?.nome || 'Cliente'}* cancelou o agendamento #${agendamento.id} do dia *${dataFormatada} às ${horaFormatada}*.\nMotivo: ${motivoFinal}\n\n👉 O horário foi liberado no app.`;
         if (telDest) {
-          enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
+          if (dadosSalao?.meta_whatsapp?.ativo) {
+            enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
+          }
+          if (dadosSalao?.qrcode_whatsapp?.ativo) {
+            const numAlerta = dadosSalao.qrcode_whatsapp.numeroAlertaProfissional || telDest;
+            enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, dadosSalao.qrcode_whatsapp).catch(() => {});
+          }
         }
       } catch (err) {}
 

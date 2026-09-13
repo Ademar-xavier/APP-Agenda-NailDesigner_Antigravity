@@ -19,6 +19,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Servico } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
+import { enviarMensagemWhatsAppQrCode } from '../services/qrCodeWhatsApp';
 import { gerarLinkWhatsApp, getConfirmationUrl } from '../utils/urlHelper';
 import { 
   enviarNotificacaoRealtimeMultiDispositivos,
@@ -584,13 +585,28 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       const dataFmt = formatarDataLocal(dataSelecionada);
       const servsText = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
 
-      // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
+      // Notifica a profissional via WhatsApp (Meta API ou QR Code) e BroadcastChannel
       try {
         const profFinalObj = equipe.find(e => e.id === profFinalId);
         const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
         const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! A cliente *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
-        if (telDest) {
+
+        // 1. Envio via Meta Cloud API Oficial
+        if (telDest && configSalao?.meta_whatsapp?.ativo) {
           enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
+        }
+
+        // 2. Envio via WhatsApp QR Code (Z-API / Evolution API)
+        if (configSalao?.qrcode_whatsapp?.ativo) {
+          const cfgQr = configSalao.qrcode_whatsapp;
+          const telProfissional = cfgQr.numeroAlertaProfissional || telDest;
+          if (telProfissional && cfgQr.notificarProfissionalAoAgendar !== false) {
+            enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
+          }
+          if (telefone && cfgQr.notificarClienteAoAgendar !== false) {
+            const msgCliente = `💅 Olá *${nome}*! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\nObrigada pela preferência!`;
+            enviarMensagemWhatsAppQrCode(telefone, msgCliente, cfgQr).catch(() => {});
+          }
         }
       } catch (err) {}
 
@@ -655,14 +671,23 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
     // Garante persistência no Supabase com integridade referencial
     await salvarListaEsperaSupabase(waitlistItem, clienteParaSalvar);
 
-    // Notifica a profissional via WhatsApp (Meta API) e BroadcastChannel
+    // Notifica a profissional via WhatsApp (Meta API ou QR Code) e BroadcastChannel
     try {
       const profEspera = equipe.find(e => e.id === profissionalId);
       const telDest = profEspera?.telefone || configSalao.telefone;
       const dataFmt = formatarDataLocal(dataSelecionada);
       const msgProf = `🔔 *Nova Inscrição na Lista de Espera!*\n\nOlá! A cliente *${nome}* (${telefone}) acabou de entrar na fila de espera para o dia *${dataFmt}* (${periodoPreferido === 'qualquer' ? 'qualquer período' : periodoPreferido}).\n\n👉 Acesse o app para conferir!`;
       if (telDest) {
-        enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
+        if (configSalao?.meta_whatsapp?.ativo) {
+          enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
+        }
+        if (configSalao?.qrcode_whatsapp?.ativo) {
+          const cfgQr = configSalao.qrcode_whatsapp;
+          const telProfissional = cfgQr.numeroAlertaProfissional || telDest;
+          if (telProfissional && cfgQr.notificarProfissionalAoAgendar !== false) {
+            enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
+          }
+        }
       }
     } catch (err) {}
 
