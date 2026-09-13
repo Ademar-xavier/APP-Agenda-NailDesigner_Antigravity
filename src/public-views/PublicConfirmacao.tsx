@@ -458,9 +458,12 @@ export const PublicConfirmacao: React.FC = () => {
           if (dadosSalao?.meta_whatsapp?.ativo) {
             enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
           }
-          if (dadosSalao?.qrcode_whatsapp?.ativo) {
-            const numAlerta = dadosSalao.qrcode_whatsapp.numeroAlertaProfissional || telDest;
-            enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, dadosSalao.qrcode_whatsapp).catch(() => {});
+          const cfgQr = dadosSalao?.qrcode_whatsapp;
+          if (cfgQr?.ativo !== false) {
+            const numAlerta = cfgQr?.numeroAlertaProfissional || telDest;
+            if (numAlerta) {
+              enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, cfgQr).catch(() => {});
+            }
           }
         }
       } catch (err) {}
@@ -518,9 +521,12 @@ export const PublicConfirmacao: React.FC = () => {
           if (dadosSalao?.meta_whatsapp?.ativo) {
             enviarMensagemTextoMeta(telDest, textoNotif, dadosSalao.meta_whatsapp).catch(() => {});
           }
-          if (dadosSalao?.qrcode_whatsapp?.ativo) {
-            const numAlerta = dadosSalao.qrcode_whatsapp.numeroAlertaProfissional || telDest;
-            enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, dadosSalao.qrcode_whatsapp).catch(() => {});
+          const cfgQr = dadosSalao?.qrcode_whatsapp;
+          if (cfgQr?.ativo !== false) {
+            const numAlerta = cfgQr?.numeroAlertaProfissional || telDest;
+            if (numAlerta) {
+              enviarMensagemWhatsAppQrCode(numAlerta, textoNotif, cfgQr).catch(() => {});
+            }
           }
         }
       } catch (err) {}
