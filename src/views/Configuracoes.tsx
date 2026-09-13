@@ -37,16 +37,22 @@ import {
   EyeOff,
   Info,
   ShieldCheck,
-  Bell
+  Bell,
+  QrCode
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
-import { Usuario } from '../types';
+import { Usuario, QrCodeWhatsAppConfig } from '../types';
 import { 
   obterConfigMetaWhatsApp, 
   salvarConfigMetaWhatsApp, 
   enviarMensagemBotaoMeta 
 } from '../services/metaWhatsApp';
+import { 
+  obterConfigQrCodeWhatsApp, 
+  salvarConfigQrCodeWhatsApp, 
+  enviarMensagemWhatsAppQrCode 
+} from '../services/qrCodeWhatsApp';
 import { 
   obterLicencaAtual, 
   revogarLicenca, 
@@ -301,6 +307,91 @@ export const Configuracoes: React.FC = () => {
 
     setMetaTestando(false);
     setMetaTestResult(resultado);
+  };
+
+  // Configuração WhatsApp QR Code (Z-API / Evolution API / Custom)
+  const [whatsappSubAba, setWhatsappSubAba] = useState<'qrcode' | 'meta'>('qrcode');
+  const [qrConfig, setQrConfig] = useState<QrCodeWhatsAppConfig>(() => {
+    return configSalao?.qrcode_whatsapp || obterConfigQrCodeWhatsApp();
+  });
+  const [qrProvedor, setQrProvedor] = useState<'zapi' | 'evolution' | 'custom'>(qrConfig.provedor || 'zapi');
+  const [qrInstancia, setQrInstancia] = useState(qrConfig.instancia || '');
+  const [qrToken, setQrToken] = useState(qrConfig.token || '');
+  const [qrClientToken, setQrClientToken] = useState(qrConfig.clientToken || '');
+  const [qrApiUrl, setQrApiUrl] = useState(qrConfig.apiUrl || '');
+  const [qrNumeroAlerta, setQrNumeroAlerta] = useState(qrConfig.numeroAlertaProfissional || configSalao.telefone || '');
+  const [qrAtivo, setQrAtivo] = useState(!!qrConfig.ativo);
+  const [qrNotifProf, setQrNotifProf] = useState(qrConfig.notificarProfissionalAoAgendar !== false);
+  const [qrNotifCliente, setQrNotifCliente] = useState(qrConfig.notificarClienteAoAgendar !== false);
+  const [showQrToken, setShowQrToken] = useState(false);
+  const [qrNumeroTeste, setQrNumeroTeste] = useState(configSalao.telefone || '');
+  const [qrTestando, setQrTestando] = useState(false);
+  const [qrTestResult, setQrTestResult] = useState<{ sucesso: boolean; mensagem: string } | null>(null);
+
+  const handleSalvarQrConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const novaConfig: QrCodeWhatsAppConfig = {
+      ativo: qrAtivo,
+      provedor: qrProvedor,
+      instancia: qrInstancia.trim(),
+      token: qrToken.trim(),
+      clientToken: qrClientToken.trim(),
+      apiUrl: qrApiUrl.trim(),
+      numeroAlertaProfissional: qrNumeroAlerta.trim(),
+      notificarProfissionalAoAgendar: qrNotifProf,
+      notificarClienteAoAgendar: qrNotifCliente
+    };
+    salvarConfigQrCodeWhatsApp(novaConfig);
+    setQrConfig(novaConfig);
+    updateConfigSalao({ qrcode_whatsapp: novaConfig });
+    try {
+      await salvarConfiguracoesSupabase({
+        configSalao: {
+          ...configSalao,
+          qrcode_whatsapp: novaConfig
+        }
+      });
+      exibirToast('✅ Configurações do WhatsApp QR Code salvas e sincronizadas!');
+    } catch (err) {
+      exibirToast('⚠️ Configurações salvas localmente!');
+    }
+    triggerSuccess();
+  };
+
+  const handleTestarEnvioQrCode = async () => {
+    if (!qrNumeroTeste.trim()) {
+      mostrarAlerta({
+        titulo: 'Telefone Obrigatório',
+        mensagem: 'Por favor, informe o número com DDD para realizar o teste.',
+        tipo: 'aviso'
+      });
+      return;
+    }
+    setQrTestando(true);
+    setQrTestResult(null);
+    try {
+      const cfgTeste: QrCodeWhatsAppConfig = {
+        ativo: true,
+        provedor: qrProvedor,
+        instancia: qrInstancia.trim(),
+        token: qrToken.trim(),
+        clientToken: qrClientToken.trim(),
+        apiUrl: qrApiUrl.trim()
+      };
+      const resultado = await enviarMensagemWhatsAppQrCode(
+        qrNumeroTeste.trim(),
+        '🔔 *Teste de Alerta Sheila Santos Nails!*\n\nSua integração de WhatsApp via QR Code está conectada e funcionando perfeitamente! 💅✨',
+        cfgTeste
+      );
+      setQrTestResult(resultado);
+      if (resultado.sucesso) {
+        exibirToast('✅ Mensagem de teste enviada via QR Code!');
+      }
+    } catch (e: any) {
+      setQrTestResult({ sucesso: false, mensagem: e.message || 'Falha no teste' });
+    } finally {
+      setQrTestando(false);
+    }
   };
 
   // Form Geral Fields
@@ -609,7 +700,7 @@ export const Configuracoes: React.FC = () => {
             { id: 'expediente', label: 'Horários de Trabalho', icon: Clock },
             { id: 'mensagens', label: 'Mensagens WhatsApp', icon: MessageSquare },
             { id: 'equipe', label: 'Equipe & Permissões', icon: Users },
-            { id: 'meta_whatsapp', label: 'Robô WhatsApp Meta', icon: Bot },
+            { id: 'meta_whatsapp', label: 'WhatsApp & Robôs', icon: Bot },
             { id: 'licenca', label: 'Licença & Assinatura', icon: Key }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1560,289 +1651,685 @@ export const Configuracoes: React.FC = () => {
             </div>
           )}
 
-          {/* TAB META WHATSAPP CLOUD API OFICIAL */}
+          {/* TAB WHATSAPP & ROBÔS AUTOMÁTICOS */}
           {activeTab === 'meta_whatsapp' && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="flex justify-between items-center border-b border-[#FAF9F6] pb-3">
+              {/* Header da Aba */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#FAF9F6] pb-3">
                 <div>
                   <h3 className="font-serif font-bold text-base text-[#5A4535] flex items-center gap-2">
                     <Bot size={18} className="text-[#8C6D58]" />
-                    <span>Robô Oficial WhatsApp da Meta (Cloud API)</span>
+                    <span>WhatsApp & Robôs de Notificação</span>
                   </h3>
                   <p className="text-xs text-[#8C7A6B] mt-0.5">
-                    Envie lembretes e confirmações com botões clicáveis oficiais e 1.000 conversas gratuitas por mês.
+                    Envie alertas automáticos de novos agendamentos e confirmações para o seu WhatsApp e para suas clientes.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                    metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken
+                    (whatsappSubAba === 'qrcode' ? qrAtivo && (qrInstancia || qrApiUrl) : metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken)
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                       : 'bg-amber-50 text-amber-800 border-amber-200'
                   }`}>
-                    {metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken
-                      ? '● Meta API Ativa'
-                      : '○ Em Configuração'}
+                    {whatsappSubAba === 'qrcode'
+                      ? (qrAtivo && (qrInstancia || qrApiUrl) ? `● QR Code Ativo (${qrProvedor.toUpperCase()})` : '○ QR Code em Configuração')
+                      : (metaConfig.ativo && metaConfig.phoneNumberId && metaConfig.accessToken ? '● Meta API Ativa' : '○ Meta em Configuração')
+                    }
                   </span>
                 </div>
               </div>
 
-              {/* Banner de Destaque Oficial */}
-              <div className="bg-gradient-to-r from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-4.5 space-y-3">
-                <h4 className="font-bold text-xs text-[#5A4535] flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-[#8C6D58]" />
-                  <span>Vantagens do Padrão Oficial Meta para seu Salão e Comercialização:</span>
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-[#6D4C3D]">
-                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
-                    <span className="font-bold block text-[#5A4535] mb-0.5">🎁 1.000 msgs/mês Grátis</span>
-                    A Meta oferece franquia gratuita renovada todo mês para cada salão.
-                  </div>
-                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
-                    <span className="font-bold block text-[#5A4535] mb-0.5">🔘 Botões Clicáveis</span>
-                    A cliente recebe os botões <strong>[Confirmar]</strong> e <strong>[Cancelar]</strong> na tela.
-                  </div>
-                  <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
-                    <span className="font-bold block text-[#5A4535] mb-0.5">☁️ 24h na Nuvem</span>
-                    Funciona mesmo com o computador e celular desligados.
-                  </div>
-                </div>
+              {/* Seletor de Método de Integração WhatsApp (Sub-Abas) */}
+              <div className="flex p-1.5 bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWhatsappSubAba('qrcode')}
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                    whatsappSubAba === 'qrcode'
+                      ? 'bg-white text-[#5A4535] shadow-xs border border-[#EFECE6]'
+                      : 'text-[#8C7A6B] hover:text-[#5A4535]'
+                  }`}
+                >
+                  <QrCode size={16} className={whatsappSubAba === 'qrcode' ? 'text-emerald-600' : ''} />
+                  <span>Opção B: WhatsApp via QR Code</span>
+                  <span className="hidden sm:inline-block text-[9px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold uppercase">
+                    Sem Burocracia • Z-API / Evolution
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setWhatsappSubAba('meta')}
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+                    whatsappSubAba === 'meta'
+                      ? 'bg-white text-[#5A4535] shadow-xs border border-[#EFECE6]'
+                      : 'text-[#8C7A6B] hover:text-[#5A4535]'
+                  }`}
+                >
+                  <Bot size={16} className={whatsappSubAba === 'meta' ? 'text-[#8C6D58]' : ''} />
+                  <span>Opção A: Meta Cloud API Oficial</span>
+                  <span className="hidden sm:inline-block text-[9px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold uppercase">
+                    1.000 msgs grátis • Botões
+                  </span>
+                </button>
               </div>
 
-              {/* Formulário de Configuração de Credenciais */}
-              <form onSubmit={handleSalvarMetaConfig} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
-                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider">
-                  Credenciais da Meta (Meta for Developers)
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
-                      Phone Number ID (ID do Número de Telefone)
-                    </label>
-                    <input 
-                      type="text" 
-                      name="meta_whatsapp_phone_number_id_input"
-                      autoComplete="off"
-                      placeholder="Ex: 104829104810294"
-                      value={metaPhoneId} 
-                      onChange={(e) => setMetaPhoneId(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
-                    />
-                    <p className="text-[10px] text-[#A19488] mt-1">
-                      Encontrado no painel da Meta em WhatsApp &gt; Configuração da API (apenas números).
-                    </p>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-xs font-bold text-[#8C7A6B]">
-                        Token de Acesso (Access Token)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowMetaToken(!showMetaToken)}
-                        className="text-[10px] text-[#8C6D58] hover:underline flex items-center gap-1 font-semibold"
-                      >
-                        {showMetaToken ? <EyeOff size={12} /> : <Eye size={12} />}
-                        <span>{showMetaToken ? 'Ocultar' : 'Visualizar'}</span>
-                      </button>
+              {/* SUB-ABA 1: WHATSAPP VIA QR CODE (Z-API / EVOLUTION API / CUSTOM) */}
+              {whatsappSubAba === 'qrcode' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  {/* Banner de Vantagens da Opção B */}
+                  <div className="bg-gradient-to-r from-[#F0FDF4] to-[#DCFCE7] border border-[#BBF7D0] rounded-2xl p-4.5 space-y-3">
+                    <h4 className="font-bold text-xs text-[#166534] flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-emerald-700" />
+                      <span>Vantagens do WhatsApp via QR Code (Mais Rápido & Sem Aprovação da Meta):</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-[#14532D]">
+                      <div className="bg-white/85 p-3 rounded-xl border border-[#DCFCE7] shadow-2xs">
+                        <span className="font-bold block text-[#166534] mb-0.5">⚡ Conexão em 30 segundos</span>
+                        Basta ler o QR Code com a câmera do seu WhatsApp pessoal ou do salão, igual ao WhatsApp Web.
+                      </div>
+                      <div className="bg-white/85 p-3 rounded-xl border border-[#DCFCE7] shadow-2xs">
+                        <span className="font-bold block text-[#166534] mb-0.5">🔔 Alerta Instantâneo</span>
+                        Você recebe mensagem no seu WhatsApp na hora que a cliente agendar ou desmarcar.
+                      </div>
+                      <div className="bg-white/85 p-3 rounded-xl border border-[#DCFCE7] shadow-2xs">
+                        <span className="font-bold block text-[#166534] mb-0.5">🚫 Zero Burocracia</span>
+                        Não precisa de conta de desenvolvedor, nem CNPJ, nem aprovação de templates pelo Facebook.
+                      </div>
                     </div>
-                    <input 
-                      type={showMetaToken ? 'text' : 'password'}
-                      name="meta_whatsapp_access_token_input"
-                      autoComplete="new-password"
-                      placeholder="Cole aqui seu Token permanente ou temporário (inicia com EAA...)"
-                      value={metaToken} 
-                      onChange={(e) => setMetaToken(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
-                    />
-                    <p className="text-[10px] text-[#A19488] mt-1">
-                      Token gerado na aba de desenvolvedor da Meta.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Nota Esclarecedora sobre o WhatsApp Business Account ID */}
-                <div className="bg-[#FFF9FB] border border-[#FAD0DC] p-3 rounded-xl flex items-start gap-2.5 text-xs text-[#5A4535]">
-                  <Info size={15} className="text-[#DB7093] shrink-0 mt-0.5" />
-                  <div className="space-y-0.5">
-                    <span className="font-bold text-[#C71585] text-xs block">
-                      Não achou o campo "WhatsApp Business Account ID"?
-                    </span>
-                    <p className="text-[11px] text-[#8C7A6B] leading-relaxed">
-                      Não se preocupe! O seu aplicativo <strong>não precisa do Business Account ID</strong>. Para enviar mensagens oficiais e interativas pela API da Meta, o sistema utiliza <strong>exclusivamente o Phone Number ID e o Token de Acesso</strong>.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#FAF9F6]">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMetaAtivo(!metaAtivo)}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                        metaAtivo ? 'bg-[#8C6D58]' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          metaAtivo ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                    <span className="text-xs font-bold text-[#5A4535]">
-                      Ativar Envio Automático com Botões Clicáveis
-                    </span>
                   </div>
 
-                  <button
-                    type="submit"
-                    className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
-                  >
-                    <Save size={14} />
-                    <span>Salvar Credenciais da Meta</span>
-                  </button>
-                </div>
-              </form>
+                  {/* Formulário de Configuração do QR Code */}
+                  <form onSubmit={handleSalvarQrConfig} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#FAF9F6] pb-3">
+                      <div>
+                        <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider">
+                          Configurações da Instância QR Code
+                        </h4>
+                        <p className="text-[11px] text-[#8C7A6B]">
+                          Selecione o serviço de QR Code que você utiliza e preencha as chaves de conexão.
+                        </p>
+                      </div>
+                    </div>
 
-              {/* Área de Teste de Envio */}
-              <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
-                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
-                  <Send size={14} className="text-[#8C6D58]" />
-                  <span>Testar Envio de Mensagem com Botões Clicáveis</span>
-                </h4>
-                <p className="text-xs text-[#8C7A6B]">
-                  Envie uma mensagem de teste para o seu próprio WhatsApp para ver como a sua cliente vai receber os botões na tela!
-                </p>
-
-                <div className="flex flex-col sm:flex-row gap-3 items-end">
-                  <div className="flex-1 w-full">
-                    <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
-                      Número do WhatsApp com DDD (apenas números)
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder="Ex: 35997141856"
-                      value={metaNumeroTeste} 
-                      onChange={(e) => setMetaNumeroTeste(e.target.value)}
-                      className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleTestarEnvioMeta}
-                    disabled={metaTestando}
-                    className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-98"
-                  >
-                    <Send size={13} className={metaTestando ? 'animate-spin' : ''} />
-                    <span>{metaTestando ? 'Disparando...' : 'Enviar Teste com Botões'}</span>
-                  </button>
-                </div>
-
-                {metaTestResult && (
-                  <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2 ${
-                    metaTestResult.sucesso 
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
-                      : 'bg-red-50 border-red-200 text-red-800'
-                  }`}>
-                    {metaTestResult.sucesso ? <Check size={16} className="shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="shrink-0 mt-0.5" />}
+                    {/* Seleção do Provedor */}
                     <div>
-                      <p className="font-bold">{metaTestResult.sucesso ? 'Sucesso!' : 'Atenção'}</p>
-                      <p className="mt-0.5">{metaTestResult.mensagem}</p>
+                      <label className="block text-xs font-bold text-[#8C7A6B] mb-2">
+                        Provedor de WhatsApp QR Code
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                          { id: 'zapi', nome: 'Z-API', desc: 'Recomendado (Líder e mais estável no Brasil)' },
+                          { id: 'evolution', nome: 'Evolution API', desc: 'Open-source / Servidor próprio v1 ou v2' },
+                          { id: 'custom', nome: 'Gateway / Webhook', desc: 'Endpoint genérico personalizado' }
+                        ].map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setQrProvedor(p.id as any)}
+                            className={`p-3 rounded-xl border text-left transition-all ${
+                              qrProvedor === p.id
+                                ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                                : 'border-[#EFECE6] bg-[#FAF9F6] hover:bg-white'
+                            }`}
+                          >
+                            <span className="font-bold text-xs text-[#5A4535] block">{p.nome}</span>
+                            <span className="text-[10px] text-[#8C7A6B] block mt-0.5">{p.desc}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
 
-              {/* Webhook para Receber Cliques das Clientes */}
-              <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-3">
-                <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
-                  <Globe size={14} className="text-[#8C6D58]" />
-                  <span>Configuração do Webhook na Meta (Recebimento Automático de Respostas)</span>
-                </h4>
-                <p className="text-xs text-[#8C7A6B]">
-                  Para que a Meta avise seu app quando a cliente clicar em <strong>[Confirmar]</strong> ou <strong>[Cancelar]</strong>, cole esses dados no painel da Meta em <strong>WhatsApp &gt; Configuração &gt; Webhook</strong>:
-                </p>
+                    {/* Campos Dinâmicos por Provedor */}
+                    {qrProvedor === 'zapi' && (
+                      <div className="space-y-4 pt-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                              ID da Instância (Instance ID da Z-API)
+                            </label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: 3B4C5D6E7F8G9H0I"
+                              value={qrInstancia} 
+                              onChange={(e) => setQrInstancia(e.target.value)}
+                              className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                            />
+                            <p className="text-[10px] text-[#A19488] mt-1">
+                              Encontrado no painel da sua conta em <strong>z-api.io</strong>.
+                            </p>
+                          </div>
 
-                <div className="space-y-2.5 pt-1">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
-                      URL de Retorno de Chamada (Callback URL)
-                    </label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value="https://sheilasantos-agenda.vercel.app/api/whatsapp-webhook"
-                        className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
-                      />
+                          <div>
+                            <div className="flex justify-between items-center mb-1.5">
+                              <label className="block text-xs font-bold text-[#8C7A6B]">
+                                Token da Instância (Instance Token)
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => setShowQrToken(!showQrToken)}
+                                className="text-[10px] text-emerald-700 hover:underline flex items-center gap-1 font-semibold"
+                              >
+                                {showQrToken ? <EyeOff size={12} /> : <Eye size={12} />}
+                                <span>{showQrToken ? 'Ocultar' : 'Visualizar'}</span>
+                              </button>
+                            </div>
+                            <input 
+                              type={showQrToken ? 'text' : 'password'}
+                              placeholder="Cole o token da instância gerado na Z-API"
+                              value={qrToken} 
+                              onChange={(e) => setQrToken(e.target.value)}
+                              className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                            Client-Token de Segurança (Opcional)
+                          </label>
+                          <input 
+                            type="password" 
+                            placeholder="Se configurou Client-Token na Z-API, informe aqui"
+                            value={qrClientToken} 
+                            onChange={(e) => setQrClientToken(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {qrProvedor === 'evolution' && (
+                      <div className="space-y-4 pt-2">
+                        <div>
+                          <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                            URL do Servidor Evolution API
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: https://api.meuservidorzap.com"
+                            value={qrApiUrl} 
+                            onChange={(e) => setQrApiUrl(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                          />
+                          <p className="text-[10px] text-[#A19488] mt-1">
+                            Endereço base onde sua Evolution API está hospedada (sem barra no final).
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                              Nome da Instância
+                            </label>
+                            <input 
+                              type="text" 
+                              placeholder="Ex: sheila-santos-nails"
+                              value={qrInstancia} 
+                              onChange={(e) => setQrInstancia(e.target.value)}
+                              className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                              API Key (Token de Autenticação)
+                            </label>
+                            <input 
+                              type="password" 
+                              placeholder="Chave Global API Key ou da Instância"
+                              value={qrToken} 
+                              onChange={(e) => setQrToken(e.target.value)}
+                              className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {qrProvedor === 'custom' && (
+                      <div className="space-y-4 pt-2">
+                        <div>
+                          <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                            URL do Endpoint de Envio (POST)
+                          </label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: https://meu-webhook-zap.com/send"
+                            value={qrApiUrl} 
+                            onChange={(e) => setQrApiUrl(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                            Token de Autorização Bearer (Opcional)
+                          </label>
+                          <input 
+                            type="password" 
+                            placeholder="Bearer token de autenticação"
+                            value={qrToken} 
+                            onChange={(e) => setQrToken(e.target.value)}
+                            className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600 font-mono"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Configurações de Envio e Telefones de Destino */}
+                    <div className="pt-3 border-t border-[#FAF9F6] space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                          WhatsApp da Profissional / Salão para Receber os Alertas (com DDD)
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: 35997141856"
+                          value={qrNumeroAlerta} 
+                          onChange={(e) => setQrNumeroAlerta(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600"
+                        />
+                        <p className="text-[10px] text-[#A19488] mt-1">
+                          Este número receberá a notificação completa assim que uma cliente agendar online.
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div className="flex items-center gap-2 p-3 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">
+                          <input
+                            type="checkbox"
+                            id="notifProfCheck"
+                            checked={qrNotifProf}
+                            onChange={(e) => setQrNotifProf(e.target.checked)}
+                            className="rounded border-[#D5C7BC] text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <label htmlFor="notifProfCheck" className="text-xs font-semibold text-[#5A4535] cursor-pointer">
+                            Avisar profissional a cada agendamento
+                          </label>
+                        </div>
+
+                        <div className="flex items-center gap-2 p-3 bg-[#FAF9F6] rounded-xl border border-[#EFECE6]">
+                          <input
+                            type="checkbox"
+                            id="notifCliCheck"
+                            checked={qrNotifCliente}
+                            onChange={(e) => setQrNotifCliente(e.target.checked)}
+                            className="rounded border-[#D5C7BC] text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <label htmlFor="notifCliCheck" className="text-xs font-semibold text-[#5A4535] cursor-pointer">
+                            Enviar confirmação para a cliente
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-[#FAF9F6]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQrAtivo(!qrAtivo)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            qrAtivo ? 'bg-emerald-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              qrAtivo ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                        <span className="text-xs font-bold text-[#5A4535]">
+                          Ativar Alertas via WhatsApp QR Code
+                        </span>
+                      </div>
+
                       <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText('https://sheilasantos-agenda.vercel.app/api/whatsapp-webhook');
-                          exibirToast('URL do Webhook copiada com sucesso!');
-                        }}
-                        className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-                        title="Copiar URL"
+                        type="submit"
+                        className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
                       >
-                        <Copy size={13} />
-                        <span>Copiar</span>
+                        <Save size={14} />
+                        <span>Salvar Configurações QR Code</span>
                       </button>
                     </div>
-                  </div>
+                  </form>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
-                      Token de Verificação (Verify Token)
-                    </label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        readOnly 
-                        value="sheila_nail_webhook_secret"
-                        className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
-                      />
+                  {/* Área de Teste de Disparo via QR Code */}
+                  <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                    <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
+                      <Send size={14} className="text-emerald-600" />
+                      <span>Testar Envio via WhatsApp QR Code</span>
+                    </h4>
+                    <p className="text-xs text-[#8C7A6B]">
+                      Faça um teste de disparo para o seu WhatsApp para confirmar se o QR Code está conectado e funcionando perfeitamente!
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-3 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                          Número do WhatsApp com DDD (apenas números)
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: 35997141856"
+                          value={qrNumeroTeste} 
+                          onChange={(e) => setQrNumeroTeste(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-emerald-600"
+                        />
+                      </div>
+
                       <button
                         type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText('sheila_nail_webhook_secret');
-                          exibirToast('Token de verificação copiado com sucesso!');
-                        }}
-                        className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-                        title="Copiar Token"
+                        onClick={handleTestarEnvioQrCode}
+                        disabled={qrTestando}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-98"
                       >
-                        <Copy size={13} />
-                        <span>Copiar</span>
+                        <Send size={13} className={qrTestando ? 'animate-spin' : ''} />
+                        <span>{qrTestando ? 'Enviando Teste...' : 'Enviar Teste via QR Code'}</span>
                       </button>
                     </div>
+
+                    {qrTestResult && (
+                      <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2 ${
+                        qrTestResult.sucesso 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                          : 'bg-red-50 border-red-200 text-red-800'
+                      }`}>
+                        {qrTestResult.sucesso ? <Check size={16} className="shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="shrink-0 mt-0.5" />}
+                        <div>
+                          <p className="font-bold">{qrTestResult.sucesso ? 'Sucesso!' : 'Atenção'}</p>
+                          <p className="mt-0.5">{qrTestResult.mensagem}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Guia Rápido de 3 Passos */}
+                  <div className="bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl p-5 space-y-3">
+                    <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                      <QrCode size={16} className="text-emerald-700" />
+                      <span>Como Conectar seu WhatsApp via QR Code em 3 Passos:</span>
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-xs text-[#6D4C3D] leading-relaxed">
+                      <li>
+                        Crie uma conta na <strong>Z-API (z-api.io)</strong> ou suba uma instância da <strong>Evolution API</strong>.
+                      </li>
+                      <li>
+                        Abra o WhatsApp no seu celular &gt; toque no menu dos 3 pontinhos (ou Configurações no iPhone) &gt; <strong>Aparelhos Conectados</strong> &gt; <strong>Conectar um aparelho</strong>.
+                      </li>
+                      <li>
+                        Aponte a câmera do celular para o QR Code gerado no painel da Z-API/Evolution.
+                      </li>
+                      <li>
+                        Copie o <strong>ID da Instância</strong> e o <strong>Token</strong> gerados, cole nos campos acima e clique em <strong>Salvar Configurações QR Code</strong>!
+                      </li>
+                    </ol>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Guia Rápido de Configuração Passo a Passo */}
-              <div className="bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl p-5 space-y-3">
-                <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
-                  <span>📖 Como Obter suas Credenciais Gratuitas da Meta em 3 Passos:</span>
-                </h4>
-                <ol className="list-decimal list-inside space-y-2 text-xs text-[#6D4C3D] leading-relaxed">
-                  <li>
-                    Acesse o portal oficial <strong>developers.facebook.com</strong> e faça login com sua conta do Facebook.
-                  </li>
-                  <li>
-                    Clique em <strong>Meus Aplicativos &gt; Criar Aplicativo</strong>, selecione a opção <strong>Outro</strong> e em seguida <strong>Comercial</strong>.
-                  </li>
-                  <li>
-                    Na tela de produtos, clique em <strong>Configurar</strong> no card do <strong>WhatsApp</strong>.
-                  </li>
-                  <li>
-                    Na aba <strong>WhatsApp &gt; Configuração da API</strong>, você verá na tela o seu <strong>Identificador do número de telefone (Phone Number ID)</strong> e o seu <strong>Token de acesso temporário</strong> para testar na hora!
-                  </li>
-                  <li>
-                    Copie os dois valores, cole nos campos acima e clique em <strong>Salvar Credenciais da Meta</strong>!
-                  </li>
-                </ol>
-              </div>
+              {/* SUB-ABA 2: META WHATSAPP CLOUD API OFICIAL */}
+              {whatsappSubAba === 'meta' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  {/* Banner de Destaque Oficial */}
+                  <div className="bg-gradient-to-r from-[#FAF8F5] to-[#F5ECE5] border border-[#E8DEC9] rounded-2xl p-4.5 space-y-3">
+                    <h4 className="font-bold text-xs text-[#5A4535] flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-[#8C6D58]" />
+                      <span>Vantagens do Padrão Oficial Meta para seu Salão e Comercialização:</span>
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-[#6D4C3D]">
+                      <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                        <span className="font-bold block text-[#5A4535] mb-0.5">🎁 1.000 msgs/mês Grátis</span>
+                        A Meta oferece franquia gratuita renovada todo mês para cada salão.
+                      </div>
+                      <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                        <span className="font-bold block text-[#5A4535] mb-0.5">🔘 Botões Clicáveis</span>
+                        A cliente recebe os botões <strong>[Confirmar]</strong> e <strong>[Cancelar]</strong> na tela.
+                      </div>
+                      <div className="bg-white/80 p-3 rounded-xl border border-[#EFECE6]">
+                        <span className="font-bold block text-[#5A4535] mb-0.5">☁️ 24h na Nuvem</span>
+                        Funciona mesmo com o computador e celular desligados.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Formulário de Configuração de Credenciais Meta */}
+                  <form onSubmit={handleSalvarMetaConfig} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                    <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider">
+                      Credenciais da Meta (Meta for Developers)
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                          Phone Number ID (ID do Número de Telefone)
+                        </label>
+                        <input 
+                          type="text" 
+                          name="meta_whatsapp_phone_number_id_input"
+                          autoComplete="off"
+                          placeholder="Ex: 104829104810294"
+                          value={metaPhoneId} 
+                          onChange={(e) => setMetaPhoneId(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                        />
+                        <p className="text-[10px] text-[#A19488] mt-1">
+                          Encontrado no painel da Meta em WhatsApp &gt; Configuração da API (apenas números).
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between items-center mb-1.5">
+                          <label className="block text-xs font-bold text-[#8C7A6B]">
+                            Token de Acesso (Access Token)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowMetaToken(!showMetaToken)}
+                            className="text-[10px] text-[#8C6D58] hover:underline flex items-center gap-1 font-semibold"
+                          >
+                            {showMetaToken ? <EyeOff size={12} /> : <Eye size={12} />}
+                            <span>{showMetaToken ? 'Ocultar' : 'Visualizar'}</span>
+                          </button>
+                        </div>
+                        <input 
+                          type={showMetaToken ? 'text' : 'password'}
+                          name="meta_whatsapp_access_token_input"
+                          autoComplete="new-password"
+                          placeholder="Cole aqui seu Token permanente ou temporário (inicia com EAA...)"
+                          value={metaToken} 
+                          onChange={(e) => setMetaToken(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58] font-mono"
+                        />
+                        <p className="text-[10px] text-[#A19488] mt-1">
+                          Token gerado na aba de desenvolvedor da Meta.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Nota Esclarecedora */}
+                    <div className="bg-[#FFF9FB] border border-[#FAD0DC] p-3 rounded-xl flex items-start gap-2.5 text-xs text-[#5A4535]">
+                      <Info size={15} className="text-[#DB7093] shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-[#C71585] text-xs block">
+                          Não achou o campo "WhatsApp Business Account ID"?
+                        </span>
+                        <p className="text-[11px] text-[#8C7A6B] leading-relaxed">
+                          Não se preocupe! O seu aplicativo <strong>não precisa do Business Account ID</strong>. O sistema utiliza <strong>exclusivamente o Phone Number ID e o Token de Acesso</strong>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#FAF9F6]">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMetaAtivo(!metaAtivo)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            metaAtivo ? 'bg-[#8C6D58]' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              metaAtivo ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                        <span className="text-xs font-bold text-[#5A4535]">
+                          Ativar Envio Automático com Botões Clicáveis
+                        </span>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="flex items-center justify-center gap-1.5 px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white rounded-xl text-xs font-bold shadow-sm transition-colors"
+                      >
+                        <Save size={14} />
+                        <span>Salvar Credenciais da Meta</span>
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Área de Teste de Envio Meta */}
+                  <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-4">
+                    <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
+                      <Send size={14} className="text-[#8C6D58]" />
+                      <span>Testar Envio de Mensagem com Botões Clicáveis</span>
+                    </h4>
+                    <p className="text-xs text-[#8C7A6B]">
+                      Envie uma mensagem de teste para o seu próprio WhatsApp para ver como a sua cliente vai receber os botões na tela!
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-3 items-end">
+                      <div className="flex-1 w-full">
+                        <label className="block text-xs font-bold text-[#8C7A6B] mb-1.5">
+                          Número do WhatsApp com DDD (apenas números)
+                        </label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: 35997141856"
+                          value={metaNumeroTeste} 
+                          onChange={(e) => setMetaNumeroTeste(e.target.value)}
+                          className="w-full border border-[#EFECE6] rounded-xl px-3.5 py-2.5 text-xs text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleTestarEnvioMeta}
+                        disabled={metaTestando}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-98"
+                      >
+                        <Send size={13} className={metaTestando ? 'animate-spin' : ''} />
+                        <span>{metaTestando ? 'Disparando...' : 'Enviar Teste com Botões'}</span>
+                      </button>
+                    </div>
+
+                    {metaTestResult && (
+                      <div className={`p-3.5 rounded-xl border text-xs flex items-start gap-2 ${
+                        metaTestResult.sucesso 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                          : 'bg-red-50 border-red-200 text-red-800'
+                      }`}>
+                        {metaTestResult.sucesso ? <Check size={16} className="shrink-0 mt-0.5" /> : <AlertTriangle size={16} className="shrink-0 mt-0.5" />}
+                        <div>
+                          <p className="font-bold">{metaTestResult.sucesso ? 'Sucesso!' : 'Atenção'}</p>
+                          <p className="mt-0.5">{metaTestResult.mensagem}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Webhook para Receber Cliques das Clientes */}
+                  <div className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs space-y-3">
+                    <h4 className="font-bold text-xs text-[#5A4535] uppercase tracking-wider flex items-center gap-1.5">
+                      <Globe size={14} className="text-[#8C6D58]" />
+                      <span>Configuração do Webhook na Meta (Recebimento Automático de Respostas)</span>
+                    </h4>
+                    <p className="text-xs text-[#8C7A6B]">
+                      Para que a Meta avise seu app quando a cliente clicar em <strong>[Confirmar]</strong> ou <strong>[Cancelar]</strong>, cole esses dados no painel da Meta em <strong>WhatsApp &gt; Configuração &gt; Webhook</strong>:
+                    </p>
+
+                    <div className="space-y-2.5 pt-1">
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                          URL de Retorno de Chamada (Callback URL)
+                        </label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value="https://sheilasantos-agenda.vercel.app/api/whatsapp-webhook"
+                            className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText('https://sheilasantos-agenda.vercel.app/api/whatsapp-webhook');
+                              exibirToast('URL do Webhook copiada com sucesso!');
+                            }}
+                            className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                            title="Copiar URL"
+                          >
+                            <Copy size={13} />
+                            <span>Copiar</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-[#8C7A6B] mb-1">
+                          Token de Verificação (Verify Token)
+                        </label>
+                        <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value="sheila_nail_webhook_secret"
+                            className="flex-1 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl px-3 py-2 text-xs font-mono text-[#5A4535]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText('sheila_nail_webhook_secret');
+                              exibirToast('Token de verificação copiado com sucesso!');
+                            }}
+                            className="px-3 py-2 bg-[#F4EBE1] hover:bg-[#EBDDCF] text-[#6D4C3D] rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                            title="Copiar Token"
+                          >
+                            <Copy size={13} />
+                            <span>Copiar</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Guia Rápido Meta */}
+                  <div className="bg-[#FAF8F5] border border-[#F3ECE0] rounded-2xl p-5 space-y-3">
+                    <h4 className="font-serif font-bold text-sm text-[#5A4535] flex items-center gap-2">
+                      <span>📖 Como Obter suas Credenciais Gratuitas da Meta em 3 Passos:</span>
+                    </h4>
+                    <ol className="list-decimal list-inside space-y-2 text-xs text-[#6D4C3D] leading-relaxed">
+                      <li>
+                        Acesse o portal oficial <strong>developers.facebook.com</strong> e faça login com sua conta do Facebook.
+                      </li>
+                      <li>
+                        Clique em <strong>Meus Aplicativos &gt; Criar Aplicativo</strong>, selecione a opção <strong>Outro</strong> e em seguida <strong>Comercial</strong>.
+                      </li>
+                      <li>
+                        Na tela de produtos, clique em <strong>Configurar</strong> no card do <strong>WhatsApp</strong>.
+                      </li>
+                      <li>
+                        Na aba <strong>WhatsApp &gt; Configuração da API</strong>, você verá na tela o seu <strong>Identificador do número de telefone (Phone Number ID)</strong> e o seu <strong>Token de acesso temporário</strong> para testar na hora!
+                      </li>
+                      <li>
+                        Copie os dois valores, cole nos campos acima e clique em <strong>Salvar Credenciais da Meta</strong>!
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

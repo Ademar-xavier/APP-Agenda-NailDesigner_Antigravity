@@ -202,7 +202,31 @@ export interface ConfigSalao {
     accessToken: string;
     ativo: boolean;
   };
+  qrcode_whatsapp?: {
+    ativo: boolean;
+    provedor: 'zapi' | 'evolution' | 'custom';
+    instancia?: string;
+    token?: string;
+    clientToken?: string;
+    apiUrl?: string;
+    numeroAlertaProfissional?: string;
+    notificarClienteAoAgendar?: boolean;
+    notificarProfissionalAoAgendar?: boolean;
+  };
+  whatsapp_provedor_ativo?: 'meta' | 'qrcode' | 'desativado';
   catalogo_personalizacao?: CatalogoPersonalizacao;
+}
+
+export interface QrCodeWhatsAppConfig {
+  ativo: boolean;
+  provedor: 'zapi' | 'evolution' | 'custom';
+  instancia?: string;
+  token?: string;
+  clientToken?: string;
+  apiUrl?: string;
+  numeroAlertaProfissional?: string;
+  notificarClienteAoAgendar?: boolean;
+  notificarProfissionalAoAgendar?: boolean;
 }
 
 export interface CatalogoExtraConfig {
