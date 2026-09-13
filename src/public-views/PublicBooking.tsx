@@ -17,10 +17,15 @@ import {
   Crown
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
-import { Servico } from '../types';
+import { Servico, Cliente } from '../types';
 import { enviarMensagemTextoMeta } from '../services/metaWhatsApp';
 import { enviarMensagemWhatsAppQrCode } from '../services/qrCodeWhatsApp';
 import { gerarLinkWhatsApp, getConfirmationUrl } from '../utils/urlHelper';
+import { 
+  detectarGeneroPorNome, 
+  obterGeneroEfetivo, 
+  formatarTratamentoGenero 
+} from '../utils/generoHelper';
 import { 
   enviarNotificacaoRealtimeMultiDispositivos,
   salvarClienteSupabase,
@@ -217,7 +222,32 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
   const [nome, setNome] = useState<string>('');
   const [telefone, setTelefone] = useState<string>('');
   const [sexo, setSexo] = useState<'feminino' | 'masculino'>('feminino');
+  const [sexoModificadoManualmente, setSexoModificadoManualmente] = useState<boolean>(false);
+  const [clienteIdentificado, setClienteIdentificado] = useState<Cliente | null>(null);
   const [observacoes, setObservacoes] = useState<string>('');
+
+  // Sincroniza cliente pré-selecionado se fornecido por props
+  useEffect(() => {
+    if (clientePreselecionado) {
+      if (clientePreselecionado.nome) setNome(clientePreselecionado.nome);
+      if (clientePreselecionado.telefone) setTelefone(clientePreselecionado.telefone);
+      const telDigits = (clientePreselecionado.telefone || '').replace(/\D/g, '');
+      const cli = clientes.find(c => c.id === clientePreselecionado.id || (telDigits.length >= 8 && c.telefone.replace(/\D/g, '').endsWith(telDigits.slice(-8))));
+      if (cli) {
+        setClienteIdentificado(cli);
+        const cliSexo = cli.sexo || cli.preferencias?.sexo;
+        if (cliSexo === 'masculino' || cliSexo === 'feminino') {
+          setSexo(cliSexo);
+        } else {
+          const gen = detectarGeneroPorNome(cli.nome || clientePreselecionado.nome);
+          if (gen) setSexo(gen);
+        }
+      } else {
+        const gen = detectarGeneroPorNome(clientePreselecionado.nome);
+        if (gen) setSexo(gen);
+      }
+    }
+  }, [clientePreselecionado, clientes]);
   
   // Lista de Espera State
   const [periodoPreferido, setPeriodoPreferido] = useState<'manha' | 'tarde' | 'noite' | 'qualquer'>('qualquer');
@@ -465,24 +495,35 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
     // 1. Identificar ou Cadastrar Cliente
     const telDigits = telefone.replace(/\D/g, '');
-    const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === telDigits);
+    const cliExistente = clientes.find(c => {
+      const cDigits = c.telefone.replace(/\D/g, '');
+      return cDigits === telDigits || (telDigits.length >= 8 && cDigits.endsWith(telDigits.slice(-8)));
+    });
     const isClienteNovo = !cliExistente;
+
+    const sexoFinal = obterGeneroEfetivo({
+      sexoInformado: sexo,
+      sexoClienteExistente: cliExistente?.sexo || cliExistente?.preferencias?.sexo,
+      sexoModificadoManualmente,
+      nome,
+      fallback: 'feminino'
+    });
 
     let cId = '';
     let clienteParaSalvar: any = undefined;
     if (cliExistente) {
       cId = cliExistente.id;
-      if (cliExistente.sexo !== sexo) {
-        cliExistente.sexo = sexo;
-        updateCliente(cId, { sexo, preferencias: { ...(cliExistente.preferencias || {}), sexo } });
+      if (cliExistente.sexo !== sexoFinal) {
+        cliExistente.sexo = sexoFinal;
+        updateCliente(cId, { sexo: sexoFinal, preferencias: { ...(cliExistente.preferencias || {}), sexo: sexoFinal } });
       }
       clienteParaSalvar = cliExistente;
     } else {
       const novoCli = addCliente({
         nome,
         telefone,
-        sexo,
-        preferencias: { sexo },
+        sexo: sexoFinal,
+        preferencias: { sexo: sexoFinal },
         consentimento_imagem: true
       });
       cId = novoCli.id;
@@ -597,7 +638,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       try {
         const profFinalObj = equipe.find(e => e.id === profFinalId);
         const telDest = profFinalObj?.telefone || profSelecionada?.telefone || configSalao.telefone;
-        const artigo = sexo === 'masculino' ? 'O cliente' : 'A cliente';
+        const tratamento = formatarTratamentoGenero(sexoFinal, nome);
+        const artigo = tratamento.artigo;
         const msgProf = `🔔 *Novo Agendamento Online!*\n\nOlá! ${artigo} *${nome}* acabou de agendar *${servsText}* para o dia *${dataFmt} às ${horarioSelecionado}*.\n\nStatus: ${valorSinalFinal > 0 ? 'Aguardando pagamento do sinal Pix' : 'Confirmado'}\nCódigo: #${res.agendamento.id}\n\n👉 Acesse o app para conferir!`;
 
         // 1. Envio via Meta Cloud API Oficial
@@ -613,9 +655,8 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
             enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
           }
           if (telefone && cfgQr?.notificarClienteAoAgendar !== false) {
-            const saudacaoCliente = sexo === 'masculino' ? 'Bem-vindo' : 'Bem-vinda';
-            const agradecimentoCliente = sexo === 'masculino' ? 'Obrigado pela preferência!' : 'Obrigada pela preferência!';
-            const msgCliente = `💅 Olá *${nome}*, seja ${saudacaoCliente.toLowerCase()}! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\n${agradecimentoCliente}`;
+            const saudacaoCliente = tratamento.isMasc ? 'seja bem-vindo' : 'seja bem-vinda';
+            const msgCliente = `💅 Olá *${nome}*, ${saudacaoCliente}! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\nAgradecemos a preferência!`;
             enviarMensagemWhatsAppQrCode(telefone, msgCliente, cfgQr).catch(() => {});
           }
         }
@@ -654,14 +695,33 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
 
     let cId = '';
     let clienteParaSalvar: any = undefined;
-    const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === telefone.replace(/\D/g, ''));
+    const telDigits = telefone.replace(/\D/g, '');
+    const cliExistente = clientes.find(c => {
+      const cDigits = c.telefone.replace(/\D/g, '');
+      return cDigits === telDigits || (telDigits.length >= 8 && cDigits.endsWith(telDigits.slice(-8)));
+    });
+
+    const sexoFinal = obterGeneroEfetivo({
+      sexoInformado: sexo,
+      sexoClienteExistente: cliExistente?.sexo || cliExistente?.preferencias?.sexo,
+      sexoModificadoManualmente,
+      nome,
+      fallback: 'feminino'
+    });
+
     if (cliExistente) {
       cId = cliExistente.id;
+      if (cliExistente.sexo !== sexoFinal) {
+        cliExistente.sexo = sexoFinal;
+        updateCliente(cId, { sexo: sexoFinal, preferencias: { ...(cliExistente.preferencias || {}), sexo: sexoFinal } });
+      }
       clienteParaSalvar = cliExistente;
     } else {
       const novoCli = addCliente({
         nome,
         telefone,
+        sexo: sexoFinal,
+        preferencias: { sexo: sexoFinal },
         consentimento_imagem: true
       });
       cId = novoCli.id;
@@ -687,7 +747,9 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       const profEspera = equipe.find(e => e.id === profissionalId);
       const telDest = profEspera?.telefone || configSalao.telefone;
       const dataFmt = formatarDataLocal(dataSelecionada);
-      const msgProf = `🔔 *Nova Inscrição na Lista de Espera!*\n\nOlá! A cliente *${nome}* (${telefone}) acabou de entrar na fila de espera para o dia *${dataFmt}* (${periodoPreferido === 'qualquer' ? 'qualquer período' : periodoPreferido}).\n\n👉 Acesse o app para conferir!`;
+      const tratamento = formatarTratamentoGenero(sexoFinal, nome);
+      const artigo = tratamento.artigo;
+      const msgProf = `🔔 *Nova Inscrição na Lista de Espera!*\n\nOlá! ${artigo} *${nome}* (${telefone}) acabou de entrar na fila de espera para o dia *${dataFmt}* (${periodoPreferido === 'qualquer' ? 'qualquer período' : periodoPreferido}).\n\n👉 Acesse o app para conferir!`;
       if (telDest) {
         if (configSalao?.meta_whatsapp?.ativo) {
           enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
@@ -1507,7 +1569,16 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 <User size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: Amanda Santos..."
-                  value={nome} onChange={(e) => setNome(e.target.value)}
+                  value={nome} 
+                  onChange={(e) => {
+                    const novoNome = e.target.value;
+                    setNome(novoNome);
+                    // Detecção automática de gênero pelo primeiro nome se ainda não foi selecionado manualmente
+                    if (!sexoModificadoManualmente && !clienteIdentificado) {
+                      const gen = detectarGeneroPorNome(novoNome);
+                      if (gen) setSexo(gen);
+                    }
+                  }}
                   className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
@@ -1519,10 +1590,48 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 <Phone size={14} className="text-[#DB7093]" />
                 <input 
                   type="text" required placeholder="Ex: (35) 99999-9999"
-                  value={telefone} onChange={(e) => setTelefone(e.target.value)}
+                  value={telefone} 
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTelefone(val);
+                    const telDigits = val.replace(/\D/g, '');
+                    if (telDigits.length >= 8) {
+                      const cli = clientes.find(c => {
+                        const cDigits = c.telefone.replace(/\D/g, '');
+                        return cDigits === telDigits || cDigits.endsWith(telDigits.slice(-8)) || telDigits.endsWith(cDigits.slice(-8));
+                      });
+                      if (cli) {
+                        setClienteIdentificado(cli);
+                        if (!nome.trim() && cli.nome) {
+                          setNome(cli.nome);
+                        }
+                        const cliSexo = cli.sexo || cli.preferencias?.sexo;
+                        if (!sexoModificadoManualmente) {
+                          if (cliSexo === 'masculino' || cliSexo === 'feminino') {
+                            setSexo(cliSexo);
+                          } else {
+                            const gen = detectarGeneroPorNome(cli.nome || nome);
+                            if (gen) setSexo(gen);
+                          }
+                        }
+                      } else {
+                        setClienteIdentificado(null);
+                      }
+                    } else {
+                      setClienteIdentificado(null);
+                    }
+                  }}
                   className="text-xs text-[#5A3F45] bg-transparent outline-none w-full border-none focus:ring-0"
                 />
               </div>
+              {clienteIdentificado && (
+                <div className="flex items-center gap-1.5 p-2 bg-[#FFF0F5] border border-[#FAD0DC] rounded-xl text-[11px] text-[#8C6D58] mt-1.5 animate-in fade-in">
+                  <span>✨</span>
+                  <span>
+                    Olá, <strong>{clienteIdentificado.nome}</strong>! Identificamos seu cadastro ({clienteIdentificado.sexo === 'masculino' ? '👨 Masculino' : '👩 Feminino'}).
+                  </span>
+                </div>
+              )}
             </div>
 
             <div>
@@ -1530,7 +1639,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setSexo('feminino')}
+                  onClick={() => {
+                    setSexo('feminino');
+                    setSexoModificadoManualmente(true);
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                     sexo === 'feminino'
                       ? 'bg-[#FFF0F5] text-[#DB7093] border-[#DB7093] ring-1 ring-[#DB7093]/30 shadow-2xs'
@@ -1542,7 +1654,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSexo('masculino')}
+                  onClick={() => {
+                    setSexo('masculino');
+                    setSexoModificadoManualmente(true);
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                     sexo === 'masculino'
                       ? 'bg-[#FFF0F5] text-[#DB7093] border-[#DB7093] ring-1 ring-[#DB7093]/30 shadow-2xs'
@@ -1585,7 +1700,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 if (!cliVip) return null;
 
                 const servsNomes = servicosSelecionados.map(id => servicos.find(s => s.id === id)?.nome).filter(Boolean).join(' + ');
-                const isMasc = (cliVip.sexo || cliVip.preferencias?.sexo || sexo) === 'masculino';
+                const isMasc = (cliVip.sexo || cliVip.preferencias?.sexo || (detectarGeneroPorNome(cliVip.nome) === 'masculino') || sexo) === 'masculino';
 
                 return (
                   <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl text-xs text-[#5A3F45] flex items-start gap-2.5 animate-in fade-in duration-200 mt-2">

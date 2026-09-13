@@ -111,17 +111,19 @@ export const gerarLinkWhatsApp = (telefone?: string, mensagem: string = ''): str
   return `https://api.whatsapp.com/send?phone=${numero}&text=${encodeURIComponent(mensagem)}`;
 };
 
+import { 
+  detectarGeneroPorNome, 
+  obterGeneroEfetivo, 
+  formatarTratamentoGenero as formatarGeneroBase 
+} from './generoHelper';
+
+export { detectarGeneroPorNome, obterGeneroEfetivo };
+
 /**
  * Auxiliar para concordância de gênero (Masculino / Feminino)
  */
-export const formatarTratamentoGenero = (sexo?: 'feminino' | 'masculino') => {
-  const isMasc = sexo === 'masculino';
-  return {
-    bemVindo: isMasc ? 'Bem-vindo' : 'Bem-vinda',
-    obrigado: isMasc ? 'Obrigado' : 'Obrigada',
-    querido: isMasc ? 'Querido' : 'Querida',
-    amigo: isMasc ? 'Amigo' : 'Amiga',
-  };
+export const formatarTratamentoGenero = (sexo?: 'feminino' | 'masculino' | string | null, nome?: string) => {
+  return formatarGeneroBase(sexo, nome);
 };
 
 /**
@@ -135,15 +137,21 @@ export const preencherTemplateWhatsApp = (
   if (!template) return '';
   let resultado = template;
 
-  const isMasc = variaveis.sexo === 'masculino';
-  const genero = formatarTratamentoGenero(isMasc ? 'masculino' : 'feminino');
+  const nomeCliente = String(variaveis.cliente || variaveis.nome || '');
+  const sexoVar = variaveis.sexo;
+  
+  // Avaliação robusta de gênero: se informado sexo 'masculino', ou se não especificado mas nome for masculino
+  const isMasc = sexoVar === 'masculino' || (!sexoVar && detectarGeneroPorNome(nomeCliente) === 'masculino');
+  const genero = formatarTratamentoGenero(isMasc ? 'masculino' : 'feminino', nomeCliente);
 
   // Variáveis automáticas de gênero
   const varsCompletas: Record<string, string | number | undefined | null> = {
-    saudacao: genero.bemVindo,
-    saudacao_genero: genero.bemVindo,
+    saudacao: genero.saudacao,
+    saudacao_genero: genero.saudacao,
     agradecimento: genero.obrigado,
     agradecimento_genero: genero.obrigado,
+    artigo: genero.artigo,
+    artigo_cliente: genero.artigo,
     ...variaveis
   };
 
@@ -167,20 +175,22 @@ export const preencherTemplateWhatsApp = (
   // Ajuste contextual de concordância de gênero direto no texto
   if (isMasc) {
     resultado = resultado
+      .replace(/\bseja bem-vinda\b/gi, 'seja bem-vindo')
       .replace(/\bBem-vinda\b/g, 'Bem-vindo')
       .replace(/\bbem-vinda\b/g, 'bem-vindo')
-      .replace(/\bObrigada\b/g, 'Obrigado')
-      .replace(/\bobrigada\b/g, 'obrigado')
+      .replace(/\bBem vinda\b/gi, 'Bem-vindo')
+      .replace(/\bbem vinda\b/gi, 'bem-vindo')
       .replace(/\bQuerida\b/g, 'Querido')
       .replace(/\bquerida\b/g, 'querido')
       .replace(/\bAmiga\b/g, 'Amigo')
-      .replace(/\bamiga\b/g, 'amigo');
+      .replace(/\bamiga\b/g, 'amigo')
+      .replace(/\bA cliente\b/g, 'O cliente')
+      .replace(/\ba cliente\b/g, 'o cliente');
   } else {
     resultado = resultado
+      .replace(/\bseja bem-vindo\b/gi, 'seja bem-vinda')
       .replace(/\bBem-vindo\b/g, 'Bem-vinda')
       .replace(/\bbem-vindo\b/g, 'bem-vinda')
-      .replace(/\bObrigado\b/g, 'Obrigada')
-      .replace(/\bobrigado\b/g, 'obrigada')
       .replace(/\bQuerido\b/g, 'Querida')
       .replace(/\bquerido\b/g, 'querida');
   }
@@ -191,4 +201,5 @@ export const preencherTemplateWhatsApp = (
 
   return resultado;
 };
+
 
