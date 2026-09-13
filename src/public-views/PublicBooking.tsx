@@ -597,13 +597,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         }
 
         // 2. Envio via WhatsApp QR Code (Z-API / Evolution API)
-        if (configSalao?.qrcode_whatsapp?.ativo) {
-          const cfgQr = configSalao.qrcode_whatsapp;
-          const telProfissional = cfgQr.numeroAlertaProfissional || telDest;
-          if (telProfissional && cfgQr.notificarProfissionalAoAgendar !== false) {
+        const cfgQr = configSalao?.qrcode_whatsapp;
+        if (cfgQr?.ativo !== false) {
+          const telProfissional = cfgQr?.numeroAlertaProfissional || telDest;
+          if (telProfissional && cfgQr?.notificarProfissionalAoAgendar !== false) {
             enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
           }
-          if (telefone && cfgQr.notificarClienteAoAgendar !== false) {
+          if (telefone && cfgQr?.notificarClienteAoAgendar !== false) {
             const msgCliente = `💅 Olá *${nome}*! Seu agendamento foi registrado com sucesso!\n\n📅 *Data:* ${dataFmt} às ${horarioSelecionado}\n💅 *Serviços:* ${servsText}\n💰 *Total:* ${formatarMoeda(precoTotal)}\n\nObrigada pela preferência!`;
             enviarMensagemWhatsAppQrCode(telefone, msgCliente, cfgQr).catch(() => {});
           }
@@ -681,10 +681,10 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         if (configSalao?.meta_whatsapp?.ativo) {
           enviarMensagemTextoMeta(telDest, msgProf, configSalao?.meta_whatsapp).catch(() => {});
         }
-        if (configSalao?.qrcode_whatsapp?.ativo) {
-          const cfgQr = configSalao.qrcode_whatsapp;
-          const telProfissional = cfgQr.numeroAlertaProfissional || telDest;
-          if (telProfissional && cfgQr.notificarProfissionalAoAgendar !== false) {
+        const cfgQr = configSalao?.qrcode_whatsapp;
+        if (cfgQr?.ativo !== false) {
+          const telProfissional = cfgQr?.numeroAlertaProfissional || telDest;
+          if (telProfissional && cfgQr?.notificarProfissionalAoAgendar !== false) {
             enviarMensagemWhatsAppQrCode(telProfissional, msgProf, cfgQr).catch(() => {});
           }
         }

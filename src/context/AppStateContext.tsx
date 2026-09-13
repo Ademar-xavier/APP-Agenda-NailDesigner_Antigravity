@@ -386,6 +386,16 @@ const configSalaoInicial: ConfigSalao = {
     retorno_manutencao: 'Olá, {cliente}! Faz {dias_visita} dias desde o seu último {servico}. Está na hora de fazer sua manutenção para manter suas unhas lindas e saudáveis! Agende pelo link: {link_agendamento}',
     lista_espera: 'Olá, {cliente}! Um horário que você desejava ficou vago para o dia {data} no período {periodo}. Gostaria de agendar? Responda rápido para garantir!',
     contato_geral: 'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no Sheila Santos Nails? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}'
+  },
+  qrcode_whatsapp: {
+    ativo: true,
+    provedor: 'evolution',
+    instancia: 'salao-sheila',
+    token: '7D254EAC0B52-4E75-9417-6F264AAE1EC5',
+    apiUrl: 'https://evolution-api-production-cdeb.up.railway.app',
+    numeroAlertaProfissional: '35 99714-1856',
+    notificarClienteAoAgendar: true,
+    notificarProfissionalAoAgendar: true
   }
 };
 
