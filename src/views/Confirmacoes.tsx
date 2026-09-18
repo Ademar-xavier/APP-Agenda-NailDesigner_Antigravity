@@ -756,7 +756,8 @@ export const Confirmacoes: React.FC = () => {
     const duracao = duracaoMinutos > 0 ? duracaoMinutos : 30;
     const livres: string[] = [];
 
-    for (let m = minInicio; m <= minFim - duracao; m += 30) {
+    // No painel interno (atribuição de vaga pela profissional), permite horários de início até o encerramento do salão
+    for (let m = minInicio; m <= minFim; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
       const slot = `${hStr}:${mStr}`;
