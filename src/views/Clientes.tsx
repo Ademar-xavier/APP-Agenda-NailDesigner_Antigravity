@@ -787,7 +787,21 @@ export const Clientes: React.FC<ClientesProps> = ({
                   <div>
                     <span className="block font-bold text-[10px] uppercase text-[#8C7A6B] mb-1">Observações Internas</span>
                     <p className="p-2.5 bg-[#FAF9F6] border border-[#EFECE6] rounded-lg text-xs italic">
-                      {clienteSelecionado.observacoes || 'Sem observações.'}
+                      {(() => {
+                        const obs = clienteSelecionado.observacoes;
+                        if (!obs || !obs.trim()) return 'Sem observações.';
+                        const limpo = obs
+                          .replace(/\s*\[EXCLUIDO_ADMIN\]/gi, '')
+                          .replace(/\s*\[PRODUTOS:\s*\[[\s\S]*?\]\s*\]/gi, '')
+                          .replace(/\s*\[PRODUTOS:[^\]]*\]/gi, '')
+                          .replace(/\s*\[DESCONTO:[^\]]+\]/gi, '')
+                          .replace(/\s*\[ADICIONAL:[^\]]+\]/gi, '')
+                          .replace(/\s*\[PLANO_ID:[^\]]+\]/gi, '')
+                          .replace(/\s*\[[A-Z0-9_ -]+:[^\]]*\]/gi, '')
+                          .replace(/^[\s,;|—•*\-]+|[\s,;|—•*\-]+$/g, '')
+                          .trim();
+                        return limpo || 'Sem observações.';
+                      })()}
                     </p>
                   </div>
                 </div>

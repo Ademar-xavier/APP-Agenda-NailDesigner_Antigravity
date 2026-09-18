@@ -561,6 +561,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
     // Remove todas as tags técnicas internas e metadados de sistema da observação
     let limpo = obs
+      // Tags de produtos: remove tanto arrays JSON completos [PRODUTOS: [{...}]] quanto simples
+      .replace(/\s*\[PRODUTOS:\s*\[[\s\S]*?\]\s*\]/gi, '')
+      .replace(/\s*\[PRODUTOS:[^\]]*\]/gi, '')
+      .replace(/\s*\[DESCONTO:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[ADICIONAL:\s*[^\]]+\]/gi, '')
       .replace(/\s*\[PLANO_ID:[^\]]+\]/gi, '')
       .replace(/\s*\[AG_PAR:[^\]]+\]/gi, '')
       .replace(/\s*\[AG_PRINCIPAL:[^\]]+\]/gi, '')
@@ -571,15 +576,24 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       .replace(/\s*\[\s*[^\]]*Recorrência[^\]]*\]/gi, '')
       .replace(/\s*\[Almoço[^\]]*\]/gi, '')
       .replace(/\s*\[Salão Completo\]/gi, '')
+      .replace(/\s*\[Bloqueio[^\]]*\]/gi, '')
+      .replace(/\s*\[FECHAMENTO:[^\]]*\]/gi, '')
+      .replace(/\s*\[PAGAMENTO:[^\]]*\]/gi, '')
+      .replace(/\s*\[EXCLUIDO[^\]]*\]/gi, '')
+      .replace(/\s*<!--NAIL_META:[\s\S]*?-->/gi, '')
+      .replace(/\s*\[\s*\{[\s\S]*?\}\s*\]/g, '') // JSON array residual
+      .replace(/\s*\{"[^"]+":[\s\S]*?\}/g, '')   // JSON object residual
+      .replace(/\s*\[[A-Z0-9_ -]+:[^\]]*\]/gi, '') // Qualquer tag técnica em maiúsculo tipo [KEY:VAL]
       .replace(/👑\s*Clube VIP\s*(\([^)]*\))?\s*-\s*Sessão\s*\d+\s*(\([^)]*\))?/gi, '')
       .replace(/\[Google Agenda Oficial\]/gi, '')
       .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
       .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
       .replace(/g_gen_[a-zA-Z0-9_\-]+/gi, '')
+      .replace(/^[\s,;|—•*\-]+|[\s,;|—•*\-]+$/g, '')
       .trim();
 
     // Se após a limpeza sobrou apenas pontuação vazia ou o próprio nome da cliente
-    if (limpo === '-' || limpo === '—' || limpo === '.') {
+    if (limpo === '-' || limpo === '—' || limpo === '.' || limpo === ',') {
       limpo = '';
     }
     if (clienteNome && (limpo.toLowerCase() === clienteNome.toLowerCase() || limpo.toLowerCase() === `- ${clienteNome.toLowerCase()}`)) {
@@ -594,6 +608,25 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       isGoogle,
       nota: limpo
     };
+  };
+
+  const formatarMotivoBloqueio = (obs?: string) => {
+    if (!obs || !obs.trim()) return 'Bloqueio de Horário Pessoal';
+    let limpo = obs
+      .replace(/\s*\[Salão Completo\]/gi, '')
+      .replace(/\s*\[Google Agenda Oficial\]/gi, '')
+      .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
+      .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
+      .replace(/g_gen_[a-zA-Z0-9_\-]+/gi, '')
+      .replace(/\s*\[PRODUTOS:\s*\[[\s\S]*?\]\s*\]/gi, '')
+      .replace(/\s*\[PRODUTOS:[^\]]*\]/gi, '')
+      .replace(/\s*\[DESCONTO:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[ADICIONAL:\s*[^\]]+\]/gi, '')
+      .replace(/\s*\[PLANO_ID:[^\]]+\]/gi, '')
+      .replace(/\s*\[[A-Z0-9_ -]+:[^\]]*\]/gi, '')
+      .replace(/^[\s,;|—•*\-]+|[\s,;|—•*\-]+$/g, '')
+      .trim();
+    return limpo || 'Bloqueio de Horário Pessoal';
   };
 
   // WhatsApp helper
@@ -1116,7 +1149,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 Motivo / Descrição do Bloqueio:
               </span>
               <p className="font-medium text-[#5A4535] whitespace-pre-line">
-                {agendamento.observacoes || 'Bloqueio de Horário Pessoal'}
+                {formatarMotivoBloqueio(agendamento.observacoes)}
               </p>
             </div>
 
@@ -1182,7 +1215,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <div className="bg-white/90 p-2 rounded-lg border border-red-200/70">
                   <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block">Motivo do Cancelamento:</span>
                   <p className="text-red-900 font-medium mt-0.5 whitespace-pre-line">
-                    {agendamento.motivo_cancelamento || 'Imprevisto / Cancelado sem motivo informado'}
+                    {agendamento.motivo_cancelamento === 'EXCLUIDO_ADMIN' 
+                      ? 'Excluído pelo administrador' 
+                      : (agendamento.motivo_cancelamento || 'Imprevisto / Cancelado sem motivo informado')}
                   </p>
                 </div>
               </div>
@@ -1203,7 +1238,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 <div className="bg-white/90 p-2 rounded-lg border border-amber-200/70">
                   <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Motivo / Registro da Falta:</span>
                   <p className="text-amber-950 font-medium mt-0.5 whitespace-pre-line">
-                    {agendamento.motivo_cancelamento || 'Cliente não compareceu ao horário agendado'}
+                    {agendamento.motivo_cancelamento === 'EXCLUIDO_ADMIN' 
+                      ? 'Excluído pelo administrador' 
+                      : (agendamento.motivo_cancelamento || 'Cliente não compareceu ao horário agendado')}
                   </p>
                 </div>
               </div>
@@ -1749,11 +1786,16 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               )}
 
               {infoObs.nota ? (
-                <div className="p-3 bg-[#FAF9F6] border border-[#EFECE6] rounded-xl text-xs text-[#5A4535]">
-                  <span className="block font-bold text-[10px] uppercase text-[#8C7A6B] mb-1">
-                    Observações:
-                  </span>
-                  <p className="italic text-[#786150] whitespace-pre-line">{infoObs.nota}</p>
+                <div className="p-3.5 bg-gradient-to-br from-[#FAF8F5] to-[#F5EFEB]/60 border border-[#E8DEC9] rounded-2xl shadow-2xs space-y-2">
+                  <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#8C6D58]">
+                    <FileText size={13} className="text-[#8C6D58] shrink-0" />
+                    <span>Observações do Atendimento</span>
+                  </div>
+                  <div className="bg-white/85 p-3 rounded-xl border border-[#EFECE6]/90 shadow-2xs">
+                    <p className="text-xs text-[#5A4535] leading-relaxed whitespace-pre-line font-normal">
+                      {infoObs.nota}
+                    </p>
+                  </div>
                 </div>
               ) : null}
             </div>
