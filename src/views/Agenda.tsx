@@ -670,9 +670,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     const livres: string[] = [];
     const ocupados: { hora: string; motivo: string }[] = [];
 
-    // Avalia cada intervalo de 30 em 30 minutos dentro do expediente (permitindo agendamentos retroativos no painel admin)
+    // No painel interno (profissional), permite horários de início até o horário de encerramento do salão, mesmo que a duração do serviço ultrapasse o expediente
     const duracaoVerificacao = isBloqueio ? 30 : duracaoMinutosAtual;
-    for (let m = minInicio; m <= minFim - duracaoVerificacao; m += 30) {
+    for (let m = minInicio; m <= minFim; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
       const slot = `${hStr}:${mStr}`;
