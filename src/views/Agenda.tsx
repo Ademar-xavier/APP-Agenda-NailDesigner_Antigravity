@@ -1439,9 +1439,23 @@ export const Agenda: React.FC<AgendaProps> = ({
                       <div>
                         {a.cliente_id === 'bloqueado' ? (
                           <h4 className="font-bold text-sm text-[#786150]">
-                            Bloqueio: {a.observacoes 
-                              ? a.observacoes.replace(/\[Google Agenda Oficial\]/gi, 'Google Agenda: ').replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '').trim() 
-                              : 'Sem detalhes'}
+                            Bloqueio: {(() => {
+                              if (!a.observacoes) return 'Horário Bloqueado';
+                              let txt = a.observacoes
+                                .replace(/\s*\[Salão Completo\]/gi, ' (Salão Completo)')
+                                .replace(/\s*\[Google Agenda Oficial\]/gi, 'Google Agenda: ')
+                                .replace(/Sincronizado automaticamente da Google Agenda/gi, '')
+                                .replace(/ID:[a-zA-Z0-9_\-]+(\s*-\s*)?/gi, '')
+                                .replace(/g_gen_[a-zA-Z0-9_\-]+/gi, '')
+                                .replace(/\s*\[PRODUTOS:\s*\[[\s\S]*?\]\s*\]/gi, '')
+                                .replace(/\s*\[PRODUTOS:[^\]]*\]/gi, '')
+                                .replace(/\s*\[DESCONTO:[^\]]+\]/gi, '')
+                                .replace(/\s*\[ADICIONAL:[^\]]+\]/gi, '')
+                                .replace(/\s*\[[A-Z0-9_ -]+:[^\]]*\]/gi, '')
+                                .replace(/^[\s,;|—•*\-]+|[\s,;|—•*\-]+$/g, '')
+                                .trim();
+                              return txt || 'Horário Bloqueado';
+                            })()}
                           </h4>
                         ) : (
                           <>
