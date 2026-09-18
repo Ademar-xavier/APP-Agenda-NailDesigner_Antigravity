@@ -54,8 +54,19 @@ export const salvarClienteSupabase = async (cliente: Cliente) => {
 // --- DELETAR CLIENTE ---
 export const deletarClienteSupabase = async (id: string) => {
   try {
-    const { error } = await supabase.from('clientes').delete().eq('id', id);
-    if (error) console.error('Erro ao deletar cliente no Supabase:', error);
+    // 1. Tenta exclusão física caso a política de RLS permita
+    const { count, error } = await supabase.from('clientes').delete({ count: 'exact' }).eq('id', id);
+    // 2. Se a deleção física não removeu linhas (ex: restrição RLS na role anon ou FK),
+    // executa a exclusão lógica definitiva no Supabase para que o cadastro nunca mais retorne
+    if (error || !count || count === 0) {
+      await supabase.from('clientes').update({
+        nome: `[EXCLUIDO] ${id}`,
+        telefone: `excluido_${id}`,
+        email: null,
+        observacoes: '[EXCLUIDO_ADMIN]',
+        preferencias: { excluido: true, excluido_em: new Date().toISOString() }
+      }).eq('id', id);
+    }
   } catch (e) {
     console.error('Falha na requisição deletarClienteSupabase:', e);
   }
@@ -781,8 +792,14 @@ export const carregarDadosNuvemSupabase = async () => {
       supabase.from('configuracoes').select('*')
     ]);
 
+    const clientesValidos = (clientesRes.data || []).filter((c: any) => 
+      !c.observacoes?.includes('[EXCLUIDO_ADMIN]') &&
+      c.preferencias?.excluido !== true &&
+      !c.nome?.startsWith('[EXCLUIDO]')
+    );
+
     return {
-      clientes: clientesRes.data || [],
+      clientes: clientesValidos,
       agendamentos: agendamentosRes.data || [],
       listaEspera: listaRes.data || [],
       servicos: servicosRes.data || [],

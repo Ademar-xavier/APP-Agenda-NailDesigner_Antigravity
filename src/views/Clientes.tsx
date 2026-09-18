@@ -82,55 +82,84 @@ export const Clientes: React.FC<ClientesProps> = ({
   const [filtroSumidasDias, setFiltroSumidasDias] = useState<30 | 45 | 60>(30);
   const [isDeduplicating, setIsDeduplicating] = useState(false);
 
-  // Detecção inteligente e visual de cadastros duplicados
-  const mapaDuplicatas = useMemo(() => {
-    const mapaNome = new Map<string, Cliente[]>();
-    const mapaTel = new Map<string, Cliente[]>();
-    clientes.forEach(c => {
-      const nomeKey = c.nome.trim().toLowerCase();
-      if (nomeKey) {
-        if (!mapaNome.has(nomeKey)) mapaNome.set(nomeKey, []);
-        mapaNome.get(nomeKey)!.push(c);
+  // Detecção inteligente e visual de cadastros duplicados (mesmo nome normalizado OU telefone compartilhado)
+  const { mapaDuplicatas, duplicatasDetectadas } = useMemo(() => {
+    const normalizarTexto = (str: string = '') =>
+      str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const limparDigitos = (str: string = '') => str.replace(/\D/g, '');
+
+    const ativos = clientes.filter(c => 
+      !c.observacoes?.includes('[EXCLUIDO_ADMIN]') && 
+      c.preferencias?.excluido !== true && 
+      !c.nome?.startsWith('[EXCLUIDO]')
+    );
+
+    const parent = new Map<string, string>();
+    const find = (id: string): string => {
+      if (!parent.has(id)) parent.set(id, id);
+      if (parent.get(id) !== id) {
+        parent.set(id, find(parent.get(id)!));
       }
-      const telLimpo = c.telefone ? c.telefone.replace(/\D/g, '') : '';
-      if (telLimpo.length >= 8) {
-        if (!mapaTel.has(telLimpo)) mapaTel.set(telLimpo, []);
-        mapaTel.get(telLimpo)!.push(c);
+      return parent.get(id)!;
+    };
+    const union = (id1: string, id2: string) => {
+      const root1 = find(id1);
+      const root2 = find(id2);
+      if (root1 !== root2) {
+        parent.set(root1, root2);
       }
-    });
+    };
+
+    const porNome = new Map<string, string[]>();
+    const porTel = new Map<string, string[]>();
+
+    for (const c of ativos) {
+      const nKey = normalizarTexto(c.nome);
+      if (nKey.length >= 2) {
+        if (!porNome.has(nKey)) porNome.set(nKey, []);
+        porNome.get(nKey)!.push(c.id);
+      }
+      const telDigitos = limparDigitos(c.telefone);
+      if (telDigitos.length >= 8) {
+        const chaveTel = telDigitos.length > 8 ? telDigitos.slice(-8) : telDigitos;
+        if (!porTel.has(chaveTel)) porTel.set(chaveTel, []);
+        porTel.get(chaveTel)!.push(c.id);
+      }
+    }
+
+    for (const ids of porNome.values()) {
+      for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    }
+    for (const ids of porTel.values()) {
+      for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    }
+
+    const gruposMap = new Map<string, Cliente[]>();
+    for (const c of ativos) {
+      const root = find(c.id);
+      if (!gruposMap.has(root)) gruposMap.set(root, []);
+      gruposMap.get(root)!.push(c);
+    }
 
     const idsComDuplicata = new Map<string, { razao: string; totalCadastros: number }>();
-    mapaNome.forEach((lista) => {
-      if (lista.length > 1) {
-        lista.forEach(c => {
-          idsComDuplicata.set(c.id, { razao: `${lista.length} cadastros com este mesmo nome`, totalCadastros: lista.length });
-        });
-      }
-    });
-    mapaTel.forEach((lista) => {
-      if (lista.length > 1) {
-        lista.forEach(c => {
-          const existing = idsComDuplicata.get(c.id);
-          if (!existing) {
-            idsComDuplicata.set(c.id, { razao: `${lista.length} cadastros com este mesmo telefone`, totalCadastros: lista.length });
-          }
-        });
-      }
-    });
-    return idsComDuplicata;
-  }, [clientes]);
+    let totalDups = 0;
 
-  const duplicatasDetectadas = useMemo(() => {
-    const mapa = new Map<string, number>();
-    clientes.forEach(c => {
-      const k = c.nome.trim().toLowerCase();
-      mapa.set(k, (mapa.get(k) || 0) + 1);
-    });
-    let dups = 0;
-    mapa.forEach(count => {
-      if (count > 1) dups += (count - 1);
-    });
-    return dups;
+    for (const lista of gruposMap.values()) {
+      if (lista.length > 1) {
+        totalDups += (lista.length - 1);
+        lista.forEach(c => {
+          idsComDuplicata.set(c.id, {
+            razao: `${lista.length} cadastros similares identificados`,
+            totalCadastros: lista.length
+          });
+        });
+      }
+    }
+
+    return {
+      mapaDuplicatas: idsComDuplicata,
+      duplicatasDetectadas: totalDups
+    };
   }, [clientes]);
 
   const handleDeduplicarClientes = () => {
@@ -169,6 +198,7 @@ export const Clientes: React.FC<ClientesProps> = ({
     }[] = [];
 
     clientes.forEach(cli => {
+      if (cli.observacoes?.includes('[EXCLUIDO_ADMIN]') || cli.preferencias?.excluido === true || cli.nome?.startsWith('[EXCLUIDO]')) return;
       const agsDoCliente = agendamentos.filter(a => a.cliente_id === cli.id);
 
       // Se tem agendamento futuro marcado, NÃO está sumida
@@ -588,6 +618,9 @@ export const Clientes: React.FC<ClientesProps> = ({
   // Filtrar clientes e ordenar por ordem alfabética de A a Z
   const clientesFiltrados = clientes
     .filter(c => {
+      if (c.observacoes?.includes('[EXCLUIDO_ADMIN]') || c.preferencias?.excluido === true || c.nome?.startsWith('[EXCLUIDO]')) {
+        return false;
+      }
       if (abaAtiva === 'duplicadas' && !mapaDuplicatas.has(c.id)) {
         return false;
       }
