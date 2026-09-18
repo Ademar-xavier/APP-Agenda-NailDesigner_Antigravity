@@ -686,7 +686,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [clientes, setClientes] = useState<Cliente[]>(() => {
     try {
       const saved = localStorage.getItem('nail_clientes');
-      return saved ? JSON.parse(saved) : clientesIniciais;
+      if (saved) {
+        const parsed: Cliente[] = JSON.parse(saved);
+        return parsed.filter(c => 
+          !c.observacoes?.includes('[EXCLUIDO_ADMIN]') && 
+          c.preferencias?.excluido !== true && 
+          !c.nome?.startsWith('[EXCLUIDO]')
+        );
+      }
+      return clientesIniciais;
     } catch (e) {
       console.error('Erro ao ler clientes do cache:', e);
       return clientesIniciais;
@@ -1109,8 +1117,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const planosNuvemRef = dados.configuracoes?.config_salao?.planos_assinatura || dados.configuracoes?.planos_assinatura || planosAssinatura;
 
       if (dados.clientes && dados.clientes.length > 0) {
+        const clientesValidosNuvem = dados.clientes.filter((cNu: any) =>
+          !cNu.observacoes?.includes('[EXCLUIDO_ADMIN]') &&
+          cNu.preferencias?.excluido !== true &&
+          !cNu.nome?.startsWith('[EXCLUIDO]')
+        );
+
         setClientes(prevClientes => {
-          const clientesMesclados = dados.clientes.map((cNu: any) => {
+          const clientesMesclados = clientesValidosNuvem.map((cNu: any) => {
             const cLocal = prevClientes.find(p => p.id === cNu.id);
             const anamnese = cNu.anamnese || cNu.preferencias?.anamnese || cLocal?.anamnese;
             let assinatura = cNu.assinatura || cNu.preferencias?.assinatura || cLocal?.assinatura;
@@ -1148,7 +1162,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               anamnese,
               assinatura
             };
-          });
+          }).filter((c: any) => 
+            !c.observacoes?.includes('[EXCLUIDO_ADMIN]') && 
+            c.preferencias?.excluido !== true && 
+            !c.nome?.startsWith('[EXCLUIDO]')
+          );
 
           try { localStorage.setItem('nail_clientes', JSON.stringify(clientesMesclados)); } catch (e) {}
           dbSetAll(STORES.CLIENTES, clientesMesclados);
@@ -1808,6 +1826,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, (payload: any) => {
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const novo = payload.new as any;
+          if (
+            novo?.observacoes?.includes('[EXCLUIDO_ADMIN]') ||
+            novo?.preferencias?.excluido === true ||
+            novo?.nome?.startsWith('[EXCLUIDO]')
+          ) {
+            setClientes(prev => prev.filter(c => c.id !== novo.id));
+            return;
+          }
           setClientes(prev => {
             const map = new Map(prev.map(c => [c.id, c]));
             map.set(payload.new.id, payload.new as Cliente);
@@ -2533,10 +2560,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     mostrarNotificacaoGlobal('✅ Dados da cliente salvos e sincronizados com a nuvem!');
   };
 
-  const deleteCliente = (id: string) => {
+  const deleteCliente = async (id: string) => {
     limparFocoAtivo();
     setClientes(prev => prev.filter(c => c.id !== id));
-    deletarClienteSupabase(id);
+    await deletarClienteSupabase(id);
     mostrarNotificacaoGlobal('✅ Cliente removida da nuvem com sucesso!');
   };
 
@@ -4399,13 +4426,65 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const deduplicarClientes = async (): Promise<{ removidos: number; unificados: number }> => {
-    // 1. Agrupar clientes por nome normalizado (ou telefone)
-    const grupos = new Map<string, Cliente[]>();
-    clientes.forEach(c => {
-      const key = c.nome.trim().toLowerCase();
-      if (!grupos.has(key)) grupos.set(key, []);
-      grupos.get(key)!.push(c);
-    });
+    const normalizarTexto = (str: string = '') =>
+      str.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+
+    const limparDigitos = (str: string = '') => str.replace(/\D/g, '');
+
+    // Filtra apenas clientes ativos (ignora já excluídos)
+    const ativos = clientes.filter(c => 
+      !c.observacoes?.includes('[EXCLUIDO_ADMIN]') && 
+      c.preferencias?.excluido !== true && 
+      !c.nome?.startsWith('[EXCLUIDO]')
+    );
+
+    // Agrupamento por componentes conexos (mesmo nome normalizado OU mesmo telefone válido)
+    const parent = new Map<string, string>();
+    const find = (id: string): string => {
+      if (!parent.has(id)) parent.set(id, id);
+      if (parent.get(id) !== id) {
+        parent.set(id, find(parent.get(id)!));
+      }
+      return parent.get(id)!;
+    };
+    const union = (id1: string, id2: string) => {
+      const root1 = find(id1);
+      const root2 = find(id2);
+      if (root1 !== root2) {
+        parent.set(root1, root2);
+      }
+    };
+
+    const porNome = new Map<string, string[]>();
+    const porTel = new Map<string, string[]>();
+
+    for (const c of ativos) {
+      const nKey = normalizarTexto(c.nome);
+      if (nKey.length >= 2) {
+        if (!porNome.has(nKey)) porNome.set(nKey, []);
+        porNome.get(nKey)!.push(c.id);
+      }
+      const telDigitos = limparDigitos(c.telefone);
+      if (telDigitos.length >= 8) {
+        const chaveTel = telDigitos.length > 8 ? telDigitos.slice(-8) : telDigitos;
+        if (!porTel.has(chaveTel)) porTel.set(chaveTel, []);
+        porTel.get(chaveTel)!.push(c.id);
+      }
+    }
+
+    for (const ids of porNome.values()) {
+      for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    }
+    for (const ids of porTel.values()) {
+      for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    }
+
+    const gruposMap = new Map<string, Cliente[]>();
+    for (const c of ativos) {
+      const root = find(c.id);
+      if (!gruposMap.has(root)) gruposMap.set(root, []);
+      gruposMap.get(root)!.push(c);
+    }
 
     let totalRemovidos = 0;
     let gruposUnificados = 0;
@@ -4413,67 +4492,165 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const mapaReatribuicao = new Map<string, string>(); // dupId -> primaryId
     let clientesAtualizados = [...clientes];
 
-    for (const [_, lista] of grupos.entries()) {
+    const pontuarCliente = (c: Cliente): number => {
+      let pts = 0;
+      // 1. Assinatura VIP ativa
+      const temAssinatura = c.assinatura?.status === 'ativo' || c.preferencias?.assinatura?.status === 'ativo';
+      if (temAssinatura) pts += 100;
+      else if (c.assinatura || c.preferencias?.assinatura) pts += 30;
+
+      // 2. Agendamentos vinculados
+      const ags = agendamentos.filter(ag => ag.cliente_id === c.id);
+      pts += ags.length * 15;
+      if (ags.some(ag => ag.status === 'concluido')) pts += 20;
+
+      // 3. Telefone válido (10 ou 11 dígitos padrão Brasil)
+      const d = limparDigitos(c.telefone);
+      if (d.length === 10 || d.length === 11) pts += 25;
+      else if (d.length >= 8) pts += 10;
+
+      // 4. Preferências de unhas preenchidas (técnica, formato, tamanho)
+      const pref = c.preferencias || {};
+      if (pref.formato) pts += 10;
+      if (pref.tamanho) pts += 10;
+      if (pref.tecnica) pts += 10;
+      if (pref.cores) pts += 4;
+      if (pref.estilo) pts += 4;
+      if (pref.sexo || c.sexo) pts += 5;
+
+      // 5. Anamnese e assinatura digital
+      if (c.anamnese || pref.anamnese) pts += 15;
+      if (c.consentimento_imagem) pts += 8;
+
+      // 6. Demais campos preenchidos
+      if (c.email) pts += 5;
+      if (c.aniversario) pts += 5;
+      if (c.alergias) pts += 5;
+      if (c.observacoes && !c.observacoes.includes('[EXCLUIDO')) pts += 5;
+
+      return pts;
+    };
+
+    for (const [_, lista] of gruposMap.entries()) {
       if (lista.length <= 1) continue;
 
       gruposUnificados++;
 
-      // Escolhe o cliente principal:
-      // 1. Tem assinatura ativa
-      // 2. Tem mais agendamentos vinculados
-      // 3. Tem telefone preenchido
-      // 4. Mais antigo (id ou criado_em)
       const ordenados = [...lista].sort((a, b) => {
-        const aTemAssinatura = a.assinatura?.status === 'ativo' ? 2 : (a.assinatura ? 1 : 0);
-        const bTemAssinatura = b.assinatura?.status === 'ativo' ? 2 : (b.assinatura ? 1 : 0);
-        if (aTemAssinatura !== bTemAssinatura) return bTemAssinatura - aTemAssinatura;
-
-        const aAgs = agendamentos.filter(ag => ag.cliente_id === a.id).length;
-        const bAgs = agendamentos.filter(ag => ag.cliente_id === b.id).length;
-        if (aAgs !== bAgs) return bAgs - aAgs;
-
-        const aTemTel = a.telefone?.replace(/\D/g, '').length ? 1 : 0;
-        const bTemTel = b.telefone?.replace(/\D/g, '').length ? 1 : 0;
-        if (aTemTel !== bTemTel) return bTemTel - aTemTel;
-
+        const diffPts = pontuarCliente(b) - pontuarCliente(a);
+        if (diffPts !== 0) return diffPts;
+        const dataA = a.criado_em ? new Date(a.criado_em).getTime() : 0;
+        const dataB = b.criado_em ? new Date(b.criado_em).getTime() : 0;
+        if (dataA && dataB && dataA !== dataB) return dataA - dataB;
         return a.id.localeCompare(b.id);
       });
 
       const principal = ordenados[0];
       const duplicados = ordenados.slice(1);
 
-      let mudouPrincipal = false;
-      let principalMerged = { ...principal };
+      let principalMerged: Cliente = {
+        ...principal,
+        preferencias: { ...(principal.preferencias || {}) }
+      };
+
       duplicados.forEach(dup => {
-        if (!principalMerged.telefone && dup.telefone) {
-          principalMerged.telefone = dup.telefone;
-          mudouPrincipal = true;
+        idsParaExcluir.push(dup.id);
+        mapaReatribuicao.set(dup.id, principalMerged.id);
+        totalRemovidos++;
+
+        // 1. Nome: limpa espaços e prefere nome mais longo/completo se não for excluído
+        const nomeP = principalMerged.nome.trim();
+        const nomeD = dup.nome ? dup.nome.trim() : '';
+        if (nomeD && !nomeD.startsWith('[EXCLUIDO]') && nomeD.length > nomeP.length) {
+          principalMerged.nome = nomeD;
+        } else {
+          principalMerged.nome = nomeP;
         }
+
+        // 2. Telefone: prioriza número com formato válido (10 ou 11 dígitos)
+        const telP = limparDigitos(principalMerged.telefone);
+        const telD = limparDigitos(dup.telefone);
+        const telPValido = telP.length === 10 || telP.length === 11;
+        const telDValido = telD.length === 10 || telD.length === 11;
+        if ((!telPValido && telDValido) || (!principalMerged.telefone && dup.telefone)) {
+          principalMerged.telefone = dup.telefone.trim();
+        }
+
+        // 3. Email
         if (!principalMerged.email && dup.email) {
-          principalMerged.email = dup.email;
-          mudouPrincipal = true;
+          principalMerged.email = dup.email.trim();
         }
+
+        // 4. Sexo
+        const sexoD = dup.sexo || dup.preferencias?.sexo;
+        if (!principalMerged.sexo && sexoD) {
+          principalMerged.sexo = sexoD;
+        }
+
+        // 5. Aniversário
         if (!principalMerged.aniversario && dup.aniversario) {
           principalMerged.aniversario = dup.aniversario;
-          mudouPrincipal = true;
         }
+
+        // 6. Alergias (preserva e mescla sem perder informações)
         if (!principalMerged.alergias && dup.alergias) {
-          principalMerged.alergias = dup.alergias;
-          mudouPrincipal = true;
+          principalMerged.alergias = dup.alergias.trim();
+        } else if (dup.alergias && principalMerged.alergias && !principalMerged.alergias.includes(dup.alergias.trim())) {
+          principalMerged.alergias = `${principalMerged.alergias}; ${dup.alergias.trim()}`;
         }
-        if (!principalMerged.observacoes && dup.observacoes) {
-          principalMerged.observacoes = dup.observacoes;
-          mudouPrincipal = true;
+
+        // 7. Observações
+        if (!principalMerged.observacoes && dup.observacoes && !dup.observacoes.includes('[EXCLUIDO')) {
+          principalMerged.observacoes = dup.observacoes.trim();
+        } else if (dup.observacoes && principalMerged.observacoes && !dup.observacoes.includes('[EXCLUIDO') && !principalMerged.observacoes.includes(dup.observacoes.trim())) {
+          principalMerged.observacoes = `${principalMerged.observacoes} | ${dup.observacoes.trim()}`;
         }
-        idsParaExcluir.push(dup.id);
-        mapaReatribuicao.set(dup.id, principal.id);
-        totalRemovidos++;
+
+        // 8. Consentimento de imagem
+        if (dup.consentimento_imagem) {
+          principalMerged.consentimento_imagem = true;
+        }
+
+        // 9. Antiguidade (criado_em) - preserva o cadastro original mais antigo
+        if (dup.criado_em && (!principalMerged.criado_em || new Date(dup.criado_em) < new Date(principalMerged.criado_em))) {
+          principalMerged.criado_em = dup.criado_em;
+        }
+
+        // 10. Preferências de unhas (formato, tamanho, técnica, etc. - DEEP MERGE)
+        const prefP = principalMerged.preferencias || {};
+        const prefD = dup.preferencias || {};
+        const mergedPrefs: Record<string, any> = {
+          ...prefD,
+          ...prefP,
+          formato: prefP.formato || prefD.formato || undefined,
+          tamanho: prefP.tamanho || prefD.tamanho || undefined,
+          tecnica: prefP.tecnica || prefD.tecnica || undefined,
+          cores: prefP.cores || prefD.cores || undefined,
+          estilo: prefP.estilo || prefD.estilo || undefined,
+          sexo: prefP.sexo || prefD.sexo || principalMerged.sexo || undefined,
+          anamnese: prefP.anamnese || prefD.anamnese || principalMerged.anamnese || dup.anamnese || undefined,
+          assinatura: prefP.assinatura || prefD.assinatura || principalMerged.assinatura || dup.assinatura || undefined,
+        };
+
+        Object.keys(mergedPrefs).forEach(k => {
+          if (mergedPrefs[k] === undefined) delete mergedPrefs[k];
+        });
+        principalMerged.preferencias = mergedPrefs;
+
+        // 11. Anamnese
+        if (!principalMerged.anamnese && (dup.anamnese || prefD.anamnese)) {
+          principalMerged.anamnese = dup.anamnese || prefD.anamnese;
+        }
+
+        // 12. Assinatura VIP
+        if (!principalMerged.assinatura || (dup.assinatura?.status === 'ativo' && principalMerged.assinatura?.status !== 'ativo')) {
+          if (dup.assinatura) principalMerged.assinatura = dup.assinatura;
+        }
       });
 
-      if (mudouPrincipal) {
-        clientesAtualizados = clientesAtualizados.map(c => c.id === principal.id ? principalMerged : c);
-        salvarClienteSupabase(principalMerged);
-      }
+      // Atualiza na lista local e salva no Supabase
+      clientesAtualizados = clientesAtualizados.map(c => c.id === principalMerged.id ? principalMerged : c);
+      await salvarClienteSupabase(principalMerged);
     }
 
     if (totalRemovidos === 0) {
@@ -4482,32 +4659,54 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // 2. Reatribuir agendamentos dos IDs duplicados para o ID principal
-    let agendamentosAtualizados = agendamentos.map(a => {
+    let agendamentosAtualizados = [...agendamentos];
+    for (let i = 0; i < agendamentosAtualizados.length; i++) {
+      const a = agendamentosAtualizados[i];
       if (mapaReatribuicao.has(a.cliente_id)) {
         const novoId = mapaReatribuicao.get(a.cliente_id)!;
         const atualizado = { ...a, cliente_id: novoId };
-        salvarAgendamentoSupabase(atualizado, itensAgendamento[a.id] || []);
-        return atualizado;
+        agendamentosAtualizados[i] = atualizado;
+        await salvarAgendamentoSupabase(atualizado, itensAgendamento[a.id] || []);
       }
-      return a;
-    });
+    }
 
-    // 3. Excluir duplicados do Supabase
+    // 3. Reatribuir lista de espera
+    let listaAtualizada = [...listaEspera];
+    for (let i = 0; i < listaAtualizada.length; i++) {
+      const item = listaAtualizada[i];
+      if (item.cliente_id && mapaReatribuicao.has(item.cliente_id)) {
+        const novoId = mapaReatribuicao.get(item.cliente_id)!;
+        const atualizado = { ...item, cliente_id: novoId };
+        listaAtualizada[i] = atualizado;
+        await salvarListaEsperaSupabase(atualizado);
+      }
+    }
+
+    // 4. Reatribuir fotos no Supabase
+    for (const [dupId, primId] of mapaReatribuicao.entries()) {
+      try {
+        await supabase.from('fotos_clientes').update({ cliente_id: primId }).eq('cliente_id', dupId);
+      } catch (e) {}
+    }
+
+    // 5. Excluir duplicados do Supabase (físico ou lógico com [EXCLUIDO_ADMIN])
     for (const dupId of idsParaExcluir) {
       await deletarClienteSupabase(dupId);
     }
 
-    // 4. Filtrar clientes locais
+    // 6. Filtrar clientes locais
     clientesAtualizados = clientesAtualizados.filter(c => !idsParaExcluir.includes(c.id));
     setClientes(clientesAtualizados);
     setAgendamentos(agendamentosAtualizados);
+    setListaEspera(listaAtualizada);
 
     try { localStorage.setItem('nail_clientes', JSON.stringify(clientesAtualizados)); } catch (e) {}
     try { localStorage.setItem('nail_agendamentos', JSON.stringify(agendamentosAtualizados)); } catch (e) {}
+    try { localStorage.setItem('nail_lista_espera', JSON.stringify(listaAtualizada)); } catch (e) {}
     dbSetAll(STORES.CLIENTES, clientesAtualizados);
     dbSetAll(STORES.AGENDAMENTOS, agendamentosAtualizados);
 
-    mostrarNotificacaoGlobal(`🧹 Sucesso! ${totalRemovidos} cadastro(s) duplicado(s) foram excluídos da nuvem e unificados!`);
+    mostrarNotificacaoGlobal(`🧹 Sucesso! ${totalRemovidos} cadastro(s) duplicado(s) unificado(s) com dados completos e sincronizados na nuvem!`);
     return { removidos: totalRemovidos, unificados: gruposUnificados };
   };
 
