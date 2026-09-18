@@ -621,17 +621,21 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
 export const salvarDespesaSupabase = async (despesa: any) => {
   try {
     let descFinal = despesa.descricao || '';
-    if (despesa.tipo_destino || despesa.forma_pagamento || despesa.parcelamento_grupo_id || despesa.material_id) {
-      const meta = {
-        td: despesa.tipo_destino,
-        pid: despesa.profissional_id,
-        fp: despesa.forma_pagamento,
-        pt: despesa.parcelas_total,
-        pa: despesa.parcela_atual,
-        gid: despesa.parcelamento_grupo_id,
-        mi: despesa.mes_inicio,
-        mid: despesa.material_id
-      };
+    const meta: any = {};
+    if (despesa.tipo_destino) meta.td = despesa.tipo_destino;
+    if (despesa.profissional_id) meta.pid = despesa.profissional_id;
+    if (despesa.forma_pagamento) meta.fp = despesa.forma_pagamento;
+    if (despesa.parcelas_total) meta.pt = despesa.parcelas_total;
+    if (despesa.parcela_atual) meta.pa = despesa.parcela_atual;
+    if (despesa.parcelamento_grupo_id) meta.gid = despesa.parcelamento_grupo_id;
+    if (despesa.mes_inicio) meta.mi = despesa.mes_inicio;
+    if (despesa.material_id) meta.mid = despesa.material_id;
+    if (despesa.criado_por) meta.cp = despesa.criado_por;
+    if (despesa.criado_por_nome) meta.cpn = despesa.criado_por_nome;
+    if (despesa.atualizado_por_nome) meta.apn = despesa.atualizado_por_nome;
+    if (despesa.observacoes) meta.obs = despesa.observacoes;
+
+    if (Object.keys(meta).length > 0) {
       descFinal = descFinal.replace(/\[DESP_META:.*?\]/gi, '').trim();
       descFinal = `${descFinal} [DESP_META:${JSON.stringify(meta)}]`.trim();
     }

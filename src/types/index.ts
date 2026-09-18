@@ -312,6 +312,10 @@ export interface Despesa {
   parcelamento_grupo_id?: string; // ID compartilhado entre parcelas da mesma despesa
   mes_inicio?: string; // YYYY-MM de início
   material_id?: string; // Se a despesa foi originada da compra de um material
+  criado_por?: string; // ID do usuário que lançou
+  criado_por_nome?: string; // Nome de quem lançou
+  atualizado_por_nome?: string; // Nome de quem editou por último
+  observacoes?: string; // Observações opcionais
 }
 
 export interface Material {

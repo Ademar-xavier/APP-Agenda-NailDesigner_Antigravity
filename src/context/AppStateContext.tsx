@@ -1422,6 +1422,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           let parcGrpId = d.parcelamento_grupo_id;
           let mesIni = d.mes_inicio;
           let matId = d.material_id;
+          let criadoPor = d.criado_por;
+          let criadoPorNome = d.criado_por_nome;
+          let atualizadoPorNome = d.atualizado_por_nome;
+          let observacoes = d.observacoes;
 
           if (d.descricao?.includes('[DESP_META:')) {
             try {
@@ -1436,6 +1440,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 if (meta.gid) parcGrpId = meta.gid;
                 if (meta.mi) mesIni = meta.mi;
                 if (meta.mid) matId = meta.mid;
+                if (meta.cp) criadoPor = meta.cp;
+                if (meta.cpn) criadoPorNome = meta.cpn;
+                if (meta.apn) atualizadoPorNome = meta.apn;
+                if (meta.obs) observacoes = meta.obs;
               }
             } catch (e) {}
           }
@@ -1454,7 +1462,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             parcela_atual: parcAtu,
             parcelamento_grupo_id: parcGrpId,
             mes_inicio: mesIni,
-            material_id: matId
+            material_id: matId,
+            criado_por: criadoPor,
+            criado_por_nome: criadoPorNome || 'Admin',
+            atualizado_por_nome: atualizadoPorNome,
+            observacoes: observacoes
           };
         });
         setDespesas(despsFormatadas);
@@ -2665,6 +2677,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // --- Ações de Despesas ---
   const addDespesa = (nova: Omit<Despesa, 'id'>) => {
     const numParcelas = nova.forma_pagamento === 'parcelado' ? Math.max(1, Number(nova.parcelas_total) || 1) : 1;
+    const criadorId = nova.criado_por || currentUser?.id;
+    const criadorNome = nova.criado_por_nome || currentUser?.nome || configSalao.proprietaria || 'Admin';
 
     if (numParcelas <= 1) {
       const despesa: Despesa = {
@@ -2673,7 +2687,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         tipo_destino: nova.tipo_destino || 'salao',
         forma_pagamento: nova.forma_pagamento || 'a_vista',
         parcelas_total: 1,
-        parcela_atual: 1
+        parcela_atual: 1,
+        criado_por: criadorId,
+        criado_por_nome: criadorNome
       };
       setDespesas(prev => [...prev, despesa]);
       salvarDespesaSupabase(despesa);
@@ -2715,7 +2731,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         parcelas_total: numParcelas,
         parcela_atual: i,
         parcelamento_grupo_id: grupoId,
-        mes_inicio: `${anoIniStr}-${mesIniStr}`
+        mes_inicio: `${anoIniStr}-${mesIniStr}`,
+        criado_por: criadorId,
+        criado_por_nome: criadorNome
       };
 
       novasParcelas.push(parc);
@@ -2735,8 +2753,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const updateDespesa = (id: string, updated: Partial<Despesa>) => {
+    const atualizadorNome = updated.atualizado_por_nome || currentUser?.nome || 'Admin';
     setDespesas(prev => {
-      const next = prev.map(d => d.id === id ? { ...d, ...updated } : d);
+      const next = prev.map(d => d.id === id ? { ...d, ...updated, atualizado_por_nome: atualizadorNome } : d);
       const desp = next.find(d => d.id === id);
       if (desp) salvarDespesaSupabase(desp);
       return next;
