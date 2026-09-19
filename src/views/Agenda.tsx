@@ -62,7 +62,10 @@ export const Agenda: React.FC<AgendaProps> = ({
     planosAssinatura,
     vincularAssinaturaCliente,
     ajustarHorarioAlmoco,
-    excluirOuLiberarAlmoco
+    excluirOuLiberarAlmoco,
+    confirmarAcao,
+    verificarConflitoAlmoco,
+    limparAlmocosSobrepostosNoBanco
   } = useAppState();
 
   // Data Base Real (Data Local Hoje)
@@ -80,6 +83,11 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [almocoFim, setAlmocoFim] = useState<string>('13:00');
   const [almocoEscopo, setAlmocoEscopo] = useState<'dia' | 'profissional' | 'salao'>('dia');
   const [salvandoAlmoco, setSalvandoAlmoco] = useState(false);
+
+  // Limpeza retroativa de almoços sobrepostos no banco ao carregar ou trocar data
+  useEffect(() => {
+    limparAlmocosSobrepostosNoBanco().catch(() => {});
+  }, [dataSelecionada]);
 
   const handleAbrirModalAlmoco = (profId?: string, horaIni?: string, horaFim?: string) => {
     const profAlvo = profId || (currentUser?.perfil === 'profissional' ? currentUser.id : 'todas');
@@ -567,12 +575,41 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Filtrar e organizar agendamentos para o dia selecionado (incluindo horário de almoço das profissionais)
   const agendamentosDoDia = useMemo(() => {
-    // 1. Agendamentos reais desta data (excluindo bloqueios cancelados e agendamentos excluídos)
-    const reais = agendamentos.filter(a => 
+    // Atendimentos ativos de clientes nesta data (não bloqueios e não cancelados)
+    const atendimentosClientesAtivos = agendamentos.filter(a =>
       a.inicio.startsWith(dataSelecionada) &&
-      !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') &&
+      a.cliente_id !== 'bloqueado' &&
+      a.status !== 'cancelado' &&
+      a.status !== 'falta' &&
       a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
     );
+
+    // 1. Agendamentos reais desta data (excluindo bloqueios cancelados e agendamentos excluídos)
+    // Oculta também agendamentos reais de almoço que estejam sobrepostos por atendimento ativo da mesma profissional
+    const reais = agendamentos.filter(a => {
+      if (!a.inicio.startsWith(dataSelecionada)) return false;
+      if (a.cliente_id === 'bloqueado' && a.status === 'cancelado') return false;
+      if (a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
+
+      if (a.observacoes?.includes('[Almoço]')) {
+        const aIni = new Date(a.inicio).getTime();
+        let aFim = new Date(a.fim).getTime();
+        if (!aFim || aFim <= aIni) aFim = aIni + 60 * 60000;
+
+        const temSobreposicaoCliente = atendimentosClientesAtivos.some(cliAg => {
+          const envolve = cliAg.profissional_id === a.profissional_id || agendamentoEnvolveProfissional(cliAg, a.profissional_id, servicos);
+          if (!envolve) return false;
+          const cIni = new Date(cliAg.inicio).getTime();
+          let cFim = new Date(cliAg.fim).getTime();
+          if (!cFim || cFim <= cIni) cFim = cIni + 60 * 60000;
+          return Math.max(aIni, cIni) < Math.min(aFim, cFim);
+        });
+
+        if (temSobreposicaoCliente) return false;
+      }
+
+      return true;
+    });
 
     // 2. Blocos de almoço padrão (se não houver agendamento real de almoço ou cancelamento pontual nesta data)
     const blocosAlmocoVirtuais: Agendamento[] = [];
@@ -581,29 +618,51 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (!u.ativo) return;
         if (u.horario_almoco_ativo === false) return;
 
-        // Se houver agendamento real de almoço ou cancelamento pontual nesta data para esta profissional, não sintetiza
-        const jaTemAlmocoNesteDia = reais.some(a => 
+        // Se houver cancelamento pontual nesta data para esta profissional (procura em agendamentos completo)
+        const almocoCanceladoNesteDia = agendamentos.some(a => 
           a.profissional_id === u.id && 
-          (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'))
+          a.inicio.startsWith(dataSelecionada) &&
+          (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
         );
+        if (almocoCanceladoNesteDia) return;
 
-        if (!jaTemAlmocoNesteDia) {
-          const ini = u.horario_almoco_inicio || '12:00';
-          const fim = u.horario_almoco_fim || '13:00';
-          blocosAlmocoVirtuais.push({
-            id: `almoco_virt_${u.id}_${dataSelecionada}`,
-            cliente_id: 'bloqueado',
-            profissional_id: u.id,
-            inicio: `${dataSelecionada}T${ini}:00`,
-            fim: `${dataSelecionada}T${fim}:00`,
-            status: 'bloqueado',
-            valor_total: 0,
-            valor_sinal: 0,
-            observacoes: `[Almoço] Horário de Almoço - ${u.nome}`,
-            origem: 'admin',
-            criado_em: `${dataSelecionada}T00:00:00Z`
-          });
-        }
+        // Se já existe agendamento real de almoço ativo nesta data
+        const jaTemAlmocoNoBanco = reais.some(a => 
+          a.profissional_id === u.id && 
+          a.observacoes?.includes('[Almoço]')
+        );
+        if (jaTemAlmocoNoBanco) return;
+
+        // Se a profissional já possui um atendimento ativo de cliente que sobreponha o horário do almoço
+        const ini = u.horario_almoco_inicio || '12:00';
+        const fim = u.horario_almoco_fim || '13:00';
+        const padraoIni = new Date(`${dataSelecionada}T${ini}:00`).getTime();
+        const padraoFim = new Date(`${dataSelecionada}T${fim}:00`).getTime();
+
+        const temAtendimentoSobreposto = atendimentosClientesAtivos.some(cliAg => {
+          const envolve = cliAg.profissional_id === u.id || agendamentoEnvolveProfissional(cliAg, u.id, servicos);
+          if (!envolve) return false;
+          const cIni = new Date(cliAg.inicio).getTime();
+          let cFim = new Date(cliAg.fim).getTime();
+          if (!cFim || cFim <= cIni) cFim = cIni + 60 * 60000;
+          return Math.max(padraoIni, cIni) < Math.min(padraoFim, cFim);
+        });
+
+        if (temAtendimentoSobreposto) return;
+
+        blocosAlmocoVirtuais.push({
+          id: `almoco_virt_${u.id}_${dataSelecionada}`,
+          cliente_id: 'bloqueado',
+          profissional_id: u.id,
+          inicio: `${dataSelecionada}T${ini}:00`,
+          fim: `${dataSelecionada}T${fim}:00`,
+          status: 'bloqueado',
+          valor_total: 0,
+          valor_sinal: 0,
+          observacoes: `[Almoço] Horário de Almoço - ${u.nome}`,
+          origem: 'admin',
+          criado_em: `${dataSelecionada}T00:00:00Z`
+        });
       });
     }
 
@@ -658,7 +717,8 @@ export const Agenda: React.FC<AgendaProps> = ({
     if (diaFechado || !expedienteDoDia) {
       return {
         livres: [] as string[],
-        ocupados: [] as { hora: string; motivo: string }[]
+        ocupados: [] as { hora: string; motivo: string }[],
+        horariosAlmoco: [] as string[]
       };
     }
 
@@ -669,6 +729,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const livres: string[] = [];
     const ocupados: { hora: string; motivo: string }[] = [];
+    const horariosAlmoco: string[] = [];
 
     // No painel interno (profissional), permite horários de início até o horário de encerramento do salão, mesmo que a duração do serviço ultrapasse o expediente
     const duracaoVerificacao = isBloqueio ? 30 : duracaoMinutosAtual;
@@ -688,32 +749,43 @@ export const Agenda: React.FC<AgendaProps> = ({
       const segF = String(dateFim.getSeconds()).padStart(2, '0');
       const fimAgend = `${anoF}-${mesF}-${diaF}T${horaF}:${minF}:${segF}`;
 
-      let conflito = false;
+      let conflitoReal = false;
       let motivoConflito = '';
+      let temConflitoAlmoco = false;
 
       if (!isBloqueio) {
         const profsChecar = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
 
         for (const pId of profsChecar) {
-          const conflitoProf = checkConflitoHorario(inicioAgend, fimAgend, pId);
-          if (conflitoProf) {
-            conflito = true;
+          // Checa se há conflito REAL com cliente (ignora almoço)
+          const conflitoCliente = checkConflitoHorario(inicioAgend, fimAgend, pId, undefined, true);
+          if (conflitoCliente) {
+            conflitoReal = true;
             const pNome = equipe.find(u => u.id === pId)?.nome || 'Profissional';
             motivoConflito = profsChecar.length > 1 ? `Ocupado (${pNome})` : 'Horário Ocupado';
             break;
           }
+
+          // Se não há conflito com cliente, checa se coincide com horário de almoço
+          const conflitoAlm = verificarConflitoAlmoco(inicioAgend, fimAgend, pId);
+          if (conflitoAlm.temConflito) {
+            temConflitoAlmoco = true;
+          }
         }
       }
 
-      if (conflito) {
+      if (conflitoReal) {
         ocupados.push({ hora: slot, motivo: motivoConflito });
       } else {
         livres.push(slot);
+        if (temConflitoAlmoco) {
+          horariosAlmoco.push(slot);
+        }
       }
     }
 
-    return { livres, ocupados };
-  }, [diaFechado, expedienteDoDia, dataSelecionada, duracaoMinutosAtual, isBloqueio, profissionalId, agendamentos, clientes, checkConflitoHorario]);
+    return { livres, ocupados, horariosAlmoco };
+  }, [diaFechado, expedienteDoDia, dataSelecionada, duracaoMinutosAtual, isBloqueio, profissionalId, agendamentos, clientes, checkConflitoHorario, verificarConflitoAlmoco]);
 
   // Opções para o seletor de horário de término do bloqueio pessoal
   const opcoesHoraFimBloqueio = useMemo(() => {
@@ -968,159 +1040,203 @@ export const Agenda: React.FC<AgendaProps> = ({
     }
 
     // 3. Avaliar conflito de horário em primeiro lugar para todas as profissionais envolvidas
+    const profsComAlmocoAfetado: { id: string; nome: string; inicio: string; fim: string }[] = [];
     if (!isBloqueio) {
       const profsParaChecar = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
+
+      // 3.1. Checagem de conflitos REAIS com outros agendamentos ou bloqueios manuais (ignora almoço)
       for (const pId of profsParaChecar) {
-        if (checkConflitoHorario(dataInicioStr, dataFimStr, pId)) {
+        if (checkConflitoHorario(dataInicioStr, dataFimStr, pId, undefined, true)) {
           const pNome = equipe.find(u => u.id === pId)?.nome || 'profissional selecionada';
           setErrorAgendamento(`O horário selecionado conflita com outro agendamento ativo de ${pNome}. Por favor, escolha outro horário.`);
           return;
         }
       }
-    }
 
-    // 4. Se a disponibilidade foi aprovada, definir o cliente (reutilizando existente por telefone para evitar duplicatas)
-    let cId = clienteId;
-
-    if (isBloqueio) {
-      cId = 'bloqueado';
-    } else if (!clienteExistente) {
-      const foneLimpo = novoClienteFone.replace(/\D/g, '');
-      const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === foneLimpo);
-      if (cliExistente) {
-        cId = cliExistente.id;
-      } else {
-        const novoCli = addCliente({
-          nome: novoClienteNome.trim(),
-          telefone: novoClienteFone.trim(),
-          consentimento_imagem: false
-        });
-        cId = novoCli.id;
+      // 3.2. Checagem de sobreposição com Horário de Almoço de qualquer profissional envolvida
+      for (const pId of profsParaChecar) {
+        const resAlmoco = verificarConflitoAlmoco(dataInicioStr, dataFimStr, pId);
+        if (resAlmoco.temConflito) {
+          profsComAlmocoAfetado.push({
+            id: pId,
+            nome: resAlmoco.profissionalNome || 'Profissional',
+            inicio: resAlmoco.inicioAlmoco || '12:00',
+            fim: resAlmoco.fimAlmoco || '13:00'
+          });
+        }
       }
     }
 
-    // Se o operador escolheu vincular o cliente a um plano VIP agora:
-    if (planoVipContratarId && cId !== 'bloqueado') {
-      vincularAssinaturaCliente(cId, planoVipContratarId);
-    }
+    const executarCriacaoEfetiva = () => {
+      // 4. Se a disponibilidade foi aprovada, definir o cliente (reutilizando existente por telefone para evitar duplicatas)
+      let cId = clienteId;
 
-    const isVipFinal = (agendarComoVip || !!planoVipContratarId) && !isBloqueio;
-    const planoVipAlvo = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
-    const precoPlanoVip = Number(planoVipAlvo?.preco_mensal) || 0;
-    const totalFinal = isBloqueio ? 0 : (isVipFinal ? (precoPlanoVip > 0 ? precoPlanoVip : total) : total);
+      if (isBloqueio) {
+        cId = 'bloqueado';
+      } else if (!clienteExistente) {
+        const foneLimpo = novoClienteFone.replace(/\D/g, '');
+        const cliExistente = clientes.find(c => c.telefone.replace(/\D/g, '') === foneLimpo);
+        if (cliExistente) {
+          cId = cliExistente.id;
+        } else {
+          const novoCli = addCliente({
+            nome: novoClienteNome.trim(),
+            telefone: novoClienteFone.trim(),
+            consentimento_imagem: false
+          });
+          cId = novoCli.id;
+        }
+      }
 
-    // Sinal e Status: se for VIP, isenta sinal e confirma direto
-    const valorSinalFinal = (isBloqueio || !cobrarSinal || isVipFinal)
-      ? 0
-      : (valorSinalManual !== '' ? Number(valorSinalManual) : sinalSugeridoServicos);
+      // Se o operador escolheu vincular o cliente a um plano VIP agora:
+      if (planoVipContratarId && cId !== 'bloqueado') {
+        vincularAssinaturaCliente(cId, planoVipContratarId);
+      }
 
-    const statusFinal: 'bloqueado' | 'pendente' | 'confirmado' = isBloqueio
-      ? 'bloqueado'
-      : (isVipFinal ? 'confirmado' : (cobrarSinal ? 'pendente' : 'confirmado'));
+      const isVipFinal = (agendarComoVip || !!planoVipContratarId) && !isBloqueio;
+      const planoVipAlvo = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+      const precoPlanoVip = Number(planoVipAlvo?.preco_mensal) || 0;
+      const totalFinal = isBloqueio ? 0 : (isVipFinal ? (precoPlanoVip > 0 ? precoPlanoVip : total) : total);
 
-    const idPlanoEfetivo = isVipFinal ? (planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id) : undefined;
-    const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
-    const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
-    const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
-    const obsFinal = `${prefixoVip}${obsAgendamento}`.trim() || (isBloqueio ? 'Bloqueio Pessoal' : '');
+      // Sinal e Status: se for VIP, isenta sinal e confirma direto
+      const valorSinalFinal = (isBloqueio || !cobrarSinal || isVipFinal)
+        ? 0
+        : (valorSinalManual !== '' ? Number(valorSinalManual) : sinalSugeridoServicos);
 
-    // Caso Especial: Bloqueio do Salão Completo (Todas as Profissionais)
-    if (isBloqueio && profissionalId === 'todas') {
-      const profissionaisAtivas = equipe.filter(u => u.ativo);
-      const profsToBlock = profissionaisAtivas.length > 0 ? profissionaisAtivas : equipe;
-      const obsBloqueioGeral = obsAgendamento ? `[Salão Completo] ${obsAgendamento}` : 'Bloqueio de Salão Completo';
+      const statusFinal: 'bloqueado' | 'pendente' | 'confirmado' = isBloqueio
+        ? 'bloqueado'
+        : (isVipFinal ? 'confirmado' : (cobrarSinal ? 'pendente' : 'confirmado'));
 
-      profsToBlock.forEach(prof => {
-        addAgendamento({
-          cliente_id: 'bloqueado',
-          profissional_id: prof.id,
-          inicio: dataInicioStr,
-          fim: dataFimStr,
-          status: 'bloqueado',
-          valor_total: 0,
-          valor_sinal: 0,
-          pago_com_clube: false,
-          observacoes: obsBloqueioGeral,
-          origem: 'admin'
-        }, []);
+      const idPlanoEfetivo = isVipFinal ? (planoClienteObj?.id || planoVipContratarId || assCliente?.plano_id) : undefined;
+      const tagPlanoId = idPlanoEfetivo ? ` [PLANO_ID:${idPlanoEfetivo}]` : '';
+      const nomePlanoVip = planoClienteObj?.nome || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId)?.nome : '');
+      const prefixoVip = isVipFinal ? `[👑 Clube VIP: ${nomePlanoVip || 'Assinatura'}${tagPlanoId}] ` : '';
+      const obsFinal = `${prefixoVip}${obsAgendamento}`.trim() || (isBloqueio ? 'Bloqueio Pessoal' : '');
+
+      // Caso Especial: Bloqueio do Salão Completo (Todas as Profissionais)
+      if (isBloqueio && profissionalId === 'todas') {
+        const profissionaisAtivas = equipe.filter(u => u.ativo);
+        const profsToBlock = profissionaisAtivas.length > 0 ? profissionaisAtivas : equipe;
+        const obsBloqueioGeral = obsAgendamento ? `[Salão Completo] ${obsAgendamento}` : 'Bloqueio de Salão Completo';
+
+        profsToBlock.forEach(prof => {
+          addAgendamento({
+            cliente_id: 'bloqueado',
+            profissional_id: prof.id,
+            inicio: dataInicioStr,
+            fim: dataFimStr,
+            status: 'bloqueado',
+            valor_total: 0,
+            valor_sinal: 0,
+            pago_com_clube: false,
+            observacoes: obsBloqueioGeral,
+            origem: 'admin'
+          }, []);
+        });
+
+        // Limpar formulário
+        setClienteId('');
+        setNovoClienteNome('');
+        setNovoClienteFone('');
+        setServicosSelecionados([]);
+        setObsAgendamento('');
+        setIsBloqueio(false);
+        setBloqueioHoraFim('10:00');
+        setCobrarSinal(false);
+        setValorSinalManual('');
+        setAgendarComoVip(false);
+        setPlanoVipContratarId('');
+        setRecorrenciaAtiva(false);
+        setRecorrenciaTipo('quinzenal');
+        setRecorrenciaIntervaloDias(15);
+        setRecorrenciaRepeticoes(4);
+        setRecorrenciaCustomDias(15);
+        handleCloseLocalModal();
+        return;
+      }
+
+      const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
+        ? {
+            tipo: recorrenciaTipo,
+            intervaloDias: recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias,
+            repeticoes: recorrenciaRepeticoes,
+            tipoLabel: recorrenciaTipo === 'semanal' 
+              ? 'Semanal' 
+              : recorrenciaTipo === 'quinzenal' 
+                ? 'Quinzenal (15 dias)' 
+                : recorrenciaTipo === 'dias_20' 
+                  ? 'Manutenção (20 dias)' 
+                  : recorrenciaTipo === 'dias_21'
+                    ? '3 Semanas (21 dias)'
+                    : recorrenciaTipo === 'mensal'
+                      ? 'Mensal (30 dias)'
+                      : `A cada ${recorrenciaCustomDias} dias`
+          }
+        : undefined;
+
+      const res = addAgendamento({
+        cliente_id: cId,
+        profissional_id: profissionalId,
+        inicio: dataInicioStr,
+        fim: dataFimStr,
+        status: statusFinal,
+        valor_total: totalFinal,
+        valor_sinal: valorSinalFinal,
+        pago_com_clube: isVipFinal,
+        plano_id: isVipFinal ? idPlanoEfetivo : undefined,
+        observacoes: obsFinal,
+        origem: 'admin'
+      }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, isVipFinal ? idPlanoEfetivo : undefined);
+
+      if (res.success) {
+        // Limpar formulário
+        setClienteId('');
+        setNovoClienteNome('');
+        setNovoClienteFone('');
+        setServicosSelecionados([]);
+        setObsAgendamento('');
+        setIsBloqueio(false);
+        setBloqueioHoraFim('10:00');
+        setCobrarSinal(false);
+        setValorSinalManual('');
+        setAgendarComoVip(false);
+        setPlanoVipContratarId('');
+        setRecorrenciaAtiva(false);
+        setRecorrenciaTipo('quinzenal');
+        setRecorrenciaIntervaloDias(15);
+        setRecorrenciaRepeticoes(4);
+        setRecorrenciaCustomDias(15);
+        handleCloseLocalModal();
+      } else {
+        setErrorAgendamento(res.error || 'Erro desconhecido');
+      }
+    };
+
+    if (profsComAlmocoAfetado.length > 0) {
+      const nomesProfs = profsComAlmocoAfetado.map(p => p.nome).join(' e ');
+      const horariosDesc = profsComAlmocoAfetado.map(p => `${p.nome} (${p.inicio} às ${p.fim})`).join(', ');
+
+      confirmarAcao({
+        titulo: 'Liberar Horário de Almoço?',
+        mensagem: `Este agendamento coincide com o horário de almoço de: ${nomesProfs} (${horariosDesc}). Deseja manter o agendamento neste horário e liberar o horário de almoço na agenda?`,
+        tipo: 'aviso',
+        textoConfirmar: 'Sim, Manter e Liberar Almoço',
+        textoCancelar: 'Não, Escolher Outro Horário',
+        onConfirm: async () => {
+          for (const p of profsComAlmocoAfetado) {
+            await excluirOuLiberarAlmoco({
+              data: dataSelecionada,
+              profissionalId: p.id,
+              escopo: 'dia'
+            });
+          }
+          executarCriacaoEfetiva();
+        }
       });
-
-      // Limpar formulário
-      setClienteId('');
-      setNovoClienteNome('');
-      setNovoClienteFone('');
-      setServicosSelecionados([]);
-      setObsAgendamento('');
-      setIsBloqueio(false);
-      setBloqueioHoraFim('10:00');
-      setCobrarSinal(false);
-      setValorSinalManual('');
-      setAgendarComoVip(false);
-      setPlanoVipContratarId('');
-      setRecorrenciaAtiva(false);
-      setRecorrenciaTipo('quinzenal');
-      setRecorrenciaIntervaloDias(15);
-      setRecorrenciaRepeticoes(4);
-      setRecorrenciaCustomDias(15);
-      handleCloseLocalModal();
       return;
     }
 
-    const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
-      ? {
-          tipo: recorrenciaTipo,
-          intervaloDias: recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias,
-          repeticoes: recorrenciaRepeticoes,
-          tipoLabel: recorrenciaTipo === 'semanal' 
-            ? 'Semanal' 
-            : recorrenciaTipo === 'quinzenal' 
-              ? 'Quinzenal (15 dias)' 
-              : recorrenciaTipo === 'dias_20' 
-                ? 'Manutenção (20 dias)' 
-                : recorrenciaTipo === 'dias_21'
-                  ? '3 Semanas (21 dias)'
-                  : recorrenciaTipo === 'mensal'
-                    ? 'Mensal (30 dias)'
-                    : `A cada ${recorrenciaCustomDias} dias`
-        }
-      : undefined;
-
-    const res = addAgendamento({
-      cliente_id: cId,
-      profissional_id: profissionalId,
-      inicio: dataInicioStr,
-      fim: dataFimStr,
-      status: statusFinal,
-      valor_total: totalFinal,
-      valor_sinal: valorSinalFinal,
-      pago_com_clube: isVipFinal,
-      plano_id: isVipFinal ? idPlanoEfetivo : undefined,
-      observacoes: obsFinal,
-      origem: 'admin'
-    }, isBloqueio ? [] : servicosSelecionados, configRecorrencia, isVipFinal ? idPlanoEfetivo : undefined);
-
-    if (res.success) {
-      // Limpar formulário
-      setClienteId('');
-      setNovoClienteNome('');
-      setNovoClienteFone('');
-      setServicosSelecionados([]);
-      setObsAgendamento('');
-      setIsBloqueio(false);
-      setBloqueioHoraFim('10:00');
-      setCobrarSinal(false);
-      setValorSinalManual('');
-      setAgendarComoVip(false);
-      setPlanoVipContratarId('');
-      setRecorrenciaAtiva(false);
-      setRecorrenciaTipo('quinzenal');
-      setRecorrenciaIntervaloDias(15);
-      setRecorrenciaRepeticoes(4);
-      setRecorrenciaCustomDias(15);
-      handleCloseLocalModal();
-    } else {
-      setErrorAgendamento(res.error || 'Erro desconhecido');
-    }
+    executarCriacaoEfetiva();
   };
 
   return (
@@ -2306,9 +2422,14 @@ export const Agenda: React.FC<AgendaProps> = ({
                         }}
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none font-medium"
                       >
-                        {analiseHorarios.livres.map(h => (
-                          <option key={h} value={h}>{h} {isBloqueio ? '' : '(Disponível)'}</option>
-                        ))}
+                        {analiseHorarios.livres.map(h => {
+                          const isAlmoco = analiseHorarios.horariosAlmoco?.includes(h);
+                          return (
+                            <option key={h} value={h}>
+                              {h} {isBloqueio ? '' : (isAlmoco ? '(Horário de Almoço - Disponível para liberar)' : '(Disponível)')}
+                            </option>
+                          );
+                        })}
                       </select>
                     )}
                   </div>
@@ -2408,6 +2529,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
                           {analiseHorarios.livres.map(h => {
                             const isSelected = horaInicio === h;
+                            const isAlmoco = analiseHorarios.horariosAlmoco?.includes(h);
                             return (
                               <button
                                 key={h}
@@ -2419,11 +2541,14 @@ export const Agenda: React.FC<AgendaProps> = ({
                                 className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 border ${
                                   isSelected
                                     ? 'bg-[#8C6D58] text-white border-[#8C6D58] shadow-xs ring-2 ring-[#8C6D58]/20'
-                                    : 'bg-white text-[#5A4535] border-[#EFECE6] hover:border-[#8C6D58] hover:bg-[#FDFBF7]'
+                                    : isAlmoco
+                                      ? 'bg-amber-50/80 text-amber-900 border-amber-300 hover:border-amber-400 hover:bg-amber-100/80'
+                                      : 'bg-white text-[#5A4535] border-[#EFECE6] hover:border-[#8C6D58] hover:bg-[#FDFBF7]'
                                 }`}
                               >
                                 {isSelected && <CheckCircle size={12} className="text-white shrink-0" />}
                                 {h}
+                                {isAlmoco && <span className="text-[10px] font-normal opacity-90">(Almoço)</span>}
                               </button>
                             );
                           })}
