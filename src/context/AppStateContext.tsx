@@ -1413,8 +1413,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // 6. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
-      if (dados.materiais && dados.materiais.length > 0) {
-        const matsFormatados = dados.materiais.map((m: any) => {
+      if (dados.materiais) {
+        const matsValidos = dados.materiais.filter((m: any) =>
+          !m.nome?.startsWith('[EXCLUIDO]') &&
+          m.ativo !== false
+        );
+        const matsFormatados = matsValidos.map((m: any) => {
           const preco = Number(m.preco_compra) || 0;
           const rend = Number(m.rendimento) || 1;
           const custo = (typeof m.custo_por_uso === 'number' && !isNaN(m.custo_por_uso) && m.custo_por_uso > 0)
@@ -1432,8 +1436,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // 8. Despesas da Nuvem
-      if (dados.despesas && dados.despesas.length > 0) {
-        const despsFormatadas: Despesa[] = dados.despesas.map((d: any) => {
+      if (dados.despesas) {
+        const despsValidas = dados.despesas.filter((d: any) =>
+          !d.descricao?.includes('[EXCLUIDO_ADMIN]') &&
+          !d.descricao?.startsWith('[EXCLUIDO]')
+        );
+        const despsFormatadas: Despesa[] = despsValidas.map((d: any) => {
           let tipoDestino = d.tipo_destino || 'salao';
           let profId = d.profissional_id;
           let formaPgto = d.forma_pagamento || 'a_vista';
@@ -2805,7 +2813,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteDespesaGrupo = (grupoId: string) => {
     limparFocoAtivo();
     const despesasGrupo = despesas.filter(d => d.parcelamento_grupo_id === grupoId);
-    setDespesas(prev => prev.filter(d => d.parcelamento_grupo_id !== grupoId));
+    setDespesas(prev => {
+      const next = prev.filter(d => d.parcelamento_grupo_id !== grupoId);
+      try { localStorage.setItem('nail_despesas', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     despesasGrupo.forEach(d => deletarDespesaSupabase(d.id));
     mostrarNotificacaoGlobal(`✅ Todas as ${despesasGrupo.length} parcelas foram excluídas da nuvem!`);
   };
@@ -2824,7 +2836,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteDespesa = (id: string) => {
     limparFocoAtivo();
     const despesaParaDeletar = despesas.find(d => d.id === id);
-    setDespesas(prev => prev.filter(d => d.id !== id));
+    setDespesas(prev => {
+      const next = prev.filter(d => d.id !== id);
+      try { localStorage.setItem('nail_despesas', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     deletarDespesaSupabase(id);
 
     // Se for uma despesa decorrente de comissão/repasse pago, estorna o fechamento de comissão correspondente

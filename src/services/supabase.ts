@@ -174,10 +174,12 @@ export const salvarServicoSupabase = async (servico: any) => {
 // --- DELETAR SERVIÇO ---
 export const deletarServicoSupabase = async (id: string) => {
   try {
-    const { error } = await supabase.from('servicos').delete().eq('id', id);
-    if (error) {
-      console.error('Erro ao deletar serviço no Supabase:', error);
-      return { sucesso: false, erro: error.message };
+    const { count, error } = await supabase.from('servicos').delete({ count: 'exact' }).eq('id', id);
+    if (error || !count || count === 0) {
+      await supabase.from('servicos').update({
+        nome: `[EXCLUIDO] ${id}`,
+        ativo: false
+      }).eq('id', id);
     }
     return { sucesso: true };
   } catch (e: any) {
@@ -552,8 +554,13 @@ export const salvarMaterialSupabase = async (material: any) => {
 // --- DELETAR MATERIAL ---
 export const deletarMaterialSupabase = async (id: string) => {
   try {
-    const { error } = await supabase.from('materiais').delete().eq('id', id);
-    if (error && error.code !== 'PGRST205') console.error('Erro ao deletar material no Supabase:', error);
+    const { count, error } = await supabase.from('materiais').delete({ count: 'exact' }).eq('id', id);
+    if (error || !count || count === 0) {
+      await supabase.from('materiais').update({
+        nome: `[EXCLUIDO] ${id}`,
+        ativo: false
+      }).eq('id', id);
+    }
   } catch (e) {}
 };
 
@@ -655,9 +662,17 @@ export const salvarDespesaSupabase = async (despesa: any) => {
 // --- DELETAR DESPESA ---
 export const deletarDespesaSupabase = async (id: string) => {
   try {
-    const { error } = await supabase.from('despesas').delete().eq('id', id);
-    if (error && error.code !== 'PGRST205') console.error('Erro ao deletar despesa no Supabase:', error);
-  } catch (e) {}
+    const { count, error } = await supabase.from('despesas').delete({ count: 'exact' }).eq('id', id);
+    if (error || !count || count === 0) {
+      await supabase.from('despesas').update({
+        descricao: `[EXCLUIDO_ADMIN] ${id}`,
+        valor: 0,
+        pago: false
+      }).eq('id', id);
+    }
+  } catch (e) {
+    console.error('Erro ao deletar despesa no Supabase:', e);
+  }
 };
 
 // --- SALVAR TOKEN DE PUSH NOTIFICATIONS FCM (ANDROID) ---
@@ -802,15 +817,30 @@ export const carregarDadosNuvemSupabase = async () => {
       !c.nome?.startsWith('[EXCLUIDO]')
     );
 
+    const servicosValidos = (servicosRes.data || []).filter((s: any) =>
+      !s.nome?.startsWith('[EXCLUIDO]') &&
+      s.ativo !== false
+    );
+
+    const materiaisValidos = (matRes.data || []).filter((m: any) =>
+      !m.nome?.startsWith('[EXCLUIDO]') &&
+      m.ativo !== false
+    );
+
+    const despesasValidas = (despRes.data || []).filter((d: any) =>
+      !d.descricao?.includes('[EXCLUIDO_ADMIN]') &&
+      !d.descricao?.startsWith('[EXCLUIDO]')
+    );
+
     return {
       clientes: clientesValidos,
       agendamentos: agendamentosRes.data || [],
       listaEspera: listaRes.data || [],
-      servicos: servicosRes.data || [],
+      servicos: servicosValidos,
       usuarios: usuariosRes.data || [],
       fotos: [],
-      materiais: matRes.data || [],
-      despesas: despRes.data || [],
+      materiais: materiaisValidos,
+      despesas: despesasValidas,
       configuracoes: configRes.data?.[0] || null
     };
   } catch (e) {
