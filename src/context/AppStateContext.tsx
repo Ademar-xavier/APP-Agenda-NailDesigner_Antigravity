@@ -259,7 +259,15 @@ interface AppStateContextType {
     profissionalId: string;
     escopo: 'dia' | 'profissional' | 'salao';
   }) => Promise<void>;
-  checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string) => boolean;
+  checkConflitoHorario: (inicio: string, fim: string, profissionalId: string, ignorarAgendamentoId?: string, ignorarAlmoco?: boolean) => boolean;
+  verificarConflitoAlmoco: (inicio: string, fim: string, profissionalId: string) => {
+    temConflito: boolean;
+    inicioAlmoco?: string;
+    fimAlmoco?: string;
+    profissionalNome?: string;
+    almocoAgendamentoId?: string;
+  };
+  limparAlmocosSobrepostosNoBanco: () => Promise<number>;
   obterServicosDeAgendamento: (agendamentoId: string) => Servico[];
   obterRecomendacoesManutencao: () => { 
     cliente: Cliente; 
@@ -718,7 +726,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const parsed: Agendamento[] = JSON.parse(saved);
         return parsed.filter(a => 
           (!/^a\d+$/.test(a.id) || !a.inicio.startsWith('2026-08')) &&
-          !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') &&
+          (!(a.cliente_id === 'bloqueado' && a.status === 'cancelado') || a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]')) &&
           a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
         );
       }
@@ -1178,7 +1186,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       // 2. Agendamentos da Nuvem
       if (dados.agendamentos && dados.agendamentos.length > 0) {
         const agendamentosValidos = dados.agendamentos.filter((a: any) => 
-          !(a.cliente_id === 'bloqueado' && a.status === 'cancelado') && 
+          (!(a.cliente_id === 'bloqueado' && a.status === 'cancelado') || a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]')) && 
           a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
         );
 
@@ -2448,19 +2456,25 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const novosAgendamentos: Agendamento[] = [...agendamentos];
 
       for (const p of profsAlvo) {
-        const idxExistente = novosAgendamentos.findIndex(a => 
+        const almocosDoDia = novosAgendamentos.filter(a => 
           a.profissional_id === p.id && 
           a.inicio.startsWith(data) && 
           (a.observacoes?.includes('[Almoço]') || a.observacoes?.includes('[Almoço Cancelado]'))
         );
 
-        if (idxExistente >= 0) {
-          novosAgendamentos[idxExistente] = {
-            ...novosAgendamentos[idxExistente],
-            status: 'cancelado',
-            observacoes: `[Almoço Cancelado] - Horário liberado para atendimentos (${p.nome})`
-          };
-          salvarAgendamentoSupabase(novosAgendamentos[idxExistente]).then();
+        if (almocosDoDia.length > 0) {
+          almocosDoDia.forEach(alm => {
+            const idx = novosAgendamentos.findIndex(a => a.id === alm.id);
+            if (idx >= 0) {
+              const almAtualizado = {
+                ...novosAgendamentos[idx],
+                status: 'cancelado' as const,
+                observacoes: `[Almoço Cancelado] - Horário liberado para atendimentos (${p.nome})`
+              };
+              novosAgendamentos[idx] = almAtualizado;
+              salvarAgendamentoSupabase(almAtualizado).catch(() => {});
+            }
+          });
         } else {
           // Cria o registro marcador com status cancelado para indicar que o almoço padrão foi dispensado hoje
           const canceladoMarcador: Agendamento = {
@@ -2477,7 +2491,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             criado_em: new Date().toISOString()
           };
           novosAgendamentos.push(canceladoMarcador);
-          salvarAgendamentoSupabase(canceladoMarcador).then();
+          salvarAgendamentoSupabase(canceladoMarcador).catch(() => {});
         }
       }
 
@@ -3014,7 +3028,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // --- Lógica de Conflitos (100% à prova de distorção de fuso horário UTC vs Local) ---
-  const checkConflitoHorario = (inicioStr: string, fimStr: string, profissionalId: string, ignorarAgendamentoId?: string) => {
+  const checkConflitoHorario = (
+    inicioStr: string, 
+    fimStr: string, 
+    profissionalId: string, 
+    ignorarAgendamentoId?: string,
+    ignorarAlmoco?: boolean
+  ) => {
     const normalizarDataHora = (str: string): number => {
       if (!str) return 0;
       const limpo = str.replace('Z', '').split('+')[0];
@@ -3035,6 +3055,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const temConflitoAgendamento = agendamentos.some(a => {
       if (a.id === ignorarAgendamentoId) return false;
       if (a.status === 'cancelado' || a.status === 'falta') return false;
+      if (ignorarAlmoco && a.observacoes?.includes('[Almoço]') && !a.observacoes?.includes('[Almoço Cancelado]')) {
+        return false;
+      }
       const envolveEstaProf = a.profissional_id === profissionalId || agendamentoEnvolveProfissional(a, profissionalId, servicos, itensAgendamento);
       if (!envolveEstaProf) return false;
       
@@ -3050,6 +3073,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     if (temConflitoAgendamento) return true;
+
+    // Se ignorarAlmoco estiver ativo, não checa almoço padrão
+    if (ignorarAlmoco) return false;
 
     // 2. Checa colisão com Horário de Almoço padrão da profissional
     const dataStr = inicioStr.split('T')[0];
@@ -3105,6 +3131,202 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     return false;
+  };
+
+  // Helper para verificar se um intervalo colide com o horário de almoço de uma profissional
+  const verificarConflitoAlmoco = (inicioStr: string, fimStr: string, profissionalId: string) => {
+    const normalizarDataHora = (str: string): number => {
+      if (!str) return 0;
+      const limpo = str.replace('Z', '').split('+')[0];
+      const [data, hora] = limpo.split('T');
+      if (!data || !hora) return 0;
+      const [ano, mes, dia] = data.split('-').map(Number);
+      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
+      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
+    };
+
+    const inicio = normalizarDataHora(inicioStr);
+    let fim = normalizarDataHora(fimStr);
+    if (!fim || fim <= inicio) fim = inicio + 30 * 60000;
+
+    const dataStr = inicioStr.split('T')[0];
+    if (!dataStr) return { temConflito: false };
+
+    const prof = equipe.find(u => u.id === profissionalId);
+    const profNome = prof?.nome || 'Profissional';
+
+    // 1. Se o almoço já foi cancelado/liberado pontualmente nesta data, não tem conflito de almoço
+    const almocoCancelado = agendamentos.some(a => 
+      a.profissional_id === profissionalId &&
+      a.inicio.startsWith(dataStr) &&
+      (a.status === 'cancelado' || a.status === 'falta') &&
+      (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
+    );
+    if (almocoCancelado) return { temConflito: false };
+
+    // 2. Checa agendamento real de almoço ativo
+    const almocoRealAtivo = agendamentos.find(a =>
+      a.profissional_id === profissionalId &&
+      a.inicio.startsWith(dataStr) &&
+      a.status !== 'cancelado' &&
+      a.status !== 'falta' &&
+      a.observacoes?.includes('[Almoço]')
+    );
+
+    if (almocoRealAtivo) {
+      const aInicio = normalizarDataHora(almocoRealAtivo.inicio);
+      let aFim = normalizarDataHora(almocoRealAtivo.fim);
+      if (!aFim || aFim <= aInicio) aFim = aInicio + 60 * 60000;
+      if (Math.max(inicio, aInicio) < Math.min(fim, aFim)) {
+        const hIni = almocoRealAtivo.inicio.split('T')[1]?.substring(0, 5) || '12:00';
+        const hFim = almocoRealAtivo.fim.split('T')[1]?.substring(0, 5) || '13:00';
+        return {
+          temConflito: true,
+          inicioAlmoco: hIni,
+          fimAlmoco: hFim,
+          profissionalNome: profNome,
+          almocoAgendamentoId: almocoRealAtivo.id
+        };
+      }
+    }
+
+    // 3. Checa almoço padrão da profissional
+    if (!prof) return { temConflito: false };
+    const [anoD, mesD, diaD] = dataStr.split('-').map(Number);
+    const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
+
+    const configDia = prof.horarios_almoco?.[diaSemana];
+    const almocoAtivo = configDia !== undefined ? configDia.ativo : (prof.horario_almoco_ativo !== false);
+    if (!almocoAtivo) return { temConflito: false };
+
+    const almocoInicioStr = configDia?.inicio || prof.horario_almoco_inicio || '12:00';
+    const almocoFimStr = configDia?.fim || prof.horario_almoco_fim || '13:00';
+
+    const almocoInicio = normalizarDataHora(`${dataStr}T${almocoInicioStr}:00`);
+    const almocoFim = normalizarDataHora(`${dataStr}T${almocoFimStr}:00`);
+
+    if (almocoInicio && almocoFim && almocoInicio < almocoFim) {
+      if (Math.max(inicio, almocoInicio) < Math.min(fim, almocoFim)) {
+        return {
+          temConflito: true,
+          inicioAlmoco: almocoInicioStr,
+          fimAlmoco: almocoFimStr,
+          profissionalNome: profNome
+        };
+      }
+    }
+
+    return { temConflito: false };
+  };
+
+  // Limpeza retroativa no banco e estado: libera agendamentos de almoço sobrepostos por clientes
+  const limparAlmocosSobrepostosNoBanco = async (): Promise<number> => {
+    let limpos = 0;
+    const novosAgendamentos = [...agendamentos];
+    let houveAlteracao = false;
+
+    // Agendamentos de clientes ativos
+    const atendimentosClientesAtivos = agendamentos.filter(a =>
+      a.cliente_id !== 'bloqueado' &&
+      a.status !== 'cancelado' &&
+      a.status !== 'falta' &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
+    );
+
+    for (const cliAg of atendimentosClientesAtivos) {
+      const dataAg = cliAg.inicio.split('T')[0];
+      if (!dataAg) continue;
+
+      const profsEnvolvidas = equipe.filter(u => 
+        u.id === cliAg.profissional_id || agendamentoEnvolveProfissional(cliAg, u.id, servicos, itensAgendamento)
+      );
+
+      const cliIniMs = new Date(cliAg.inicio).getTime();
+      let cliFimMs = new Date(cliAg.fim).getTime();
+      if (!cliFimMs || cliFimMs <= cliIniMs) cliFimMs = cliIniMs + 60 * 60000;
+
+      for (const p of profsEnvolvidas) {
+        // A. Cancela agendamentos reais de almoço sobrepostos
+        const almocosSobrepostos = novosAgendamentos.filter(a =>
+          a.profissional_id === p.id &&
+          a.inicio.startsWith(dataAg) &&
+          a.status !== 'cancelado' &&
+          a.status !== 'falta' &&
+          a.observacoes?.includes('[Almoço]') &&
+          !a.observacoes?.includes('[Almoço Cancelado]') &&
+          !a.observacoes?.includes('[Almoço Liberado]')
+        );
+
+        for (const alm of almocosSobrepostos) {
+          const almIniMs = new Date(alm.inicio).getTime();
+          let almFimMs = new Date(alm.fim).getTime();
+          if (!almFimMs || almFimMs <= almIniMs) almFimMs = almIniMs + 60 * 60000;
+
+          if (Math.max(cliIniMs, almIniMs) < Math.min(cliFimMs, almFimMs)) {
+            const idx = novosAgendamentos.findIndex(x => x.id === alm.id);
+            if (idx >= 0) {
+              const almAtualizado: Agendamento = {
+                ...novosAgendamentos[idx],
+                status: 'cancelado',
+                observacoes: `[Almoço Cancelado] - Liberado devido a atendimento de cliente (${p.nome})`
+              };
+              novosAgendamentos[idx] = almAtualizado;
+              houveAlteracao = true;
+              limpos++;
+              salvarAgendamentoSupabase(almAtualizado).catch(() => {});
+            }
+          }
+        }
+
+        // B. Se houver sobreposição com almoço padrão, assegura marcador cancelado no banco
+        const [anoD, mesD, diaD] = dataAg.split('-').map(Number);
+        const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
+        const configDia = p.horarios_almoco?.[diaSemana];
+        const almocoAtivo = configDia !== undefined ? configDia.ativo : (p.horario_almoco_ativo !== false);
+
+        if (almocoAtivo) {
+          const almIniStr = configDia?.inicio || p.horario_almoco_inicio || '12:00';
+          const almFimStr = configDia?.fim || p.horario_almoco_fim || '13:00';
+          const padraoIniMs = new Date(`${dataAg}T${almIniStr}:00`).getTime();
+          const padraoFimMs = new Date(`${dataAg}T${almFimStr}:00`).getTime();
+
+          if (Math.max(cliIniMs, padraoIniMs) < Math.min(cliFimMs, padraoFimMs)) {
+            const jaTemCancelado = novosAgendamentos.some(a =>
+              a.profissional_id === p.id &&
+              a.inicio.startsWith(dataAg) &&
+              (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
+            );
+
+            if (!jaTemCancelado) {
+              const canceladoMarcador: Agendamento = {
+                id: 'alm_canc_' + gerarId(),
+                cliente_id: 'bloqueado',
+                profissional_id: p.id,
+                inicio: `${dataAg}T${almIniStr}:00`,
+                fim: `${dataAg}T${almFimStr}:00`,
+                status: 'cancelado',
+                valor_total: 0,
+                valor_sinal: 0,
+                observacoes: `[Almoço Cancelado] - Horário liberado por atendimento de cliente (${p.nome})`,
+                origem: 'admin',
+                criado_em: new Date().toISOString()
+              };
+              novosAgendamentos.push(canceladoMarcador);
+              houveAlteracao = true;
+              limpos++;
+              salvarAgendamentoSupabase(canceladoMarcador).catch(() => {});
+            }
+          }
+        }
+      }
+    }
+
+    if (houveAlteracao) {
+      setAgendamentos(novosAgendamentos);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(novosAgendamentos)); } catch (e) {}
+    }
+
+    return limpos;
   };
 
   // Helper para identificar agendamentos parceiros da mesma dupla / co-atendimento
@@ -5528,6 +5750,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ajustarHorarioAlmoco,
       excluirOuLiberarAlmoco,
       checkConflitoHorario,
+      verificarConflitoAlmoco,
+      limparAlmocosSobrepostosNoBanco,
       obterServicosDeAgendamento,
       obterRecomendacoesManutencao,
       obterProximoHorarioLivre,
