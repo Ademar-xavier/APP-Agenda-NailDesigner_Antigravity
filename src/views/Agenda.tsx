@@ -53,6 +53,7 @@ export const Agenda: React.FC<AgendaProps> = ({
     agendamentos, 
     clientes, 
     servicos, 
+    itensAgendamento,
     addAgendamento, 
     addCliente, 
     equipe,
@@ -695,7 +696,6 @@ export const Agenda: React.FC<AgendaProps> = ({
     if (!diaFechado) {
       equipe.forEach(u => {
         if (!u.ativo) return;
-        if (u.horario_almoco_ativo === false) return;
 
         // Se houver cancelamento pontual nesta data para esta profissional (procura em agendamentos completo)
         const almocoCanceladoNesteDia = agendamentos.some(a => 
@@ -724,7 +724,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         const padraoFim = normalizarDataHora(`${dataSelecionada}T${fim}:00`);
 
         const temAtendimentoSobreposto = atendimentosClientesAtivos.some(cliAg => {
-          const envolve = cliAg.profissional_id === u.id || agendamentoEnvolveProfissional(cliAg, u.id, servicos);
+          const envolve = cliAg.profissional_id === u.id || agendamentoEnvolveProfissional(cliAg, u.id, servicos, itensAgendamento);
           if (!envolve) return false;
           const cIni = normalizarDataHora(cliAg.inicio);
           let cFim = normalizarDataHora(cliAg.fim);
