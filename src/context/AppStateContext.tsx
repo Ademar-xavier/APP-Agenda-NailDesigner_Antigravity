@@ -253,7 +253,7 @@ interface AppStateContextType {
     inicio: string;
     fim: string;
     escopo: 'dia' | 'profissional' | 'salao';
-  }) => Promise<void>;
+  }) => Promise<{ success: boolean; error?: string }>;
   excluirOuLiberarAlmoco: (params: {
     data: string;
     profissionalId: string;
@@ -2309,15 +2309,43 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     inicio: string; // HH:mm ex: '12:00'
     fim: string; // HH:mm ex: '13:00'
     escopo: 'dia' | 'profissional' | 'salao';
-  }) => {
+  }): Promise<{ success: boolean; error?: string }> => {
     const { data, profissionalId, inicio, fim, escopo } = params;
+
+    const profsAlvo = profissionalId === 'todas' 
+      ? equipe.filter(u => u.ativo) 
+      : equipe.filter(u => u.id === profissionalId);
+
+    const almocoIniMs = normalizarDataHora(`${data}T${inicio}:00`);
+    let almocoFimMs = normalizarDataHora(`${data}T${fim}:00`);
+    if (!almocoFimMs || almocoFimMs <= almocoIniMs) almocoFimMs = almocoIniMs + 60 * 60000;
+
+    // Checagem de segurança: valida se o horário solicitado não colide com atendimentos confirmados de clientes
+    const clientesConflitantes = agendamentos.filter(a => {
+      if (!a.inicio.startsWith(data)) return false;
+      if (a.cliente_id === 'bloqueado') return false;
+      if (a.status === 'cancelado' || a.status === 'falta' || a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
+      const envolve = profsAlvo.some(p => a.profissional_id === p.id || agendamentoEnvolveProfissional(a, p.id, servicos, itensAgendamento));
+      if (!envolve) return false;
+      const cIni = normalizarDataHora(a.inicio);
+      let cFim = normalizarDataHora(a.fim);
+      if (!cFim || cFim <= cIni) cFim = cIni + 60 * 60000;
+      return Math.max(almocoIniMs, cIni) < Math.min(almocoFimMs, cFim);
+    });
+
+    if (clientesConflitantes.length > 0) {
+      const primeiro = clientesConflitantes[0];
+      const pNome = equipe.find(u => u.id === primeiro.profissional_id)?.nome || 'Profissional';
+      const cNome = clientes.find(c => c.id === primeiro.cliente_id)?.nome || 'Cliente';
+      const hIni = primeiro.inicio.split('T')[1]?.substring(0, 5) || '';
+      const hFim = primeiro.fim.split('T')[1]?.substring(0, 5) || '';
+      const err = `Horário Ocupado: ${pNome} já possui atendimento com ${cNome} das ${hIni} às ${hFim}. Altere o horário do almoço para um horário disponível.`;
+      mostrarNotificacaoGlobal(`⚠️ ${err}`);
+      return { success: false, error: err };
+    }
 
     if (escopo === 'dia') {
       // Ajuste pontual apenas para o dia especificado
-      const profsAlvo = profissionalId === 'todas' 
-        ? equipe.filter(u => u.ativo) 
-        : equipe.filter(u => u.id === profissionalId);
-
       const novosAgendamentos: Agendamento[] = [...agendamentos];
 
       for (const p of profsAlvo) {
@@ -2363,6 +2391,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setAgendamentos(novosAgendamentos);
       try { localStorage.setItem('nail_agendamentos', JSON.stringify(novosAgendamentos)); } catch (e) {}
       mostrarNotificacaoGlobal(`✅ Horário de almoço de ${data} ajustado para ${inicio} às ${fim}!`);
+      return { success: true };
 
     } else if (escopo === 'profissional') {
       // Atualiza o cadastro padrão da profissional (tanto o geral quanto o deste dia da semana)
@@ -2407,6 +2436,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (membro) salvarUsuarioSupabase(membro).then();
       await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
       mostrarNotificacaoGlobal(`✅ Horário de almoço padrão de ${membro?.nome || 'profissional'} atualizado para ${inicio} às ${fim}!`);
+      return { success: true };
 
     } else if (escopo === 'salao') {
       // Atualiza todas as profissionais da equipe
@@ -2448,7 +2478,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
       mostrarNotificacaoGlobal(`✅ Horário de almoço de todo o salão atualizado para ${inicio} às ${fim}!`);
+      return { success: true };
     }
+    return { success: true };
   };
 
   const excluirOuLiberarAlmoco = async (params: {

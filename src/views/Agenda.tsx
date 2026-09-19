@@ -9,6 +9,7 @@ import {
   User, 
   X, 
   AlertTriangle,
+  AlertCircle,
   Sparkles,
   RotateCcw,
   CheckCircle,
@@ -84,6 +85,73 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [almocoEscopo, setAlmocoEscopo] = useState<'dia' | 'profissional' | 'salao'>('dia');
   const [salvandoAlmoco, setSalvandoAlmoco] = useState(false);
 
+  // Conflitos em tempo real do horário de almoço desejado com atendimentos confirmados de clientes
+  const conflitosAlmoco = useMemo(() => {
+    if (!isAlmocoModalOpen || !almocoInicio || !almocoFim) return [];
+    if (almocoInicio >= almocoFim) return [];
+
+    const profsChecar = almocoProfissionalId === 'todas'
+      ? equipe.filter(u => u.ativo)
+      : equipe.filter(u => u.id === almocoProfissionalId);
+
+    const almocoIniMs = normalizarDataHora(`${dataSelecionada}T${almocoInicio}:00`);
+    let almocoFimMs = normalizarDataHora(`${dataSelecionada}T${almocoFim}:00`);
+    if (!almocoFimMs || almocoFimMs <= almocoIniMs) almocoFimMs = almocoIniMs + 60 * 60000;
+
+    // Atendimentos ativos de clientes nesta data
+    const atendimentosClientes = agendamentos.filter(a =>
+      a.inicio.startsWith(dataSelecionada) &&
+      a.cliente_id !== 'bloqueado' &&
+      a.status !== 'cancelado' &&
+      a.status !== 'falta' &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
+    );
+
+    const conflitos: {
+      agendamentoId: string;
+      profissionalId: string;
+      profissionalNome: string;
+      clienteNome: string;
+      inicio: string;
+      fim: string;
+      status: string;
+      servicosNomes: string;
+    }[] = [];
+
+    for (const p of profsChecar) {
+      for (const cliAg of atendimentosClientes) {
+        const envolve = cliAg.profissional_id === p.id || agendamentoEnvolveProfissional(cliAg, p.id, servicos, itensAgendamento);
+        if (!envolve) continue;
+
+        const cliIniMs = normalizarDataHora(cliAg.inicio);
+        let cliFimMs = normalizarDataHora(cliAg.fim);
+        if (!cliFimMs || cliFimMs <= cliIniMs) cliFimMs = cliIniMs + 60 * 60000;
+
+        if (Math.max(almocoIniMs, cliIniMs) < Math.min(almocoFimMs, cliFimMs)) {
+          const cliObj = clientes.find(c => c.id === cliAg.cliente_id);
+          const cliNome = cliObj?.nome || 'Cliente';
+          const servs = obterServicosDeAgendamento(cliAg.id);
+          const servsNomes = servs.map(s => s.nome).join(', ') || 'Atendimento agendado';
+          const hIni = cliAg.inicio.split('T')[1]?.substring(0, 5) || '';
+          const hFim = cliAg.fim.split('T')[1]?.substring(0, 5) || '';
+
+          conflitos.push({
+            agendamentoId: cliAg.id,
+            profissionalId: p.id,
+            profissionalNome: p.nome,
+            clienteNome: cliNome,
+            inicio: hIni,
+            fim: hFim,
+            status: cliAg.status,
+            servicosNomes: servsNomes
+          });
+        }
+      }
+    }
+
+    return conflitos;
+  }, [isAlmocoModalOpen, almocoProfissionalId, dataSelecionada, almocoInicio, almocoFim, equipe, agendamentos, clientes, servicos, itensAgendamento]);
+
   const handleAbrirModalAlmoco = (profId?: string, horaIni?: string, horaFim?: string) => {
     const profAlvo = profId || (currentUser?.perfil === 'profissional' ? currentUser.id : 'todas');
     setAlmocoProfissionalId(profAlvo);
@@ -115,16 +183,32 @@ export const Agenda: React.FC<AgendaProps> = ({
   const handleSalvarAlmoco = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!almocoInicio || !almocoFim) return;
+
+    if (almocoInicio >= almocoFim) {
+      alert('O horário de término do almoço deve ser posterior ao horário de início.');
+      return;
+    }
+
+    if (conflitosAlmoco.length > 0) {
+      const primeiro = conflitosAlmoco[0];
+      alert(`⚠️ Horário Ocupado: ${primeiro.profissionalNome} já possui atendimento confirmado com ${primeiro.clienteNome} das ${primeiro.inicio} às ${primeiro.fim}. Escolha outro horário disponível para o almoço.`);
+      return;
+    }
+
     setSalvandoAlmoco(true);
     try {
       const escopoEfetivo = almocoProfissionalId === 'todas' && almocoEscopo === 'profissional' ? 'salao' : almocoEscopo;
-      await ajustarHorarioAlmoco({
+      const res = await ajustarHorarioAlmoco({
         data: dataSelecionada,
         profissionalId: almocoProfissionalId,
         inicio: almocoInicio,
         fim: almocoFim,
         escopo: escopoEfetivo
       });
+      if (res && res.success === false) {
+        alert(res.error || 'Não foi possível salvar o horário de almoço devido a conflito de agenda.');
+        return;
+      }
       setIsAlmocoModalOpen(false);
     } finally {
       setSalvandoAlmoco(false);
@@ -1063,6 +1147,19 @@ export const Agenda: React.FC<AgendaProps> = ({
             inicio: resAlmoco.inicioAlmoco || '12:00',
             fim: resAlmoco.fimAlmoco || '13:00'
           });
+        }
+      }
+    } else {
+      // Se for Bloqueio Pessoal / Manual, verificar se não sobrepõe atendimento ativo de cliente
+      const profsParaChecar = profissionalId === 'todas'
+        ? (equipe.filter(u => u.ativo).length > 0 ? equipe.filter(u => u.ativo).map(u => u.id) : equipe.map(u => u.id))
+        : [profissionalId];
+
+      for (const pId of profsParaChecar) {
+        if (checkConflitoHorario(dataInicioStr, dataFimStr, pId, undefined, true)) {
+          const pNome = equipe.find(u => u.id === pId)?.nome || 'profissional selecionada';
+          setErrorAgendamento(`Não é possível criar o bloqueio: ${pNome} já possui atendimento com cliente neste horário.`);
+          return;
         }
       }
     }
@@ -2861,6 +2958,51 @@ export const Agenda: React.FC<AgendaProps> = ({
                 </div>
               </div>
 
+              {/* Alerta de Conflito com Atendimentos Confirmados */}
+              {conflitosAlmoco.length > 0 && (
+                <div className="bg-red-50/95 border border-red-200 rounded-xl p-3 text-xs animate-in fade-in duration-200 space-y-2">
+                  <div className="flex items-start gap-2 text-red-800 font-bold">
+                    <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span>Horário Ocupado por Atendimento</span>
+                      <p className="text-[11px] font-normal text-red-700 mt-0.5">
+                        Não é possível marcar o almoço neste horário pois coincide com atendimento(s) de cliente confirmado(s):
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {conflitosAlmoco.map((conf, idx) => (
+                      <div key={idx} className="bg-white border border-red-100 rounded-lg p-2 flex items-center justify-between text-[11px] shadow-2xs">
+                        <div className="min-w-0 pr-2">
+                          <span className="font-bold text-[#5A4535]">{conf.profissionalNome}</span>
+                          <span className="text-gray-400 mx-1">•</span>
+                          <span className="text-[#8C6D58] font-semibold">{conf.clienteNome}</span>
+                          <span className="text-gray-500 text-[10px] block truncate">
+                            {conf.servicosNomes}
+                          </span>
+                        </div>
+                        <span className="shrink-0 font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded text-[10px]">
+                          {conf.inicio} às {conf.fim}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-red-600 italic">
+                    💡 Escolha outro horário disponível para o almoço ou reagende o atendimento da cliente.
+                  </p>
+                </div>
+              )}
+
+              {/* Validação de Horário Início vs Término */}
+              {almocoInicio && almocoFim && almocoInicio >= almocoFim && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-xs text-amber-800 flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                  <span>O horário de término do almoço deve ser posterior ao de início.</span>
+                </div>
+              )}
+
               {/* Opções de Escopo de Aplicação */}
               <div className="pt-2 border-t border-[#EFECE6]">
                 <label className="block text-xs font-bold text-[#5A4535] mb-2">
@@ -2954,8 +3096,13 @@ export const Agenda: React.FC<AgendaProps> = ({
 
                 <button
                   type="submit"
-                  disabled={salvandoAlmoco}
-                  className="h-10 px-2 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center text-center gap-1.5"
+                  disabled={salvandoAlmoco || conflitosAlmoco.length > 0 || (almocoInicio >= almocoFim)}
+                  className={`h-10 px-2 text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center text-center gap-1.5 ${
+                    conflitosAlmoco.length > 0 || (almocoInicio >= almocoFim)
+                      ? 'bg-gray-200 text-gray-400 border border-gray-200 cursor-not-allowed shadow-none'
+                      : 'bg-[#8C6D58] hover:bg-[#725743] text-white'
+                  }`}
+                  title={conflitosAlmoco.length > 0 ? 'Horário ocupado por atendimento com cliente' : 'Salvar Horário de Almoço'}
                 >
                   <CheckCircle size={14} className="shrink-0" />
                   <span>{salvandoAlmoco ? 'Salvando...' : 'Salvar Horário'}</span>
