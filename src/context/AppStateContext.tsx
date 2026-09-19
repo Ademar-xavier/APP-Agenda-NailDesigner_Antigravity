@@ -127,6 +127,7 @@ interface AppStateContextType {
   clientes: Cliente[];
   servicos: Servico[];
   agendamentos: Agendamento[];
+  itensAgendamento: { [key: string]: string[] };
   pagamentos: Pagamento[];
   listaEspera: ListaEspera[];
   configSalao: ConfigSalao;
@@ -5728,6 +5729,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       atualizarAdicionalAgendamento,
       cancelAgendamento,
       deleteAgendamento,
+      itensAgendamento,
       confirmarSinal,
       concluirAtendimento,
       addListaEspera,
