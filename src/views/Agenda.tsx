@@ -18,7 +18,7 @@ import {
   Tag,
   ShoppingBag
 } from 'lucide-react';
-import { useAppState } from '../context/AppStateContext';
+import { useAppState, normalizarDataHora } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
 import { PlanoAssinatura, AssinaturaCliente, Agendamento } from '../types';
 import { 
@@ -83,11 +83,6 @@ export const Agenda: React.FC<AgendaProps> = ({
   const [almocoFim, setAlmocoFim] = useState<string>('13:00');
   const [almocoEscopo, setAlmocoEscopo] = useState<'dia' | 'profissional' | 'salao'>('dia');
   const [salvandoAlmoco, setSalvandoAlmoco] = useState(false);
-
-  // Limpeza retroativa de almoços sobrepostos no banco ao carregar ou trocar data
-  useEffect(() => {
-    limparAlmocosSobrepostosNoBanco().catch(() => {});
-  }, [dataSelecionada]);
 
   const handleAbrirModalAlmoco = (profId?: string, horaIni?: string, horaFim?: string) => {
     const profAlvo = profId || (currentUser?.perfil === 'profissional' ? currentUser.id : 'todas');
@@ -592,15 +587,15 @@ export const Agenda: React.FC<AgendaProps> = ({
       if (a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
 
       if (a.observacoes?.includes('[Almoço]')) {
-        const aIni = new Date(a.inicio).getTime();
-        let aFim = new Date(a.fim).getTime();
+        const aIni = normalizarDataHora(a.inicio);
+        let aFim = normalizarDataHora(a.fim);
         if (!aFim || aFim <= aIni) aFim = aIni + 60 * 60000;
 
         const temSobreposicaoCliente = atendimentosClientesAtivos.some(cliAg => {
           const envolve = cliAg.profissional_id === a.profissional_id || agendamentoEnvolveProfissional(cliAg, a.profissional_id, servicos);
           if (!envolve) return false;
-          const cIni = new Date(cliAg.inicio).getTime();
-          let cFim = new Date(cliAg.fim).getTime();
+          const cIni = normalizarDataHora(cliAg.inicio);
+          let cFim = normalizarDataHora(cliAg.fim);
           if (!cFim || cFim <= cIni) cFim = cIni + 60 * 60000;
           return Math.max(aIni, cIni) < Math.min(aFim, cFim);
         });
@@ -622,6 +617,7 @@ export const Agenda: React.FC<AgendaProps> = ({
         const almocoCanceladoNesteDia = agendamentos.some(a => 
           a.profissional_id === u.id && 
           a.inicio.startsWith(dataSelecionada) &&
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
           (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
         );
         if (almocoCanceladoNesteDia) return;
@@ -634,16 +630,20 @@ export const Agenda: React.FC<AgendaProps> = ({
         if (jaTemAlmocoNoBanco) return;
 
         // Se a profissional já possui um atendimento ativo de cliente que sobreponha o horário do almoço
-        const ini = u.horario_almoco_inicio || '12:00';
-        const fim = u.horario_almoco_fim || '13:00';
-        const padraoIni = new Date(`${dataSelecionada}T${ini}:00`).getTime();
-        const padraoFim = new Date(`${dataSelecionada}T${fim}:00`).getTime();
+        const configDia = u.horarios_almoco?.[diaSemanaSelecionado];
+        const almocoAtivo = configDia !== undefined ? configDia.ativo : (u.horario_almoco_ativo !== false);
+        if (!almocoAtivo) return;
+
+        const ini = configDia?.inicio || u.horario_almoco_inicio || '12:00';
+        const fim = configDia?.fim || u.horario_almoco_fim || '13:00';
+        const padraoIni = normalizarDataHora(`${dataSelecionada}T${ini}:00`);
+        const padraoFim = normalizarDataHora(`${dataSelecionada}T${fim}:00`);
 
         const temAtendimentoSobreposto = atendimentosClientesAtivos.some(cliAg => {
           const envolve = cliAg.profissional_id === u.id || agendamentoEnvolveProfissional(cliAg, u.id, servicos);
           if (!envolve) return false;
-          const cIni = new Date(cliAg.inicio).getTime();
-          let cFim = new Date(cliAg.fim).getTime();
+          const cIni = normalizarDataHora(cliAg.inicio);
+          let cFim = normalizarDataHora(cliAg.fim);
           if (!cFim || cFim <= cIni) cFim = cIni + 60 * 60000;
           return Math.max(padraoIni, cIni) < Math.min(padraoFim, cFim);
         });

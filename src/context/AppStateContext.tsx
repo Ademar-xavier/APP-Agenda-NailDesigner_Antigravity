@@ -436,6 +436,17 @@ export const calcularFimAgendamento = (inicioStr: string, duracaoMinutos: number
   return `${y}-${m}-${day}T${h}:${mi}:00`;
 };
 
+// Converte strings de data/hora (inclusive ISO com Z ou offset +00:00) para timestamp em ms absoluto local sem distorção UTC
+export const normalizarDataHora = (str: string): number => {
+  if (!str) return 0;
+  const limpo = str.replace('Z', '').split('+')[0];
+  const [data, hora] = limpo.split('T');
+  if (!data || !hora) return 0;
+  const [ano, mes, dia] = data.split('-').map(Number);
+  const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
+  return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
+};
+
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const limparFocoAtivo = () => {
     if (document.activeElement instanceof HTMLElement) {
@@ -3035,16 +3046,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     ignorarAgendamentoId?: string,
     ignorarAlmoco?: boolean
   ) => {
-    const normalizarDataHora = (str: string): number => {
-      if (!str) return 0;
-      const limpo = str.replace('Z', '').split('+')[0];
-      const [data, hora] = limpo.split('T');
-      if (!data || !hora) return 0;
-      const [ano, mes, dia] = data.split('-').map(Number);
-      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
-      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
-    };
-
     const inicio = normalizarDataHora(inicioStr);
     let fim = normalizarDataHora(fimStr);
     if (!fim || fim <= inicio) {
@@ -3054,7 +3055,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // 1. Checa agendamentos reais existentes
     const temConflitoAgendamento = agendamentos.some(a => {
       if (a.id === ignorarAgendamentoId) return false;
-      if (a.status === 'cancelado' || a.status === 'falta') return false;
+      if (a.status === 'cancelado' || a.status === 'falta' || a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
       if (ignorarAlmoco && a.observacoes?.includes('[Almoço]') && !a.observacoes?.includes('[Almoço Cancelado]')) {
         return false;
       }
@@ -3104,6 +3105,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const almocoCanceladoNesteDia = agendamentos.some(a => 
       a.profissional_id === profissionalId &&
       a.inicio.startsWith(dataStr) &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
       (a.status === 'cancelado' || a.status === 'falta') &&
       (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
     );
@@ -3114,6 +3116,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       a.id !== ignorarAgendamentoId &&
       a.profissional_id === profissionalId &&
       a.inicio.startsWith(dataStr) &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
       a.status !== 'cancelado' &&
       a.status !== 'falta' &&
       a.observacoes?.includes('[Almoço]')
@@ -3135,16 +3138,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Helper para verificar se um intervalo colide com o horário de almoço de uma profissional
   const verificarConflitoAlmoco = (inicioStr: string, fimStr: string, profissionalId: string) => {
-    const normalizarDataHora = (str: string): number => {
-      if (!str) return 0;
-      const limpo = str.replace('Z', '').split('+')[0];
-      const [data, hora] = limpo.split('T');
-      if (!data || !hora) return 0;
-      const [ano, mes, dia] = data.split('-').map(Number);
-      const [h, m, s] = (hora || '00:00:00').split(':').map(Number);
-      return Date.UTC(ano, mes - 1, dia, h || 0, m || 0, s || 0);
-    };
-
     const inicio = normalizarDataHora(inicioStr);
     let fim = normalizarDataHora(fimStr);
     if (!fim || fim <= inicio) fim = inicio + 30 * 60000;
@@ -3159,6 +3152,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const almocoCancelado = agendamentos.some(a => 
       a.profissional_id === profissionalId &&
       a.inicio.startsWith(dataStr) &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
       (a.status === 'cancelado' || a.status === 'falta') &&
       (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
     );
@@ -3168,6 +3162,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const almocoRealAtivo = agendamentos.find(a =>
       a.profissional_id === profissionalId &&
       a.inicio.startsWith(dataStr) &&
+      a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
       a.status !== 'cancelado' &&
       a.status !== 'falta' &&
       a.observacoes?.includes('[Almoço]')
@@ -3219,7 +3214,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return { temConflito: false };
   };
 
-  // Limpeza retroativa no banco e estado: libera agendamentos de almoço sobrepostos por clientes
+  // Limpeza de agendamentos reais de almoço sobrepostos por atendimentos de clientes (com normalização de fuso)
   const limparAlmocosSobrepostosNoBanco = async (): Promise<number> => {
     let limpos = 0;
     const novosAgendamentos = [...agendamentos];
@@ -3241,25 +3236,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         u.id === cliAg.profissional_id || agendamentoEnvolveProfissional(cliAg, u.id, servicos, itensAgendamento)
       );
 
-      const cliIniMs = new Date(cliAg.inicio).getTime();
-      let cliFimMs = new Date(cliAg.fim).getTime();
+      const cliIniMs = normalizarDataHora(cliAg.inicio);
+      let cliFimMs = normalizarDataHora(cliAg.fim);
       if (!cliFimMs || cliFimMs <= cliIniMs) cliFimMs = cliIniMs + 60 * 60000;
 
       for (const p of profsEnvolvidas) {
-        // A. Cancela agendamentos reais de almoço sobrepostos
+        // Cancela apenas agendamentos reais de almoço que realmente colidam com cliente
         const almocosSobrepostos = novosAgendamentos.filter(a =>
           a.profissional_id === p.id &&
           a.inicio.startsWith(dataAg) &&
           a.status !== 'cancelado' &&
           a.status !== 'falta' &&
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN' &&
           a.observacoes?.includes('[Almoço]') &&
           !a.observacoes?.includes('[Almoço Cancelado]') &&
           !a.observacoes?.includes('[Almoço Liberado]')
         );
 
         for (const alm of almocosSobrepostos) {
-          const almIniMs = new Date(alm.inicio).getTime();
-          let almFimMs = new Date(alm.fim).getTime();
+          const almIniMs = normalizarDataHora(alm.inicio);
+          let almFimMs = normalizarDataHora(alm.fim);
           if (!almFimMs || almFimMs <= almIniMs) almFimMs = almIniMs + 60 * 60000;
 
           if (Math.max(cliIniMs, almIniMs) < Math.min(cliFimMs, almFimMs)) {
@@ -3274,47 +3270,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               houveAlteracao = true;
               limpos++;
               salvarAgendamentoSupabase(almAtualizado).catch(() => {});
-            }
-          }
-        }
-
-        // B. Se houver sobreposição com almoço padrão, assegura marcador cancelado no banco
-        const [anoD, mesD, diaD] = dataAg.split('-').map(Number);
-        const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
-        const configDia = p.horarios_almoco?.[diaSemana];
-        const almocoAtivo = configDia !== undefined ? configDia.ativo : (p.horario_almoco_ativo !== false);
-
-        if (almocoAtivo) {
-          const almIniStr = configDia?.inicio || p.horario_almoco_inicio || '12:00';
-          const almFimStr = configDia?.fim || p.horario_almoco_fim || '13:00';
-          const padraoIniMs = new Date(`${dataAg}T${almIniStr}:00`).getTime();
-          const padraoFimMs = new Date(`${dataAg}T${almFimStr}:00`).getTime();
-
-          if (Math.max(cliIniMs, padraoIniMs) < Math.min(cliFimMs, padraoFimMs)) {
-            const jaTemCancelado = novosAgendamentos.some(a =>
-              a.profissional_id === p.id &&
-              a.inicio.startsWith(dataAg) &&
-              (a.observacoes?.includes('[Almoço Cancelado]') || a.observacoes?.includes('[Almoço Liberado]'))
-            );
-
-            if (!jaTemCancelado) {
-              const canceladoMarcador: Agendamento = {
-                id: 'alm_canc_' + gerarId(),
-                cliente_id: 'bloqueado',
-                profissional_id: p.id,
-                inicio: `${dataAg}T${almIniStr}:00`,
-                fim: `${dataAg}T${almFimStr}:00`,
-                status: 'cancelado',
-                valor_total: 0,
-                valor_sinal: 0,
-                observacoes: `[Almoço Cancelado] - Horário liberado por atendimento de cliente (${p.nome})`,
-                origem: 'admin',
-                criado_em: new Date().toISOString()
-              };
-              novosAgendamentos.push(canceladoMarcador);
-              houveAlteracao = true;
-              limpos++;
-              salvarAgendamentoSupabase(canceladoMarcador).catch(() => {});
             }
           }
         }
