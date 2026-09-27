@@ -233,20 +233,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     const diaSemana = new Date(dataRemarcacao + 'T12:00:00').getDay();
     const expediente = configSalao?.horarios_trabalho?.[diaSemana];
 
-    if (!expediente || !expediente.ativo) {
-      return { livres: [], ocupados: [], fechado: true };
-    }
-
-    const [hIni, mIni] = (expediente.inicio || '08:00').split(':').map(Number);
-    const [hFim, mFim] = (expediente.fim || '20:00').split(':').map(Number);
-    const minInicio = hIni * 60 + mIni;
-    const minFim = hFim * 60 + mFim;
+    // No painel interno (remarcação pela profissional), permite horários de início livres (até 23:30) sem travar no horário de fechamento do salão
+    const [hIniPadrao, mIniPadrao] = (expediente?.inicio || '08:00').split(':').map(Number);
+    const minInicio = expediente?.inicio ? Math.min(hIniPadrao * 60 + mIniPadrao, 7 * 60) : 7 * 60;
+    const minFim = 23 * 60 + 30; // até 23:30 sem travamento no horário final
 
     const duracao = duracaoMinutosAgendamento > 0 ? duracaoMinutosAgendamento : 60;
     const livres: string[] = [];
     const ocupados: string[] = [];
 
-    // No painel interno (remarcação pela profissional), permite horários de início até o encerramento do salão
     for (let m = minInicio; m <= minFim; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');

@@ -4,10 +4,20 @@
  */
 
 export const getBaseAppUrl = (): string => {
-  if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+  if (
+    typeof window !== 'undefined' &&
+    window.location.protocol.startsWith('http') &&
+    !window.location.hostname.includes('localhost') &&
+    !window.location.hostname.includes('127.0.0.1') &&
+    !window.location.hostname.includes('192.168.') &&
+    !window.location.hostname.includes('10.0.2.') &&
+    !(window as any).Capacitor &&
+    !window.location.protocol.startsWith('capacitor') &&
+    !window.location.protocol.startsWith('file')
+  ) {
     return window.location.origin;
   }
-  // Fallback para aplicativos instalados nativos (Capacitor / Electron com file://)
+  // Fallback e produção oficial para aplicativos instalados nativos (Android Capacitor / Electron) e ambiente local
   return 'https://sheilasantos-agenda.vercel.app';
 };
 
