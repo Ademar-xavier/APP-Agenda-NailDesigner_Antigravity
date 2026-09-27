@@ -798,24 +798,18 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Análise completa de disponibilidade de horários (Livres vs Ocupados)
   const analiseHorarios = useMemo(() => {
-    if (diaFechado || !expedienteDoDia) {
-      return {
-        livres: [] as string[],
-        ocupados: [] as { hora: string; motivo: string }[],
-        horariosAlmoco: [] as string[]
-      };
-    }
-
-    const [hIni, mIni] = (expedienteDoDia.inicio || '08:00').split(':').map(Number);
-    const [hFim, mFim] = (expedienteDoDia.fim || '20:00').split(':').map(Number);
-    const minInicio = hIni * 60 + mIni;
-    const minFim = hFim * 60 + mFim;
+    // No agendamento interno, a profissional pode marcar livremente o horário que quiser trabalhar no dia
+    // (permitindo estender até a noite 23:30 ou iniciar mais cedo a partir das 07:00), inclusive em dias sem expediente regular,
+    // sempre respeitando com rigor os horários já reservados por outros agendamentos/almoço.
+    const [hIniPadrao, mIniPadrao] = (expedienteDoDia?.inicio || '08:00').split(':').map(Number);
+    const minInicio = expedienteDoDia?.inicio ? Math.min(hIniPadrao * 60 + mIniPadrao, 7 * 60) : 7 * 60;
+    const minFim = 23 * 60 + 30; // até 23:30 sem travamento no horário final
 
     const livres: string[] = [];
     const ocupados: { hora: string; motivo: string }[] = [];
     const horariosAlmoco: string[] = [];
 
-    // No painel interno (profissional), permite horários de início até o horário de encerramento do salão, mesmo que a duração do serviço ultrapasse o expediente
+    // No painel interno (profissional), permite horários de início livres, respeitando conflitos reais com outros agendamentos
     const duracaoVerificacao = isBloqueio ? 30 : duracaoMinutosAtual;
     for (let m = minInicio; m <= minFim; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
@@ -877,12 +871,11 @@ export const Agenda: React.FC<AgendaProps> = ({
     const [hI, mI] = (horaInicio || '09:00').split(':').map(Number);
     const minInicioTotal = hI * 60 + mI;
 
-    const [hFExp, mFExp] = (expedienteDoDia?.fim || '20:00').split(':').map(Number);
-    const minFimLimite = Math.max(hFExp * 60 + mFExp, 22 * 60);
+    const minFimLimite = 23 * 60 + 45;
 
     const opcoes: { hora: string; labelDuracao: string; minutos: number }[] = [];
 
-    for (let m = minInicioTotal + 15; m <= Math.min(minFimLimite, 23 * 60 + 45); m += 15) {
+    for (let m = minInicioTotal + 15; m <= minFimLimite; m += 15) {
       const diff = m - minInicioTotal;
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
@@ -1049,11 +1042,6 @@ export const Agenda: React.FC<AgendaProps> = ({
   const handleCriarAgendamento = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorAgendamento('');
-
-    if (diaFechado) {
-      setErrorAgendamento(`O salão não abre aos ${nomesDias[diaSemanaSelecionado]}s (Fechado). Por favor, selecione uma data de expediente.`);
-      return;
-    }
 
     // 1. Validações preliminares de dados
     if (!isBloqueio) {
@@ -2494,13 +2482,13 @@ export const Agenda: React.FC<AgendaProps> = ({
                         setErrorAgendamento('');
                       }}
                       className={`w-full border rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none ${
-                        diaFechado ? 'border-[#C81E1E] bg-[#FDF2F2]' : 'border-[#EFECE6]'
+                        diaFechado ? 'border-amber-200 bg-amber-50/30' : 'border-[#EFECE6]'
                       }`}
                     />
                     {diaFechado && (
-                      <p className="text-[11px] text-[#C81E1E] font-bold mt-1 flex items-center gap-1">
-                        <AlertTriangle size={13} className="shrink-0" />
-                        <span>Salão fechado aos {nomesDias[diaSemanaSelecionado]}s! Escolha outro dia.</span>
+                      <p className="text-[11px] text-amber-700 font-medium mt-1 flex items-center gap-1">
+                        <AlertTriangle size={13} className="shrink-0 text-amber-600" />
+                        <span>Dia fora do expediente padrão ({nomesDias[diaSemanaSelecionado]}). Horários liberados para a profissional.</span>
                       </p>
                     )}
                   </div>

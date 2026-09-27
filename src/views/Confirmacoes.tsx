@@ -744,19 +744,14 @@ export const Confirmacoes: React.FC = () => {
     const diaSemana = new Date(dataStr + 'T12:00:00').getDay();
     const expediente = configSalao.horarios_trabalho?.[diaSemana];
 
-    if (!expediente || !expediente.ativo) {
-      return { livres: [], fechado: true };
-    }
-
-    const [hIni, mIni] = (expediente.inicio || '08:00').split(':').map(Number);
-    const [hFim, mFim] = (expediente.fim || '20:00').split(':').map(Number);
-    const minInicio = hIni * 60 + mIni;
-    const minFim = hFim * 60 + mFim;
+    // No painel interno (atribuição de vaga pela profissional), permite horários flexíveis até 23:30
+    const [hIniPadrao, mIniPadrao] = (expediente?.inicio || '08:00').split(':').map(Number);
+    const minInicio = expediente?.inicio ? Math.min(hIniPadrao * 60 + mIniPadrao, 7 * 60) : 7 * 60;
+    const minFim = 23 * 60 + 30; // até 23:30 sem travamento no horário final
 
     const duracao = duracaoMinutos > 0 ? duracaoMinutos : 30;
     const livres: string[] = [];
 
-    // No painel interno (atribuição de vaga pela profissional), permite horários de início até o encerramento do salão
     for (let m = minInicio; m <= minFim; m += 30) {
       const hStr = String(Math.floor(m / 60)).padStart(2, '0');
       const mStr = String(m % 60).padStart(2, '0');
