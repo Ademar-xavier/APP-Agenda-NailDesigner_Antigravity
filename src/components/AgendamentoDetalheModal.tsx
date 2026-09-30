@@ -36,7 +36,6 @@ import {
   obterServicosIdsSessaoVip,
   obterConfiguracaoSessaoVip,
   calcularDuracaoSessaoVip,
-  obterAgendamentosParceirosDupla,
   agendamentoEnvolveProfissional
 } from '../utils/planoVipHelper';
 
@@ -1427,7 +1426,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             {/* Services Box & Edição de Serviço / Profissional */}
             {!editandoServicosEProf ? (
               <div className="rounded-xl border border-[#EFECE6] p-3.5 mb-4 bg-[#FAF9F6]">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2.5">
               <p className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider">
                 {agendamento.status === 'concluido' ? 'Extrato do Atendimento' : (
                   (agendamento.status === 'cancelado' || agendamento.status === 'falta') 
@@ -1435,62 +1434,65 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     : 'Serviços & Profissional'
                 )}
               </p>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAcao('remarcar');
-                      setDataRemarcacao(agendamento.inicio.split('T')[0]);
-                      setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
-                      setProfRemarcacaoId(agendamento.profissional_id);
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
-                    title="Remarcar dia, horário ou profissional"
-                  >
-                    <Calendar size={12} className="text-[#8C6D58]" />
-                    <span>Remarcar Horário / Dia</span>
-                  </button>
-                )}
+            </div>
 
+            {/* Barra com 3 Botões Uniformes no Visual Padrão do App */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
                 <button
                   type="button"
                   onClick={() => {
-                    let initialIds = servs.map(s => s.id);
-                    const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
-                    if (combosPresentes.length > 0) {
-                      const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
-                      initialIds = initialIds.filter(id => !subIds.includes(id));
-                    }
-                    if (initialIds.length === 0) initialIds = ['s1'];
-                    setServicosEditadosIds(initialIds);
-                    setProfissionalEditadaId(agendamento.profissional_id);
-                    setPlanoVipEscolhidoId(agendamento.plano_id || '');
-                    setEditandoServicosEProf(true);
+                    setAcao('remarcar');
+                    setDataRemarcacao(agendamento.inicio.split('T')[0]);
+                    setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
+                    setProfRemarcacaoId(agendamento.profissional_id);
                   }}
-                  className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
-                  title="Trocar procedimentos ou alterar a profissional responsável"
+                  className="w-full flex items-center justify-center gap-1 sm:gap-1.5 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] hover:border-[#D5C9BD] py-2 px-1.5 rounded-xl transition-all shadow-2xs hover:bg-[#FAF9F6] active:scale-[0.98]"
+                  title="Remarcar dia, horário ou profissional"
                 >
-                  <Sparkles size={12} className="text-amber-500" />
-                  <span>{servs.length === 0 ? '+ Adicionar Serviço' : 'Trocar Serviço / Profissional'}</span>
+                  <Calendar size={13} className="text-[#8C6D58] shrink-0" />
+                  <span className="hidden sm:inline truncate">Remarcar Horário</span>
+                  <span className="sm:hidden truncate">Remarcar</span>
                 </button>
+              )}
 
-                {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && !isBloqueio && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAcao('trocar_cliente');
-                      setAgendamentoTrocaId('');
-                      setBuscaClienteTroca('');
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-indigo-100/70"
-                    title="Permutar/Trocar dia e horário com outra cliente agendada"
-                  >
-                    <ArrowLeftRight size={12} className="text-indigo-600" />
-                    <span>Trocar com Outra Cliente</span>
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  let initialIds = servs.map(s => s.id);
+                  const combosPresentes = servs.filter(s => s.is_pacote && s.servicos_pacote);
+                  if (combosPresentes.length > 0) {
+                    const subIds = combosPresentes.flatMap(c => c.servicos_pacote || []);
+                    initialIds = initialIds.filter(id => !subIds.includes(id));
+                  }
+                  if (initialIds.length === 0) initialIds = ['s1'];
+                  setServicosEditadosIds(initialIds);
+                  setProfissionalEditadaId(agendamento.profissional_id);
+                  setPlanoVipEscolhidoId(agendamento.plano_id || '');
+                  setEditandoServicosEProf(true);
+                }}
+                className="w-full flex items-center justify-center gap-1 sm:gap-1.5 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] hover:border-[#D5C9BD] py-2 px-1.5 rounded-xl transition-all shadow-2xs hover:bg-[#FAF9F6] active:scale-[0.98]"
+                title="Trocar procedimentos ou alterar a profissional responsável"
+              >
+                <Sparkles size={13} className="text-amber-500 shrink-0" />
+                <span className="truncate">{servs.length === 0 ? '+ Adicionar' : 'Trocar Serviço'}</span>
+              </button>
+
+              {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && !isBloqueio && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAcao('trocar_cliente');
+                    setAgendamentoTrocaId('');
+                    setBuscaClienteTroca('');
+                  }}
+                  className="w-full flex items-center justify-center gap-1 sm:gap-1.5 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] hover:border-[#D5C9BD] py-2 px-1.5 rounded-xl transition-all shadow-2xs hover:bg-[#FAF9F6] active:scale-[0.98]"
+                  title="Permutar/Trocar dia e horário com outra cliente agendada"
+                >
+                  <ArrowLeftRight size={13} className="text-[#8C6D58] shrink-0" />
+                  <span className="truncate">Trocar Cliente</span>
+                </button>
+              )}
             </div>
 
             {isVip && (
@@ -1845,9 +1847,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         } else if (pl.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
                           setServicosEditadosIds([pl.servicos_permitidos_ids[0]]);
                         }
-                        const cfgSessao = obterConfiguracaoSessaoVip(pl, 1);
-                        if (cfgSessao?.profissional_id) {
-                          setProfissionalEditadaId(cfgSessao.profissional_id);
+                        const cfgSessao = obterConfiguracaoSessaoVip(pl, 1, servicos);
+                        if (cfgSessao && cfgSessao.length > 0 && cfgSessao[0].profissional_id) {
+                          setProfissionalEditadaId(cfgSessao[0].profissional_id);
                         }
                       }
                     }
