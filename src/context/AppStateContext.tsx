@@ -170,7 +170,8 @@ interface AppStateContextType {
   updateAgendamentoStatus: (id: string, status: AgendamentoStatus, canceladoPor?: 'cliente' | 'admin', motivo?: string, confirmadoPor?: 'cliente' | 'admin') => void;
   remarcarAgendamento: (id: string, novoInicio: string, novoFim?: string, novaProfissionalId?: string, ajustarFuturos?: boolean) => { success: boolean; error?: string };
   atualizarValorSinalAgendamento: (id: string, valorSinal: number) => void;
-  atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean) => void;
+  atualizarServicosEProfissionalAgendamento: (id: string, novosServicosIds: string[], novaProfissionalId: string, ajustarFuturos?: boolean, planoVipId?: string | null) => void;
+  permutarAgendamentos: (agendamentoIdA: string, agendamentoIdB: string) => { success: boolean; error?: string };
   cancelAgendamento: (id: string, motivo: string, canceladoPor: 'cliente' | 'admin') => void;
   deleteAgendamento: (id: string) => void;
   confirmarSinal: (id: string, valor: number, metodo: MetodoPagamento) => void;
@@ -3819,7 +3820,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     agendamentoId: string,
     novosServicosIds: string[],
     novaProfissionalId: string,
-    ajustarFuturos: boolean = true
+    ajustarFuturos: boolean = true,
+    planoVipId?: string | null
   ) => {
     const ag = agendamentos.find(a => a.id === agendamentoId);
     if (!ag) return;
@@ -3843,11 +3845,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return;
     }
 
-    // Mantém isenção se for sessão recorrente VIP inclusa no plano
-    const isSessaoVipInclusa = Boolean(ag.pago_com_clube && ag.valor_total === 0);
-    const novoValorTotal = isSessaoVipInclusa 
-      ? 0 
-      : servicosEscolhidos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+    // Regras de VIP / Valores
+    let novoValorTotal = servicosEscolhidos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+    let novoPagoComClube = ag.pago_com_clube;
+    let novoPlanoId = ag.plano_id;
+
+    if (planoVipId) {
+      const pl = planosAssinatura.find(p => p.id === planoVipId);
+      if (pl) {
+        vincularAssinaturaCliente(ag.cliente_id, planoVipId);
+        novoPagoComClube = true;
+        novoPlanoId = planoVipId;
+        const cliObj = clientes.find(c => c.id === ag.cliente_id);
+        const cliJaTemVip = cliObj?.assinatura && cliObj.assinatura.status === 'ativo' && (cliObj.assinatura.plano_id === planoVipId || (cliObj.assinatura as any)?.plano_nome === pl.nome);
+        novoValorTotal = cliJaTemVip ? 0 : pl.preco_mensal;
+      }
+    } else if (planoVipId === null) {
+      novoPagoComClube = false;
+      novoPlanoId = undefined;
+      novoValorTotal = servicosEscolhidos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+    } else if (ag.pago_com_clube && ag.valor_total === 0) {
+      novoValorTotal = 0;
+    }
 
     // Atualiza nome dos serviços dentro da observação se formatado como Sessão X (...)
     let obsAtualizada = ag.observacoes;
@@ -3855,11 +3874,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       obsAtualizada = obsAtualizada.replace(/Sessão\s+(\d+)\s*\([^)]+\)/i, `Sessão $1 (${nomesServicosNovos})`);
     }
 
+    if (planoVipId) {
+      const pl = planosAssinatura.find(p => p.id === planoVipId);
+      if (pl && (!obsAtualizada || !obsAtualizada.includes('👑'))) {
+        obsAtualizada = `👑 [Clube VIP: ${pl.nome}] Sessão 1 de ${pl.qtd_procedimentos_mes || 4} • ${obsAtualizada || ''}`.trim();
+      }
+    } else if (planoVipId === null) {
+      obsAtualizada = obsAtualizada?.replace(/👑\s*\[Clube VIP:[^\]]*\]\s*(Sessão\s*\d+\s*de\s*\d+)?\s*[•-]?\s*/gi, '').trim();
+    }
+
     const atualizado: Agendamento = {
       ...ag,
       profissional_id: profEfetiva,
       fim: fimStr,
       valor_total: novoValorTotal,
+      pago_com_clube: novoPagoComClube,
+      plano_id: novoPlanoId,
       observacoes: obsAtualizada
     };
 
@@ -4206,6 +4236,148 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           : `✅ Agendamento remarcado para ${dataBr} às ${horaFmt}! (Agendamentos futuros mantidos intactos)`
       );
     }
+    return { success: true };
+  };
+
+  const permutarAgendamentos = (
+    agendamentoIdA: string,
+    agendamentoIdB: string
+  ): { success: boolean; error?: string } => {
+    const agA = agendamentos.find(a => a.id === agendamentoIdA);
+    const agB = agendamentos.find(a => a.id === agendamentoIdB);
+
+    if (!agA || !agB) {
+      return { success: false, error: 'Um dos agendamentos selecionados não foi encontrado.' };
+    }
+
+    if (agA.id === agB.id) {
+      return { success: false, error: 'Selecione dois agendamentos diferentes para realizar a troca.' };
+    }
+
+    // Calcula duração dos serviços de cada cliente
+    const sIdsA = itensAgendamento[agA.id] || [];
+    const servsA = servicos.filter(s => sIdsA.includes(s.id));
+    const durA = servsA.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+
+    const sIdsB = itensAgendamento[agB.id] || [];
+    const servsB = servicos.filter(s => sIdsB.includes(s.id));
+    const durB = servsB.reduce((acc, s) => acc + (s.duracao_minutos || 60), 0) || 60;
+
+    // Novos horários: cada cliente assume o horário de início da outra, preservando estritamente a duração dos seus serviços
+    const novoInicioA = agB.inicio;
+    const novoFimA = calcularFimAgendamento(novoInicioA, durA);
+
+    const novoInicioB = agA.inicio;
+    const novoFimB = calcularFimAgendamento(novoInicioB, durB);
+
+    // Identifica parceiros de dupla para ambos
+    const parceirosA = obterAgendamentosParceirosDupla(agA, agendamentos);
+    const parceirosB = obterAgendamentosParceirosDupla(agB, agendamentos);
+    const todosIdsA = [agA.id, ...parceirosA.map(p => p.id)];
+    const todosIdsB = [agB.id, ...parceirosB.map(p => p.id)];
+    const todosIdsPermuta = [...todosIdsA, ...todosIdsB];
+
+    // Validação de conflito para Cliente A no novo horário (ignorando os registros de B que estão sendo deslocados)
+    const conflitoA = agendamentos.some(a => {
+      if (todosIdsPermuta.includes(a.id)) return false;
+      if (a.status === 'cancelado' || a.status === 'falta' || a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
+      const envolveProf = a.profissional_id === agA.profissional_id || agendamentoEnvolveProfissional(a, agA.profissional_id, servicos, itensAgendamento);
+      if (!envolveProf) return false;
+      const aIni = normalizarDataHora(a.inicio);
+      let aFim = normalizarDataHora(a.fim);
+      if (!aFim || aFim <= aIni) aFim = aIni + 60 * 60000;
+      const targetIni = normalizarDataHora(novoInicioA);
+      const targetFim = normalizarDataHora(novoFimA);
+      return Math.max(targetIni, aIni) < Math.min(targetFim, aFim);
+    });
+
+    if (conflitoA) {
+      const cliA = clientes.find(c => c.id === agA.cliente_id)?.nome || 'Cliente A';
+      return {
+        success: false,
+        error: `Não é possível realizar a troca: a duração do atendimento de ${cliA} (${durA} min) ultrapassa o espaço vago e conflita com outro agendamento já marcado.`
+      };
+    }
+
+    // Validação de conflito para Cliente B no novo horário (ignorando os registros de A que estão sendo deslocados)
+    const conflitoB = agendamentos.some(a => {
+      if (todosIdsPermuta.includes(a.id)) return false;
+      if (a.status === 'cancelado' || a.status === 'falta' || a.motivo_cancelamento === 'EXCLUIDO_ADMIN') return false;
+      const envolveProf = a.profissional_id === agB.profissional_id || agendamentoEnvolveProfissional(a, agB.profissional_id, servicos, itensAgendamento);
+      if (!envolveProf) return false;
+      const aIni = normalizarDataHora(a.inicio);
+      let aFim = normalizarDataHora(a.fim);
+      if (!aFim || aFim <= aIni) aFim = aIni + 60 * 60000;
+      const targetIni = normalizarDataHora(novoInicioB);
+      const targetFim = normalizarDataHora(novoFimB);
+      return Math.max(targetIni, aIni) < Math.min(targetFim, aFim);
+    });
+
+    if (conflitoB) {
+      const cliB = clientes.find(c => c.id === agB.cliente_id)?.nome || 'Cliente B';
+      return {
+        success: false,
+        error: `Não é possível realizar a troca: a duração do atendimento de ${cliB} (${durB} min) ultrapassa o espaço vago e conflita com outro agendamento já marcado.`
+      };
+    }
+
+    // Atualiza ambos os agendamentos no estado
+    const agAAtualizado: Agendamento = {
+      ...agA,
+      inicio: novoInicioA,
+      fim: novoFimA
+    };
+
+    const agBAtualizado: Agendamento = {
+      ...agB,
+      inicio: novoInicioB,
+      fim: novoFimB
+    };
+
+    const parceirosAAtualizados = parceirosA.map(p => ({
+      ...p,
+      inicio: novoInicioA,
+      fim: novoFimA
+    }));
+
+    const parceirosBAtualizados = parceirosB.map(p => ({
+      ...p,
+      inicio: novoInicioB,
+      fim: novoFimB
+    }));
+
+    const todosModificados = [agAAtualizado, ...parceirosAAtualizados, agBAtualizado, ...parceirosBAtualizados];
+    const mapModificados = new Map(todosModificados.map(m => [m.id, m]));
+
+    setAgendamentos(prev => {
+      const atualizados = prev.map(a => mapModificados.get(a.id) || a);
+      try { localStorage.setItem('nail_agendamentos', JSON.stringify(atualizados)); } catch (e) {}
+      dbSetAll(STORES.AGENDAMENTOS, atualizados);
+      return atualizados;
+    });
+
+    // Atualiza data_pagamento de pagamentos de sinal associados para manter coerência
+    setPagamentos(prev => prev.map(p => {
+      if (p.agendamento_id === agA.id) {
+        return { ...p, data_pagamento: novoInicioA };
+      }
+      if (p.agendamento_id === agB.id) {
+        return { ...p, data_pagamento: novoInicioB };
+      }
+      return p;
+    }));
+
+    // Sincroniza com Supabase
+    todosModificados.forEach(agMod => {
+      salvarAgendamentoSupabase(agMod).catch(err => {
+        console.warn('Aviso ao sincronizar agendamento permutado com Supabase:', err);
+      });
+    });
+
+    const cliANome = clientes.find(c => c.id === agA.cliente_id)?.nome || 'Cliente A';
+    const cliBNome = clientes.find(c => c.id === agB.cliente_id)?.nome || 'Cliente B';
+    mostrarNotificacaoGlobal(`✅ Horários trocados com sucesso entre ${cliANome} e ${cliBNome}!`);
+
     return { success: true };
   };
 
@@ -5740,6 +5912,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       addAgendamento,
       updateAgendamentoStatus,
       remarcarAgendamento,
+      permutarAgendamentos,
       atualizarValorSinalAgendamento,
       atualizarServicosEProfissionalAgendamento,
       atualizarAdicionalAgendamento,

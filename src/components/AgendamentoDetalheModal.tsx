@@ -19,7 +19,9 @@ import {
   Trash2,
   Repeat,
   Lock,
-  Tag
+  Tag,
+  ArrowLeftRight,
+  Search
 } from 'lucide-react';
 import { useAppState, calcularFimAgendamento } from '../context/AppStateContext';
 import { MetodoPagamento, AgendamentoStatus, REGRA_DEVOLUCAO_PADRAO, ItemComandaProduto, Usuario } from '../types';
@@ -30,7 +32,12 @@ import {
   calcularIntervaloVip, 
   obterTextoFrequenciaVip,
   obterProfissionaisDoServicoOuPacote,
-  obterTodasProfissionaisDosServicos
+  obterTodasProfissionaisDosServicos,
+  obterServicosIdsSessaoVip,
+  obterConfiguracaoSessaoVip,
+  calcularDuracaoSessaoVip,
+  obterAgendamentosParceirosDupla,
+  agendamentoEnvolveProfissional
 } from '../utils/planoVipHelper';
 
 interface AgendamentoDetalheModalProps {
@@ -39,7 +46,7 @@ interface AgendamentoDetalheModalProps {
   onOpenComanda?: () => void;
 }
 
-type Acao = null | 'cancelar' | 'concluir' | 'falta' | 'remarcar';
+type Acao = null | 'cancelar' | 'concluir' | 'falta' | 'remarcar' | 'trocar_cliente';
 
 const MOTIVO_CANCELAMENTO_PADRAO = 'Imprevisto operacional no salão / necessidade de reagendamento';
 const SUGESTOES_MOTIVOS = [
@@ -63,6 +70,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     configSalao,
     updateAgendamentoStatus,
     remarcarAgendamento,
+    permutarAgendamentos,
     atualizarValorSinalAgendamento,
     atualizarServicosEProfissionalAgendamento,
     cancelAgendamento,
@@ -324,7 +332,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const [editandoServicosEProf, setEditandoServicosEProf] = useState(false);
   const [servicosEditadosIds, setServicosEditadosIds] = useState<string[]>([]);
   const [profissionalEditadaId, setProfissionalEditadaId] = useState<string>(agendamento?.profissional_id || '');
+  const [planoVipEscolhidoId, setPlanoVipEscolhidoId] = useState<string>(agendamento?.plano_id || '');
   const [aplicarEmFuturos, setAplicarEmFuturos] = useState(true);
+
+  // Estados de Permuta / Troca com Outra Cliente
+  const [agendamentoTrocaId, setAgendamentoTrocaId] = useState<string>('');
+  const [buscaClienteTroca, setBuscaClienteTroca] = useState<string>('');
+  const [notificarWhatsTrocaA, setNotificarWhatsTrocaA] = useState<boolean>(true);
+  const [notificarWhatsTrocaB, setNotificarWhatsTrocaB] = useState<boolean>(true);
+  const [trocandoAgendamentos, setTrocandoAgendamentos] = useState<boolean>(false);
 
   // Identifica agendamentos futuros da mesma recorrência/clube VIP
   const agendamentosFuturosRecorrencia = useMemo(() => {
@@ -420,6 +436,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   useEffect(() => {
     if (agendamento) {
       setProfissionalEditadaId(agendamento.profissional_id);
+      setPlanoVipEscolhidoId(agendamento.plano_id || '');
       
       let descVal = agendamento.desconto_valor !== undefined ? Number(agendamento.desconto_valor) : 0;
       let descMot = agendamento.desconto_motivo || 'Desconto acordado';
@@ -482,6 +499,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   useEffect(() => {
     setAcao(null);
     setEditandoServicosEProf(false);
+    setAgendamentoTrocaId('');
+    setBuscaClienteTroca('');
     if (agendamento?.status) {
       setStatusVisual(agendamento.status);
     }
@@ -529,6 +548,99 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       window.removeEventListener('nail_android_back', handleAndroidBack);
     };
   }, [onClose]);
+
+  // Lista de agendamentos candidatos para permuta (troca de horários entre clientes)
+  const candidatosTroca = useMemo(() => {
+    if (!agendamento) return [];
+
+    return agendamentos
+      .filter(a => {
+        if (a.id === agendamento.id) return false;
+        // Não permite trocar com bloqueios de agenda
+        if (a.cliente_id === 'bloqueado') return false;
+        // Não permite trocar com cancelados, faltas ou concluídos
+        if (a.status === 'cancelado' || a.status === 'falta' || a.status === 'concluido') return false;
+        // Não permite trocar com parceiro de co-atendimento simultâneo
+        if (coAgendamentosVinculados.some(co => co.id === a.id)) return false;
+
+        // Filtro de busca
+        if (buscaClienteTroca.trim()) {
+          const termo = buscaClienteTroca.trim().toLowerCase();
+          const cli = clientes.find(c => c.id === a.cliente_id);
+          const cliNome = cli?.nome?.toLowerCase() || '';
+          const cliTel = cli?.telefone?.replace(/\D/g, '') || '';
+          const dataStr = a.inicio.split('T')[0];
+          const horaStr = a.inicio.split('T')[1]?.substring(0, 5) || '';
+          const sIds = obterServicosDeAgendamento(a.id);
+          const sNomes = sIds.map(s => s.nome.toLowerCase()).join(' ');
+
+          const bateNome = cliNome.includes(termo);
+          const bateTel = cliTel.includes(termo.replace(/\D/g, ''));
+          const bateData = dataStr.includes(termo) || horaStr.includes(termo);
+          const bateServ = sNomes.includes(termo);
+
+          return bateNome || bateTel || bateData || bateServ;
+        }
+
+        return true;
+      })
+      .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
+  }, [agendamentos, agendamento, coAgendamentosVinculados, buscaClienteTroca, clientes, obterServicosDeAgendamento]);
+
+  const agendamentoTrocaObj = useMemo(() => {
+    return agendamentos.find(a => a.id === agendamentoTrocaId);
+  }, [agendamentos, agendamentoTrocaId]);
+
+  const clienteTrocaObj = useMemo(() => {
+    if (!agendamentoTrocaObj) return null;
+    return clientes.find(c => c.id === agendamentoTrocaObj.cliente_id);
+  }, [agendamentoTrocaObj, clientes]);
+
+  const servsTrocaObj = useMemo(() => {
+    if (!agendamentoTrocaObj) return [];
+    return obterServicosDeAgendamento(agendamentoTrocaObj.id);
+  }, [agendamentoTrocaObj, obterServicosDeAgendamento]);
+
+  const profTrocaObj = useMemo(() => {
+    if (!agendamentoTrocaObj) return null;
+    return equipe.find(u => u.id === agendamentoTrocaObj.profissional_id);
+  }, [agendamentoTrocaObj, equipe]);
+
+  const analisePermuta = useMemo(() => {
+    if (!agendamento || !agendamentoTrocaObj) return null;
+
+    const durA = duracaoMinutosAgendamento;
+    const durB = (() => {
+      try {
+        const getMins = (str: string) => {
+          const limpo = str.replace('Z', '').split('+')[0];
+          const [, horaPart] = limpo.split('T');
+          if (!horaPart) return 0;
+          const [h, m] = horaPart.split(':').map(Number);
+          return (h || 0) * 60 + (m || 0);
+        };
+        const diff = getMins(agendamentoTrocaObj.fim) - getMins(agendamentoTrocaObj.inicio);
+        return diff > 0 ? diff : 60;
+      } catch {
+        return 60;
+      }
+    })();
+
+    const novoInicioA = agendamentoTrocaObj.inicio;
+    const novoFimA = calcularFimAgendamento(novoInicioA, durA);
+
+    const novoInicioB = agendamento.inicio;
+    const novoFimB = calcularFimAgendamento(novoInicioB, durB);
+
+    return {
+      durA,
+      durB,
+      novoInicioA,
+      novoFimA,
+      novoInicioB,
+      novoFimB
+    };
+  }, [agendamento, agendamentoTrocaObj, duracaoMinutosAgendamento]);
 
   if (!agendamento) return null;
 
@@ -923,13 +1035,77 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       return;
     }
 
+    const vipParam = planoVipEscolhidoId 
+      ? planoVipEscolhidoId 
+      : (planoVipEscolhidoId === '' && (agendamento.plano_id || agendamento.pago_com_clube) ? null : undefined);
+
     atualizarServicosEProfissionalAgendamento(
       agendamento.id,
       servicosEditadosIds,
       profAlvo,
-      agendamentosFuturosRecorrencia.length > 0 ? aplicarEmFuturos : false
+      agendamentosFuturosRecorrencia.length > 0 ? aplicarEmFuturos : false,
+      vipParam
     );
     setEditandoServicosEProf(false);
+  };
+
+  const handleConfirmarTroca = async () => {
+    if (!agendamento || !agendamentoTrocaId) return;
+
+    setTrocandoAgendamentos(true);
+    try {
+      const res = permutarAgendamentos(agendamento.id, agendamentoTrocaId);
+      if (!res.success) {
+        mostrarAlerta({
+          titulo: 'Não Foi Possível Trocar',
+          mensagem: res.error || 'Ocorreu um erro ao tentar realizar a permuta.',
+          tipo: 'erro'
+        });
+        setTrocandoAgendamentos(false);
+        return;
+      }
+
+      mostrarAlerta({
+        titulo: 'Horários Trocados com Sucesso!',
+        mensagem: 'Os horários de ambas as clientes foram invertidos, preservando a duração e serviços de cada atendimento.',
+        tipo: 'sucesso'
+      });
+
+      // Notificação WhatsApp para Cliente A
+      if (notificarWhatsTrocaA && cliente?.telefone && analisePermuta) {
+        const dPart = analisePermuta.novoInicioA.split('T')[0];
+        const hPart = analisePermuta.novoInicioA.split('T')[1]?.substring(0, 5) || '';
+        const dataFmt = dPart.split('-').reverse().join('/');
+        const nomesServs = servs.map(s => s.nome).join(' + ') || 'Procedimento';
+        const profNome = prof?.nome || 'Profissional';
+        const msgA = `Olá, ${cliente.nome}! 💅\nSeu agendamento foi alterado conforme combinado:\n\n📅 *Nova Data:* ${dataFmt}\n⏰ *Novo Horário:* ${hPart}\n👩‍🎨 *Profissional:* ${profNome}\n✨ *Procedimento:* ${nomesServs}\n\nQualquer dúvida, estamos à disposição! 🥰`;
+        const urlA = gerarLinkWhatsApp(cliente.telefone, msgA);
+        if (urlA) {
+          window.open(urlA, '_blank');
+        }
+      }
+
+      // Notificação WhatsApp para Cliente B
+      if (notificarWhatsTrocaB && clienteTrocaObj?.telefone && analisePermuta) {
+        const dPartB = analisePermuta.novoInicioB.split('T')[0];
+        const hPartB = analisePermuta.novoInicioB.split('T')[1]?.substring(0, 5) || '';
+        const dataFmtB = dPartB.split('-').reverse().join('/');
+        const nomesServsB = servsTrocaObj.map(s => s.nome).join(' + ') || 'Procedimento';
+        const profNomeB = profTrocaObj?.nome || 'Profissional';
+        const msgB = `Olá, ${clienteTrocaObj.nome}! 💅\nSeu agendamento foi alterado conforme combinado:\n\n📅 *Nova Data:* ${dataFmtB}\n⏰ *Novo Horário:* ${hPartB}\n👩‍🎨 *Profissional:* ${profNomeB}\n✨ *Procedimento:* ${nomesServsB}\n\nQualquer dúvida, estamos à disposição! 🥰`;
+        const urlB = gerarLinkWhatsApp(clienteTrocaObj.telefone, msgB);
+        if (urlB) {
+          setTimeout(() => {
+            window.open(urlB, '_blank');
+          }, 400);
+        }
+      }
+
+      setAcao(null);
+      onClose();
+    } finally {
+      setTrocandoAgendamentos(false);
+    }
   };
 
   const handleConcluir = () => {
@@ -1048,7 +1224,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </select>
             ) : (
               <select
-                value={acao === 'remarcar' ? 'remarcar' : statusVisual}
+                value={(acao === 'remarcar' || acao === 'trocar_cliente') ? acao : statusVisual}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val === 'remarcar') {
@@ -1056,6 +1232,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     setDataRemarcacao(agendamento.inicio.split('T')[0]);
                     setHoraRemarcacao(agendamento.inicio.split('T')[1]?.substring(0, 5) || '09:00');
                     setProfRemarcacaoId(agendamento.profissional_id);
+                    return;
+                  }
+                  if (val === 'trocar_cliente') {
+                    setAcao('trocar_cliente');
+                    setAgendamentoTrocaId('');
+                    setBuscaClienteTroca('');
                     return;
                   }
                   const novoStatus = val as AgendamentoStatus;
@@ -1074,14 +1256,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     }
                   }
                 }}
-                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${acao === 'remarcar' ? 'bg-[#8C6D58] text-white border-[#8C6D58]' : (statusStyles[statusVisual] || '')}`}
-                title="Clique para alterar o status ou remarcar este agendamento"
+                className={`text-[10px] font-bold px-2 py-1 rounded-lg border uppercase cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30 ${(acao === 'remarcar' || acao === 'trocar_cliente') ? 'bg-[#8C6D58] text-white border-[#8C6D58]' : (statusStyles[statusVisual] || '')}`}
+                title="Clique para alterar o status, remarcar ou permutar este agendamento"
               >
                 <option value="pendente">⏳ Pendente (A Confirmar)</option>
                 <option value="confirmado">✅ Confirmado</option>
                 <option value="concluido">🎉 Concluído</option>
                 <option value="falta">⚠️ Falta</option>
                 <option value="remarcar">📅 Remarcar horário / dia</option>
+                <option value="trocar_cliente">🔄 Trocar com outra cliente</option>
                 <option value="cancelado">❌ Cancelar</option>
               </select>
             )}
@@ -1282,6 +1465,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     if (initialIds.length === 0) initialIds = ['s1'];
                     setServicosEditadosIds(initialIds);
                     setProfissionalEditadaId(agendamento.profissional_id);
+                    setPlanoVipEscolhidoId(agendamento.plano_id || '');
                     setEditandoServicosEProf(true);
                   }}
                   className="flex items-center gap-1 text-[11px] font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#EFECE6] px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-[#FAF9F6]"
@@ -1290,6 +1474,22 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   <Sparkles size={12} className="text-amber-500" />
                   <span>{servs.length === 0 ? '+ Adicionar Serviço' : 'Trocar Serviço / Profissional'}</span>
                 </button>
+
+                {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && !isBloqueio && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAcao('trocar_cliente');
+                      setAgendamentoTrocaId('');
+                      setBuscaClienteTroca('');
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-lg transition-colors shadow-2xs hover:bg-indigo-100/70"
+                    title="Permutar/Trocar dia e horário com outra cliente agendada"
+                  >
+                    <ArrowLeftRight size={12} className="text-indigo-600" />
+                    <span>Trocar com Outra Cliente</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1612,6 +1812,75 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             </div>
 
             {/* Seletor de Profissional */}
+            {/* Seletor de Plano / Combo VIP */}
+            {planosAssinatura && planosAssinatura.filter(p => p.ativo !== false).length > 0 && (
+              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950 uppercase tracking-wider">
+                    <Crown size={14} className="text-amber-600" />
+                    <span>Plano / Combo VIP</span>
+                  </label>
+                  {planoVipEscolhidoId && (
+                    <button
+                      type="button"
+                      onClick={() => setPlanoVipEscolhidoId('')}
+                      className="text-[10px] font-bold text-amber-700 hover:text-amber-900 underline"
+                    >
+                      Remover VIP (Serviço Avulso)
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={planoVipEscolhidoId}
+                  onChange={(e) => {
+                    const novoId = e.target.value;
+                    setPlanoVipEscolhidoId(novoId);
+                    if (novoId) {
+                      const pl = planosAssinatura.find(p => p.id === novoId);
+                      if (pl) {
+                        const idsSessao = obterServicosIdsSessaoVip(pl, 1, servicos);
+                        if (idsSessao.length > 0) {
+                          setServicosEditadosIds(idsSessao);
+                        } else if (pl.servicos_permitidos_ids && pl.servicos_permitidos_ids.length > 0) {
+                          setServicosEditadosIds([pl.servicos_permitidos_ids[0]]);
+                        }
+                        const cfgSessao = obterConfiguracaoSessaoVip(pl, 1);
+                        if (cfgSessao?.profissional_id) {
+                          setProfissionalEditadaId(cfgSessao.profissional_id);
+                        }
+                      }
+                    }
+                  }}
+                  className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs font-bold text-[#5A4535] focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                >
+                  <option value="">Nenhum (Serviço Avulso Tradicional)</option>
+                  {planosAssinatura.filter(p => p.ativo !== false).map(p => (
+                    <option key={p.id} value={p.id}>
+                      👑 {p.nome} — {formatarMoeda(p.preco_mensal)}/mês ({p.qtd_procedimentos_mes || p.frequencia_dias || 4} sessões)
+                    </option>
+                  ))}
+                </select>
+
+                {planoVipEscolhidoId && (() => {
+                  const pl = planosAssinatura.find(p => p.id === planoVipEscolhidoId);
+                  if (!pl) return null;
+                  return (
+                    <div className="text-[11px] text-amber-900 bg-white/80 p-2 rounded-lg border border-amber-200 space-y-1">
+                      <div className="flex justify-between font-semibold">
+                        <span>Mensalidade do Plano:</span>
+                        <span>{formatarMoeda(pl.preco_mensal)}</span>
+                      </div>
+                      <p className="text-[10px] text-amber-800 leading-snug">
+                        ✨ Ao salvar, a cliente será vinculada a este plano VIP, receberá o selo VIP e os procedimentos da sessão serão configurados conforme as regras do clube.
+                      </p>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Seletor de Profissional */}
             <div>
               <label className="block text-[10px] font-bold text-[#8C6D58] uppercase mb-1">
                 Profissional Responsável
@@ -1705,8 +1974,15 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               const dIni = new Date(agendamento.inicio);
               const dFim = new Date(dIni.getTime() + durTotalNova * 60000);
               const horaFim = `${String(dFim.getHours()).padStart(2, '0')}:${String(dFim.getMinutes()).padStart(2, '0')}`;
-              const isVipIncluso = agendamento.pago_com_clube && agendamento.valor_total === 0;
-              const novoTotalCalculado = isVipIncluso ? 0 : servsNovos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0);
+              
+              const plVip = planoVipEscolhidoId ? planosAssinatura.find(p => p.id === planoVipEscolhidoId) : null;
+              const isVipIncluso = plVip 
+                ? Boolean(clienteTemVipAtivo && cliente?.assinatura?.plano_id === plVip.id)
+                : (agendamento.pago_com_clube && agendamento.valor_total === 0);
+              
+              const novoTotalCalculado = plVip
+                ? (isVipIncluso ? 0 : plVip.preco_mensal)
+                : (isVipIncluso ? 0 : servsNovos.reduce((acc, s) => acc + (Number(s.preco) || 0), 0));
 
               return (
                 <div className="p-2.5 bg-white rounded-lg border border-[#EFECE6] text-xs space-y-1">
@@ -1716,7 +1992,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   </div>
                   <div className="flex justify-between text-[#8C7A6B]">
                     <span>Novo valor total:</span>
-                    <span className="font-bold text-[#8C6D58]">{formatarMoeda(novoTotalCalculado)}</span>
+                    <span className="font-bold text-[#8C6D58]">
+                      {formatarMoeda(novoTotalCalculado)} {plVip ? (isVipIncluso ? '(Incluso na Assinatura)' : '(Mensalidade VIP)') : ''}
+                    </span>
                   </div>
                 </div>
               );
@@ -2181,6 +2459,206 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               >
                 <CalendarCheck size={14} />
                 <span>Confirmar Remarcação</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Trocar com Outra Cliente inline (Permuta) */}
+        {acao === 'trocar_cliente' && (
+          <div className="p-3.5 border border-indigo-200 bg-indigo-50/50 rounded-xl space-y-3.5 mb-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
+                <ArrowLeftRight size={15} className="text-indigo-600" />
+                <span>Trocar Horário com Outra Cliente (Permuta)</span>
+              </div>
+              <span className="text-[10.5px] font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                ⏱️ {duracaoMinutosAgendamento} min ({cliente?.nome || 'Cliente Atual'})
+              </span>
+            </div>
+
+            <p className="text-xs text-indigo-900 leading-relaxed">
+              Selecione abaixo outra cliente que já possui horário marcado para trocar as datas/horários entre elas. 
+              <strong className="block mt-0.5 font-semibold text-indigo-950">
+                Cada cliente assumirá o horário de início da outra, mantendo rigorosamente o tempo reservado de seus procedimentos.
+              </strong>
+            </p>
+
+            {/* Campo de Busca de Agendamento */}
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold text-indigo-900 uppercase">
+                Buscar Agendamento da Outra Cliente
+              </label>
+              <div className="relative">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-indigo-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por nome da cliente, telefone, data (AAAA-MM-DD) ou serviço..."
+                  value={buscaClienteTroca}
+                  onChange={(e) => setBuscaClienteTroca(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs text-indigo-950 placeholder-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
+                />
+                {buscaClienteTroca && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaClienteTroca('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-400 hover:text-indigo-600"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Lista de Clientes Candidatas */}
+            <div className="space-y-1">
+              <label className="block text-[10px] font-bold text-indigo-900 uppercase">
+                Selecione o Agendamento para Trocar ({candidatosTroca.length} encontrados)
+              </label>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 p-1 bg-white border border-indigo-200 rounded-xl">
+                {candidatosTroca.length === 0 ? (
+                  <div className="p-3 text-center text-xs text-indigo-400">
+                    Nenhum outro agendamento ativo encontrado para troca com este filtro.
+                  </div>
+                ) : (
+                  candidatosTroca.map(cand => {
+                    const candCli = clientes.find(c => c.id === cand.cliente_id);
+                    const candServs = obterServicosDeAgendamento(cand.id);
+                    const candProf = equipe.find(u => u.id === cand.profissional_id);
+                    const isSelected = agendamentoTrocaId === cand.id;
+                    const candData = cand.inicio.split('T')[0].split('-').reverse().join('/');
+                    const candHora = cand.inicio.split('T')[1]?.substring(0, 5) || '';
+
+                    return (
+                      <div
+                        key={cand.id}
+                        onClick={() => setAgendamentoTrocaId(cand.id)}
+                        className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between text-xs ${
+                          isSelected
+                            ? 'bg-indigo-50 border-indigo-400 shadow-2xs font-semibold'
+                            : 'bg-white border-stone-100 hover:border-indigo-200 hover:bg-stone-50/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="agendamento_troca_radio"
+                            checked={isSelected}
+                            onChange={() => setAgendamentoTrocaId(cand.id)}
+                            className="text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                          />
+                          <div>
+                            <span className="font-bold text-indigo-950 block">
+                              {candCli?.nome || 'Cliente'}
+                            </span>
+                            <span className="text-[10.5px] text-stone-500 block">
+                              {candServs.map(s => s.nome).join(' + ') || 'Procedimento'} • Prof: {candProf?.nome || 'Profissional'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-xs font-bold text-indigo-900 block">
+                            {candData} às {candHora}
+                          </span>
+                          <span className="text-[10px] text-stone-400 block">
+                            Status: {cand.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Simulação Visual da Troca */}
+            {analisePermuta && clienteTrocaObj && (
+              <div className="p-3 bg-white border border-indigo-200 rounded-xl space-y-2.5 shadow-2xs">
+                <span className="text-[11px] font-bold text-indigo-950 block uppercase tracking-wider">
+                  Prévia da Troca de Horários
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Card Cliente A */}
+                  <div className="p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-lg text-xs space-y-1">
+                    <span className="font-bold text-emerald-950 block flex items-center gap-1">
+                      <span>👤 {cliente?.nome || 'Cliente Atual'}</span>
+                    </span>
+                    <div className="text-[11px] text-emerald-900">
+                      <div><strong>Novo Início:</strong> {analisePermuta.novoInicioA.split('T')[0].split('-').reverse().join('/')} às {analisePermuta.novoInicioA.split('T')[1]?.substring(0, 5)}</div>
+                      <div><strong>Novo Término:</strong> até às {analisePermuta.novoFimA.split('T')[1]?.substring(0, 5)} ({analisePermuta.durA} min)</div>
+                    </div>
+                  </div>
+
+                  {/* Card Cliente B */}
+                  <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-xs space-y-1">
+                    <span className="font-bold text-blue-950 block flex items-center gap-1">
+                      <span>👤 {clienteTrocaObj.nome}</span>
+                    </span>
+                    <div className="text-[11px] text-blue-900">
+                      <div><strong>Novo Início:</strong> {analisePermuta.novoInicioB.split('T')[0].split('-').reverse().join('/')} às {analisePermuta.novoInicioB.split('T')[1]?.substring(0, 5)}</div>
+                      <div><strong>Novo Término:</strong> até às {analisePermuta.novoFimB.split('T')[1]?.substring(0, 5)} ({analisePermuta.durB} min)</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notificações WhatsApp */}
+                <div className="pt-2 border-t border-indigo-100 space-y-1.5 text-xs text-indigo-950">
+                  {cliente?.telefone && (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={notificarWhatsTrocaA}
+                        onChange={(e) => setNotificarWhatsTrocaA(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                      />
+                      <span className="flex items-center gap-1">
+                        <MessageCircle size={13} className="text-emerald-600" />
+                        Avisar {cliente.nome} pelo WhatsApp
+                      </span>
+                    </label>
+                  )}
+
+                  {clienteTrocaObj.telefone && (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={notificarWhatsTrocaB}
+                        onChange={(e) => setNotificarWhatsTrocaB(e.target.checked)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                      />
+                      <span className="flex items-center gap-1">
+                        <MessageCircle size={13} className="text-emerald-600" />
+                        Avisar {clienteTrocaObj.nome} pelo WhatsApp
+                      </span>
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Botões de Ação da Troca */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-indigo-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setAcao(null);
+                  setAgendamentoTrocaId('');
+                  setBuscaClienteTroca('');
+                }}
+                className="px-3.5 py-2 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl hover:bg-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmarTroca}
+                disabled={!agendamentoTrocaId || trocandoAgendamentos}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+              >
+                <ArrowLeftRight size={14} />
+                <span>{trocandoAgendamentos ? 'Trocando...' : 'Confirmar Troca de Horários'}</span>
               </button>
             </div>
           </div>
