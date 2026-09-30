@@ -2597,8 +2597,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                 )}
 
                 {/* Painel Visual de Horários Disponíveis e Ocupados */}
-                {!diaFechado && (
-                  <div className="space-y-3 bg-[#FAF9F6] p-3.5 rounded-xl border border-[#EFECE6]">
+                <div className="space-y-3 bg-[#FAF9F6] p-3.5 rounded-xl border border-[#EFECE6]">
                     {/* Horários Livres */}
                     {analiseHorarios.livres.length > 0 ? (
                       <div>
@@ -2674,7 +2673,6 @@ export const Agenda: React.FC<AgendaProps> = ({
                       </div>
                     )}
                   </div>
-                )}
 
                 {/* Seção de Recorrência Automática */}
                 {!isBloqueio && !agendarComoVip && !planoVipContratarId && (
@@ -2842,7 +2840,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                   </button>
                   <button
                     type="submit"
-                    disabled={diaFechado || (!isBloqueio && analiseHorarios.livres.length === 0)}
+                    disabled={!isBloqueio && analiseHorarios.livres.length === 0}
                     className="px-5 py-2.5 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
                   >
                     {isBloqueio ? 'Bloquear Horário' : 'Salvar'}
