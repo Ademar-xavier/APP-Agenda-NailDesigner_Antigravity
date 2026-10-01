@@ -341,7 +341,46 @@ export const obterConfiguracaoSessaoVip = (
       return procs;
     }
 
-    // Se nenhum item tem sessoes explícitas (ex: plano simples):
+    // Se nenhum item tem sessoes explícitas:
+    // Caso 1: Plano com apenas 1 item de serviço (ex: 4x Manicure)
+    if (plano.itens_servicos.length === 1) {
+      const it = plano.itens_servicos[0];
+      const s = todosServicos.find(serv => serv.id === it.servico_id);
+      procs.push({
+        servico_id: it.servico_id,
+        nome_servico: it.nome_servico || s?.nome || 'Procedimento VIP',
+        profissional_id: it.profissional_id,
+        duracao_minutos: s?.duracao_minutos || 60
+      });
+      return procs;
+    }
+
+    // Caso 2: Plano com múltiplos serviços (ex: "Clube Vip 4 Mãos + 1 Pé")
+    // Se não há sessoes explícitas, distribui inteligentemente:
+    // Itens com quantidade máxima (ex: 4 mãos em 4 sessões) entram em todas as sessões.
+    // Itens com 1 procedimento (ex: 1 Pé) entram na 1ª sessão (ou na sessão correspondente).
+    const totalSess = Math.max(plano.qtd_procedimentos_mes || 4, ...plano.itens_servicos.map(i => i.quantidade || 1));
+    const itensParaEstaSessao = plano.itens_servicos.filter(it => {
+      const qtd = it.quantidade || 1;
+      if (qtd >= totalSess) return true; // Atende em todas as semanas
+      if (qtd === 1) return sessaoNumero === 1; // Realizado na 1ª sessão
+      const passo = Math.max(1, Math.floor(totalSess / qtd));
+      return (sessaoNumero - 1) % passo === 0 && Math.floor((sessaoNumero - 1) / passo) < qtd;
+    });
+
+    if (itensParaEstaSessao.length > 0) {
+      itensParaEstaSessao.forEach(it => {
+        const s = todosServicos.find(serv => serv.id === it.servico_id);
+        procs.push({
+          servico_id: it.servico_id,
+          nome_servico: it.nome_servico || s?.nome || 'Procedimento VIP',
+          profissional_id: it.profissional_id,
+          duracao_minutos: s?.duracao_minutos || 60
+        });
+      });
+      return procs;
+    }
+
     plano.itens_servicos.forEach(it => {
       const s = todosServicos.find(serv => serv.id === it.servico_id);
       procs.push({

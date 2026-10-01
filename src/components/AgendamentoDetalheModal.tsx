@@ -1533,6 +1533,58 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
             )}
 
+            {/* Aviso e Ação de Projeção de Recorrência VIP Pendente */}
+            {isVip && (agendamento.observacoes?.includes('Sessão 1') || !agendamento.recorrencia_posicao || agendamento.recorrencia_posicao.startsWith('1')) && agendamentosFuturosRecorrencia.length === 0 && (
+              <div className="mb-2.5 p-2.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs animate-in fade-in duration-200">
+                <div className="flex items-start gap-2">
+                  <Sparkles size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-xs font-bold text-amber-950 block">
+                      👑 Próximas Sessões VIP Pendentes
+                    </span>
+                    <span className="text-[10.5px] text-amber-800 leading-tight block">
+                      As sessões restantes deste plano ainda não constam na agenda. Clique ao lado para agendá-las no mesmo horário respeitando serviços e tempos configurados.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = reservarRecorrenciaSemanalVip(agendamento.id, agendamento, undefined, agendamento.plano_id, true);
+                    if (res.success) {
+                      mostrarAlerta({
+                        titulo: 'Sessões VIP Agendadas!',
+                        mensagem: `${res.criados} próxima(s) sessão(ões) foram projetadas e bloqueadas na agenda no mesmo horário, com serviços e durações do plano!`,
+                        tipo: 'sucesso'
+                      });
+                    } else {
+                      mostrarAlerta({
+                        titulo: 'Aviso de Agendamento',
+                        mensagem: res.mensagem || 'As sessões já constam agendadas ou não foi possível gerá-las.',
+                        tipo: 'aviso'
+                      });
+                    }
+                  }}
+                  className="w-full sm:w-auto px-3 py-1.5 bg-[#8C6D58] hover:bg-[#70533F] text-white text-xs font-bold rounded-lg shadow transition-colors flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Calendar size={13} />
+                  <span>Projetar Próximas Sessões</span>
+                </button>
+              </div>
+            )}
+
+            {isVip && (agendamento.observacoes?.includes('Sessão 1') || !agendamento.recorrencia_posicao || agendamento.recorrencia_posicao.startsWith('1')) && agendamentosFuturosRecorrencia.length > 0 && (
+              <div className="mb-2.5 p-2 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex items-center justify-between text-xs text-emerald-900">
+                <span className="flex items-center gap-1.5 font-medium text-[11px]">
+                  <CheckCircle size={13} className="text-emerald-600" />
+                  <span>{agendamentosFuturosRecorrencia.length} próxima(s) sessão(ões) agendada(s) nas próximas semanas</span>
+                </span>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                  Sincronizado
+                </span>
+              </div>
+            )}
+
             {!isVip && clienteTemVipAtivo && (
               <div className="mb-2.5 p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-2">
