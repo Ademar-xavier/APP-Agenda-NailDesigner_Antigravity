@@ -36,7 +36,8 @@ import {
   obterServicosIdsSessaoVip,
   obterConfiguracaoSessaoVip,
   calcularDuracaoSessaoVip,
-  agendamentoEnvolveProfissional
+  agendamentoEnvolveProfissional,
+  normalizarTextoVip
 } from '../utils/planoVipHelper';
 
 interface AgendamentoDetalheModalProps {
@@ -564,27 +565,37 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         // Filtro de busca
         if (buscaClienteTroca.trim()) {
-          const termo = buscaClienteTroca.trim().toLowerCase();
+          const termo = normalizarTextoVip(buscaClienteTroca);
+          const digitosBusca = buscaClienteTroca.replace(/\D/g, '');
+
           const cli = clientes.find(c => c.id === a.cliente_id);
-          const cliNome = cli?.nome?.toLowerCase() || '';
-          const cliTel = cli?.telefone?.replace(/\D/g, '') || '';
-          const dataStr = a.inicio.split('T')[0];
+          const cliNome = normalizarTextoVip(cli?.nome);
+          const cliTel = (cli?.telefone || '').replace(/\D/g, '');
+          
+          const dataStr = a.inicio.split('T')[0]; // YYYY-MM-DD
+          const dataBr = dataStr.split('-').reverse().join('/'); // DD/MM/YYYY
+          const dataBrCurta = dataBr.substring(0, 5); // DD/MM
           const horaStr = a.inicio.split('T')[1]?.substring(0, 5) || '';
+
           const sIds = obterServicosDeAgendamento(a.id);
-          const sNomes = sIds.map(s => s.nome.toLowerCase()).join(' ');
+          const sNomes = sIds.map(s => normalizarTextoVip(s.nome)).join(' ');
+
+          const profCand = equipe.find(u => u.id === a.profissional_id);
+          const profNome = normalizarTextoVip(profCand?.nome);
 
           const bateNome = cliNome.includes(termo);
-          const bateTel = cliTel.includes(termo.replace(/\D/g, ''));
-          const bateData = dataStr.includes(termo) || horaStr.includes(termo);
+          const bateTel = digitosBusca.length >= 2 ? cliTel.includes(digitosBusca) : false;
+          const bateData = dataStr.includes(termo) || dataBr.includes(termo) || dataBrCurta.includes(termo) || horaStr.includes(termo);
           const bateServ = sNomes.includes(termo);
+          const bateProf = profNome.includes(termo);
 
-          return bateNome || bateTel || bateData || bateServ;
+          return bateNome || bateTel || bateData || bateServ || bateProf;
         }
 
         return true;
       })
       .sort((a, b) => new Date(a.inicio).getTime() - new Date(b.inicio).getTime());
-  }, [agendamentos, agendamento, coAgendamentosVinculados, buscaClienteTroca, clientes, obterServicosDeAgendamento]);
+  }, [agendamentos, agendamento, coAgendamentosVinculados, buscaClienteTroca, clientes, equipe, obterServicosDeAgendamento]);
 
   const agendamentoTrocaObj = useMemo(() => {
     return agendamentos.find(a => a.id === agendamentoTrocaId);
@@ -2468,43 +2479,43 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
         {/* Trocar com Outra Cliente inline (Permuta) */}
         {acao === 'trocar_cliente' && (
-          <div className="p-3.5 border border-indigo-200 bg-indigo-50/50 rounded-xl space-y-3.5 mb-4 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-950">
-                <ArrowLeftRight size={15} className="text-indigo-600" />
+          <div className="p-3.5 border border-[#8C6D58]/30 bg-[#FAF6F0] rounded-xl space-y-3.5 mb-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between border-b border-[#EFECE6] pb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#5A4535]">
+                <ArrowLeftRight size={15} className="text-[#8C6D58]" />
                 <span>Trocar Horário com Outra Cliente (Permuta)</span>
               </div>
-              <span className="text-[10.5px] font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+              <span className="text-[10.5px] font-bold text-[#8C6D58] bg-white px-2 py-0.5 rounded-md border border-[#EFECE6]">
                 ⏱️ {duracaoMinutosAgendamento} min ({cliente?.nome || 'Cliente Atual'})
               </span>
             </div>
 
-            <p className="text-xs text-indigo-900 leading-relaxed">
+            <p className="text-xs text-[#8C7A6B] leading-relaxed">
               Selecione abaixo outra cliente que já possui horário marcado para trocar as datas/horários entre elas. 
-              <strong className="block mt-0.5 font-semibold text-indigo-950">
+              <strong className="block mt-0.5 font-semibold text-[#5A4535]">
                 Cada cliente assumirá o horário de início da outra, mantendo rigorosamente o tempo reservado de seus procedimentos.
               </strong>
             </p>
 
             {/* Campo de Busca de Agendamento */}
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold text-indigo-900 uppercase">
+              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase">
                 Buscar Agendamento da Outra Cliente
               </label>
               <div className="relative">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-indigo-400" />
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8C7A6B]" />
                 <input
                   type="text"
-                  placeholder="Buscar por nome da cliente, telefone, data (AAAA-MM-DD) ou serviço..."
+                  placeholder="Buscar por nome da cliente, telefone, data (ex: 30/09) ou serviço..."
                   value={buscaClienteTroca}
                   onChange={(e) => setBuscaClienteTroca(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-indigo-200 rounded-lg text-xs text-indigo-950 placeholder-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-400/40"
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#EFECE6] rounded-lg text-xs text-[#5A4535] placeholder-[#8C7A6B]/60 focus:outline-none focus:ring-2 focus:ring-[#8C6D58]/30"
                 />
                 {buscaClienteTroca && (
                   <button
                     type="button"
                     onClick={() => setBuscaClienteTroca('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-indigo-400 hover:text-indigo-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-[#8C6D58] hover:text-[#5A4535]"
                   >
                     Limpar
                   </button>
@@ -2514,12 +2525,12 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
             {/* Lista de Clientes Candidatas */}
             <div className="space-y-1">
-              <label className="block text-[10px] font-bold text-indigo-900 uppercase">
-                Selecione o Agendamento para Trocar ({candidatosTroca.length} encontrados)
+              <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase">
+                Selecione o Agendamento para Trocar ({candidatosTroca.length} {candidatosTroca.length === 1 ? 'encontrado' : 'encontrados'})
               </label>
-              <div className="max-h-48 overflow-y-auto space-y-1.5 p-1 bg-white border border-indigo-200 rounded-xl">
+              <div className="max-h-48 overflow-y-auto space-y-1.5 p-1 bg-white border border-[#EFECE6] rounded-xl">
                 {candidatosTroca.length === 0 ? (
-                  <div className="p-3 text-center text-xs text-indigo-400">
+                  <div className="p-3 text-center text-xs text-[#8C7A6B]">
                     Nenhum outro agendamento ativo encontrado para troca com este filtro.
                   </div>
                 ) : (
@@ -2537,8 +2548,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         onClick={() => setAgendamentoTrocaId(cand.id)}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-all flex items-center justify-between text-xs ${
                           isSelected
-                            ? 'bg-indigo-50 border-indigo-400 shadow-2xs font-semibold'
-                            : 'bg-white border-stone-100 hover:border-indigo-200 hover:bg-stone-50/50'
+                            ? 'bg-[#FAF4ED] border-[#8C6D58]/50 shadow-2xs font-semibold'
+                            : 'bg-white border-stone-100 hover:border-[#8C6D58]/30 hover:bg-stone-50/50'
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -2547,20 +2558,20 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                             name="agendamento_troca_radio"
                             checked={isSelected}
                             onChange={() => setAgendamentoTrocaId(cand.id)}
-                            className="text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                            className="text-[#8C6D58] focus:ring-[#8C6D58] w-3.5 h-3.5"
                           />
                           <div>
-                            <span className="font-bold text-indigo-950 block">
+                            <span className="font-bold text-[#5A4535] block">
                               {candCli?.nome || 'Cliente'}
                             </span>
-                            <span className="text-[10.5px] text-stone-500 block">
+                            <span className="text-[10.5px] text-[#8C7A6B] block">
                               {candServs.map(s => s.nome).join(' + ') || 'Procedimento'} • Prof: {candProf?.nome || 'Profissional'}
                             </span>
                           </div>
                         </div>
 
                         <div className="text-right shrink-0">
-                          <span className="text-xs font-bold text-indigo-900 block">
+                          <span className="text-xs font-bold text-[#8C6D58] block">
                             {candData} às {candHora}
                           </span>
                           <span className="text-[10px] text-stone-400 block">
@@ -2576,8 +2587,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
 
             {/* Simulação Visual da Troca */}
             {analisePermuta && clienteTrocaObj && (
-              <div className="p-3 bg-white border border-indigo-200 rounded-xl space-y-2.5 shadow-2xs">
-                <span className="text-[11px] font-bold text-indigo-950 block uppercase tracking-wider">
+              <div className="p-3 bg-white border border-[#EFECE6] rounded-xl space-y-2.5 shadow-2xs">
+                <span className="text-[11px] font-bold text-[#5A4535] block uppercase tracking-wider">
                   Prévia da Troca de Horários
                 </span>
 
@@ -2594,11 +2605,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   </div>
 
                   {/* Card Cliente B */}
-                  <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-lg text-xs space-y-1">
-                    <span className="font-bold text-blue-950 block flex items-center gap-1">
+                  <div className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs space-y-1">
+                    <span className="font-bold text-amber-950 block flex items-center gap-1">
                       <span>👤 {clienteTrocaObj.nome}</span>
                     </span>
-                    <div className="text-[11px] text-blue-900">
+                    <div className="text-[11px] text-amber-900">
                       <div><strong>Novo Início:</strong> {analisePermuta.novoInicioB.split('T')[0].split('-').reverse().join('/')} às {analisePermuta.novoInicioB.split('T')[1]?.substring(0, 5)}</div>
                       <div><strong>Novo Término:</strong> até às {analisePermuta.novoFimB.split('T')[1]?.substring(0, 5)} ({analisePermuta.durB} min)</div>
                     </div>
@@ -2606,14 +2617,14 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 </div>
 
                 {/* Notificações WhatsApp */}
-                <div className="pt-2 border-t border-indigo-100 space-y-1.5 text-xs text-indigo-950">
+                <div className="pt-2 border-t border-[#EFECE6] space-y-1.5 text-xs text-[#5A4535]">
                   {cliente?.telefone && (
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={notificarWhatsTrocaA}
                         onChange={(e) => setNotificarWhatsTrocaA(e.target.checked)}
-                        className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                        className="rounded text-[#8C6D58] focus:ring-[#8C6D58] w-3.5 h-3.5"
                       />
                       <span className="flex items-center gap-1">
                         <MessageCircle size={13} className="text-emerald-600" />
@@ -2628,7 +2639,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                         type="checkbox"
                         checked={notificarWhatsTrocaB}
                         onChange={(e) => setNotificarWhatsTrocaB(e.target.checked)}
-                        className="rounded text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+                        className="rounded text-[#8C6D58] focus:ring-[#8C6D58] w-3.5 h-3.5"
                       />
                       <span className="flex items-center gap-1">
                         <MessageCircle size={13} className="text-emerald-600" />
@@ -2641,7 +2652,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             )}
 
             {/* Botões de Ação da Troca */}
-            <div className="flex justify-end gap-2 pt-2 border-t border-indigo-100">
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#EFECE6]">
               <button
                 type="button"
                 onClick={() => {
@@ -2649,7 +2660,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                   setAgendamentoTrocaId('');
                   setBuscaClienteTroca('');
                 }}
-                className="px-3.5 py-2 border border-indigo-200 text-indigo-700 text-xs font-bold rounded-xl hover:bg-white transition-colors"
+                className="px-3.5 py-2 border border-[#EFECE6] text-[#8C7A6B] text-xs font-bold rounded-xl hover:bg-white transition-colors"
               >
                 Cancelar
               </button>
@@ -2657,7 +2668,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                 type="button"
                 onClick={handleConfirmarTroca}
                 disabled={!agendamentoTrocaId || trocandoAgendamentos}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                className="px-4 py-2 bg-[#8C6D58] hover:bg-[#725743] disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
               >
                 <ArrowLeftRight size={14} />
                 <span>{trocandoAgendamentos ? 'Trocando...' : 'Confirmar Troca de Horários'}</span>
