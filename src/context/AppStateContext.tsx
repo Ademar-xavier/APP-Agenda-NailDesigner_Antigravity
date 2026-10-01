@@ -322,7 +322,7 @@ interface AppStateContextType {
   vincularAssinaturaCliente: (clienteId: string, planoId: string) => void;
   cancelarAssinaturaCliente: (clienteId: string) => void;
   abaterSaldoAssinatura: (clienteId: string, servicoId?: string) => boolean;
-  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[], planoIdOverride?: string) => { success: boolean; criados: number; mensagem: string };
+  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[], planoIdOverride?: string, forcar?: boolean) => { success: boolean; criados: number; mensagem: string };
 
   // Comissões (Lei do Salão-Parceiro)
   fechamentosComissao: FechamentoComissao[];
@@ -1312,6 +1312,30 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             return merged;
           });
         }
+
+        // Auto-reconciliação de recorrência VIP: se houver sessão 1 de Clube VIP sem as próximas sessões projetadas
+        setTimeout(() => {
+          const sessoes1SemFuturos = agsFormatados.filter((a: any) => {
+            if (a.status === 'cancelado') return false;
+            const isVipA = Boolean(a.pago_com_clube || a.plano_id || a.observacoes?.includes('👑') || a.observacoes?.includes('Clube VIP'));
+            const isSessao1A = isVipA && (a.observacoes?.includes('Sessão 1') || a.recorrencia_posicao?.startsWith('1') || !a.recorrencia_posicao);
+            if (!isSessao1A) return false;
+            if (a.observacoes?.includes('Sessão 2') || a.observacoes?.includes('Sessão 3') || a.observacoes?.includes('Sessão 4')) return false;
+
+            const temFuturo = agsFormatados.some((f: any) =>
+              f.id !== a.id &&
+              f.cliente_id === a.cliente_id &&
+              f.status !== 'cancelado' &&
+              new Date(f.inicio) > new Date(a.inicio) &&
+              (f.recorrencia_grupo_id === (a.recorrencia_grupo_id || a.id) || f.pago_com_clube || f.observacoes?.includes('👑'))
+            );
+            return !temFuturo;
+          });
+
+          sessoes1SemFuturos.forEach((s1: any) => {
+            reservarRecorrenciaSemanalVip(s1.id, s1, undefined, s1.plano_id, true);
+          });
+        }, 1500);
       } else if (forcarSobrescrita && dados.agendamentos && dados.agendamentos.length === 0) {
         setAgendamentos([]);
         try { localStorage.setItem('nail_agendamentos', JSON.stringify([])); } catch (e) {}
@@ -3879,6 +3903,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (pl && (!obsAtualizada || !obsAtualizada.includes('👑'))) {
         obsAtualizada = `👑 [Clube VIP: ${pl.nome}] Sessão 1 de ${pl.qtd_procedimentos_mes || 4} • ${obsAtualizada || ''}`.trim();
       }
+      obsAtualizada = obsAtualizada?.replace(/\[?Procedimento\s*avulso\]?/gi, '').replace(/\bavulso\b/gi, '').trim();
     } else if (planoVipId === null) {
       obsAtualizada = obsAtualizada?.replace(/👑\s*\[Clube VIP:[^\]]*\]\s*(Sessão\s*\d+\s*de\s*\d+)?\s*[•-]?\s*/gi, '').trim();
     }
@@ -4014,12 +4039,23 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       salvarAgendamentoSupabase(item.ag, item.servicosIds);
     });
 
+    // Se foi selecionado um plano VIP ou o agendamento é uma Sessão 1 VIP que ainda não possui recorrência projetada na agenda:
+    const ehSessao1Vip = Boolean(novoPagoComClube && (obsAtualizada?.includes('Sessão 1') || !atualizado.recorrencia_posicao || atualizado.recorrencia_posicao.startsWith('1')));
+    if (planoVipId || (ehSessao1Vip && futurosAtualizados.length === 0)) {
+      sessoesVipProcessadas.delete(agendamentoId);
+      setTimeout(() => {
+        reservarRecorrenciaSemanalVip(agendamentoId, atualizado, novosServicosIds, planoVipId || novoPlanoId, true);
+      }, 100);
+    }
+
     if (conflitosFuturosDatas.length > 0) {
       mostrarAlerta({
         titulo: 'Aviso de Recorrências Conflitantes',
         mensagem: `O atendimento atual foi atualizado. Porém, ${conflitosFuturosDatas.length} sessão(ões) futura(s) nas datas (${conflitosFuturosDatas.join(', ')}) não puderam ser estendidas pois colidiriam com horários de outras clientes já agendadas!`,
         tipo: 'aviso'
       });
+    } else if (planoVipId) {
+      mostrarNotificacaoGlobal(`👑 Plano VIP aplicado com sucesso e próximas sessões projetadas na agenda!`);
     } else if (futurosAtualizados.length > 0) {
       mostrarNotificacaoGlobal(`✅ Agendamento atualizado e propagado para ${futurosAtualizados.length} agendamento(s) futuro(s)!`);
     } else {
@@ -5457,12 +5493,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     agendamentoInicialId: string,
     agendamentoInicialObj?: Agendamento,
     servicosIniciaisIds?: string[],
-    planoIdOverride?: string
+    planoIdOverride?: string,
+    forcar?: boolean
   ): { success: boolean; criados: number; mensagem: string } => {
     // Evita concorrência e geração duplicada da mesma sessão
     const agoraTs = Date.now();
     const ultimaExec = sessoesVipProcessadas.get(agendamentoInicialId);
-    if (ultimaExec && (agoraTs - ultimaExec < 30000)) {
+    if (!forcar && ultimaExec && (agoraTs - ultimaExec < 15000)) {
       return { success: true, criados: 0, mensagem: 'Recorrência VIP já gerada recentemente.' };
     }
     sessoesVipProcessadas.set(agendamentoInicialId, agoraTs);
@@ -5473,11 +5510,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Se já é uma sessão posterior gerada pela recorrência, não gera efeito cascata
-    if (agInicial.observacoes?.includes('Sessão 2') || agInicial.observacoes?.includes('Sessão 3') || agInicial.observacoes?.includes('Sessão 4') || agInicial.observacoes?.includes('[Simultâneo]')) {
+    const ehSessao1 = agInicial.recorrencia_posicao?.startsWith('1') || agInicial.observacoes?.includes('Sessão 1') || !agInicial.recorrencia_posicao;
+    if (!ehSessao1 && (agInicial.observacoes?.includes('Sessão 2') || agInicial.observacoes?.includes('Sessão 3') || agInicial.observacoes?.includes('Sessão 4') || agInicial.observacoes?.includes('[Simultâneo]'))) {
       return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão semanal da recorrência.' };
     }
 
-    const isAvulso = Boolean(
+    const isVipAgendamento = !!(agInicial.pago_com_clube || planoIdOverride || agInicial.plano_id || agInicial.observacoes?.includes('Clube VIP') || agInicial.observacoes?.includes('👑'));
+    const isAvulso = !isVipAgendamento && Boolean(
       agInicial.pago_com_clube === false ||
       agInicial.observacoes?.includes('Avulso') ||
       agInicial.observacoes?.includes('avulso')
@@ -5488,7 +5527,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     const cliente = clientes.find(c => c.id === agInicial.cliente_id);
     const temAssinatura = !!(cliente?.assinatura && cliente.assinatura.status === 'ativo');
-    const isVipAgendamento = !!(agInicial.pago_com_clube || planoIdOverride);
 
     if (!temAssinatura && !isVipAgendamento) {
       return { success: false, criados: 0, mensagem: 'Cliente não possui plano Clube VIP ativo no momento.' };
@@ -5584,6 +5622,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     // Frequência de retorno configurada no plano VIP (prevalecendo sobre a assinatura antiga da cliente)
     const intervaloDias = calcularIntervaloVip(plano, cliente?.assinatura);
+    const diaDaSemanaInicial = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr)).getDay();
 
     // Sincroniza a assinatura da cliente com a data real de início da 1ª sessão agendada e validade
     if (cliente && plano) {
@@ -5642,7 +5681,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const dStrF = String(d.getDate()).padStart(2, '0');
           const mmdd = `${mStrF}-${dStrF}`;
           const isFeriado = feriadosNacionais.includes(mmdd);
-          const isFechado = expediente ? !expediente.ativo : (diaSemana === 0);
+          // Preserva o dia da semana se a 1ª sessão foi autorizada nesse mesmo dia (ex: dia sem expediente que profissional atende)
+          const isFechado = (diaSemana !== diaDaSemanaInicial) && (expediente ? !expediente.ativo : (diaSemana === 0));
 
           if (!isFeriado && !isFechado) {
             break;
@@ -5715,7 +5755,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       const idTag = plano?.id ? ` [PLANO_ID:${plano.id}]` : '';
-      let idPrincipalSessaoRec = '';
 
       const todasProfsSessao = Array.from(new Set(procsDestaSessao.map(p => p.profissional_id || agInicial.profissional_id)));
       const nomesProfsSessao = todasProfsSessao
@@ -5727,19 +5766,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const servicosIds = procsDestaSessao.map(p => p.servico_id);
       const nomesServicosCombinados = procsDestaSessao.map(p => p.nome_servico).join(' + ');
-      const durSessao = Math.max(...procsDestaSessao.map(p => p.duracao_minutos || 60));
 
-      // Calcula fim somando durSessao
-      const [curDataPart, curHoraPart] = inicioStr.replace(' ', 'T').split('T');
-      const [curH, curM] = (curHoraPart || '10:00:00').substring(0, 5).split(':').map(Number);
-      const [curY, curMo, curD] = curDataPart.split('-').map(Number);
-      const dFim = new Date(curY, curMo - 1, curD, curH, curM + durSessao);
-      const anoFim = dFim.getFullYear();
-      const mesFim = String(dFim.getMonth() + 1).padStart(2, '0');
-      const diaFim = String(dFim.getDate()).padStart(2, '0');
-      const hFimStr = String(dFim.getHours()).padStart(2, '0');
-      const mFimStr = String(dFim.getMinutes()).padStart(2, '0');
-      const fimStr = `${anoFim}-${mesFim}-${diaFim}T${hFimStr}:${mFimStr}:00`;
+      // Duração exata da sessão respeitando trabalho simultâneo (4 mãos) ou sequencial
+      const durSessao = calcularDuracaoSessaoVip(plano, sessaoNum, servicos) || Math.max(...procsDestaSessao.map(p => p.duracao_minutos || 60));
+      const fimStr = calcularFimAgendamento(inicioStr, durSessao);
+
+      const profSessao = procsDestaSessao[0]?.profissional_id || agInicial.profissional_id;
 
       if (semana === 0) {
         // Atualiza agendamento inicial da Sessão 1 com serviços e tag dupla se houver
@@ -5792,7 +5824,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           const novoAgendamento: Agendamento = {
             id: novoId,
             cliente_id: clienteIdFinal,
-            profissional_id: agInicial.profissional_id,
+            profissional_id: profSessao,
             inicio: inicioStr,
             fim: fimStr,
             status: 'confirmado',
