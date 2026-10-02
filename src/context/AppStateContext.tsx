@@ -1317,11 +1317,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         // Auto-reconciliação de recorrência VIP: se houver sessão 1 de Clube VIP sem as próximas sessões projetadas
         setTimeout(() => {
           const sessoes1SemFuturos = agsFormatados.filter((a: any) => {
-            if (a.status === 'cancelado') return false;
+            if (a.status === 'cancelado' || a.status === 'concluido') return false;
             const isVipA = Boolean(a.pago_com_clube || a.plano_id || a.observacoes?.includes('👑') || a.observacoes?.includes('Clube VIP'));
+            const isSessaoPosteriorA = Boolean(
+              (a.recorrencia_posicao && !a.recorrencia_posicao.startsWith('1')) ||
+              a.observacoes?.includes('Sessão 2') ||
+              a.observacoes?.includes('Sessão 3') ||
+              a.observacoes?.includes('Sessão 4') ||
+              a.observacoes?.includes('[Simultâneo]')
+            );
+            if (isSessaoPosteriorA) return false;
             const isSessao1A = isVipA && (a.observacoes?.includes('Sessão 1') || a.recorrencia_posicao?.startsWith('1') || !a.recorrencia_posicao);
             if (!isSessao1A) return false;
-            if (a.observacoes?.includes('Sessão 2') || a.observacoes?.includes('Sessão 3') || a.observacoes?.includes('Sessão 4')) return false;
 
             const temFuturo = agsFormatados.some((f: any) =>
               f.id !== a.id &&
@@ -4049,7 +4056,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     });
 
     // Se foi selecionado um plano VIP ou o agendamento é uma Sessão 1 VIP que ainda não possui recorrência projetada na agenda:
-    const ehSessao1Vip = Boolean(novoPagoComClube && (obsAtualizada?.includes('Sessão 1') || !atualizado.recorrencia_posicao || atualizado.recorrencia_posicao.startsWith('1')));
+    const ehSessaoPosteriorAoEditar = Boolean(
+      (atualizado.recorrencia_posicao && !atualizado.recorrencia_posicao.startsWith('1')) ||
+      obsAtualizada?.includes('Sessão 2') ||
+      obsAtualizada?.includes('Sessão 3') ||
+      obsAtualizada?.includes('Sessão 4') ||
+      obsAtualizada?.includes('[Simultâneo]')
+    );
+    const ehSessao1Vip = Boolean(
+      novoPagoComClube &&
+      !ehSessaoPosteriorAoEditar &&
+      (obsAtualizada?.includes('Sessão 1') || !atualizado.recorrencia_posicao || atualizado.recorrencia_posicao.startsWith('1'))
+    );
     if (planoVipId || (ehSessao1Vip && futurosAtualizados.length === 0)) {
       sessoesVipProcessadas.delete(agendamentoId);
       setTimeout(() => {
@@ -5537,9 +5555,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Se já é uma sessão posterior gerada pela recorrência, não gera efeito cascata
-    const ehSessao1 = agInicial.recorrencia_posicao?.startsWith('1') || agInicial.observacoes?.includes('Sessão 1') || !agInicial.recorrencia_posicao;
-    if (!ehSessao1 && (agInicial.observacoes?.includes('Sessão 2') || agInicial.observacoes?.includes('Sessão 3') || agInicial.observacoes?.includes('Sessão 4') || agInicial.observacoes?.includes('[Simultâneo]'))) {
-      return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão semanal da recorrência.' };
+    const ehSessaoPosterior = Boolean(
+      (agInicial.recorrencia_posicao && !agInicial.recorrencia_posicao.startsWith('1')) ||
+      agInicial.observacoes?.includes('Sessão 2') ||
+      agInicial.observacoes?.includes('Sessão 3') ||
+      agInicial.observacoes?.includes('Sessão 4') ||
+      agInicial.observacoes?.includes('[Simultâneo]')
+    );
+    if (ehSessaoPosterior) {
+      return { success: false, criados: 0, mensagem: 'Este agendamento já é uma sessão posterior da recorrência.' };
     }
 
     const isVipAgendamento = !!(agInicial.pago_com_clube || planoIdOverride || agInicial.plano_id || agInicial.observacoes?.includes('Clube VIP') || agInicial.observacoes?.includes('👑'));
