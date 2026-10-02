@@ -164,6 +164,7 @@ interface AppStateContextType {
       intervaloDias: number;
       repeticoes: number;
       tipoLabel: string;
+      ciclosVip?: number;
     },
     planoVipId?: string
   ) => { success: boolean; error?: string; agendamento?: Agendamento; criados?: number };
@@ -322,7 +323,7 @@ interface AppStateContextType {
   vincularAssinaturaCliente: (clienteId: string, planoId: string) => void;
   cancelarAssinaturaCliente: (clienteId: string) => void;
   abaterSaldoAssinatura: (clienteId: string, servicoId?: string) => boolean;
-  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[], planoIdOverride?: string, forcar?: boolean) => { success: boolean; criados: number; mensagem: string };
+  reservarRecorrenciaSemanalVip: (agendamentoInicialId: string, agendamentoInicialObj?: Agendamento, servicosIniciaisIds?: string[], planoIdOverride?: string, forcar?: boolean, totalCiclos?: number) => { success: boolean; criados: number; mensagem: string };
 
   // Comissões (Lei do Salão-Parceiro)
   fechamentosComissao: FechamentoComissao[];
@@ -3391,6 +3392,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       intervaloDias: number;
       repeticoes: number;
       tipoLabel: string;
+      ciclosVip?: number;
     },
     planoVipId?: string
   ) => {
@@ -3456,7 +3458,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ? `[Co-atendimento: ${todasProfsIds.length} Profissionais (${nomesProfsFormatados})]`
       : '';
 
-    let obsInicial = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
+    // Regra de Negócio: Se for Clube VIP (e NÃO for procedimento avulso), identifica para recorrência de assinatura
+    const isAvulso = Boolean(
+      novoAgendamento.pago_com_clube === false ||
+      novoAgendamento.observacoes?.includes('Avulso') ||
+      novoAgendamento.observacoes?.includes('avulso')
+    );
+    const isVipParaRecorrencia = !isAvulso && Boolean(
+      novoAgendamento.pago_com_clube &&
+      (planoVipId || novoAgendamento.plano_id || novoAgendamento.observacoes?.includes('Clube VIP'))
+    );
+
+    let obsInicial = (!isVipParaRecorrencia && recorrenciaManual && recorrenciaManual.repeticoes > 1)
       ? `[🔁 Recorrência ${recorrenciaManual.tipoLabel}: Sessão 1 de ${recorrenciaManual.repeticoes}] ${novoAgendamento.observacoes || ''}`.trim()
       : novoAgendamento.observacoes;
 
@@ -3471,7 +3484,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       valor_total: novoAgendamento.valor_total,
       recorrencia_grupo_id: grupoId,
       recorrencia_tipo: recorrenciaManual?.tipo,
-      recorrencia_posicao: recorrenciaManual && recorrenciaManual.repeticoes > 1 ? `1 de ${recorrenciaManual.repeticoes}` : undefined,
+      recorrencia_posicao: (!isVipParaRecorrencia && recorrenciaManual && recorrenciaManual.repeticoes > 1) ? `1 de ${recorrenciaManual.repeticoes}` : undefined,
       observacoes: obsInicial,
       criado_em: new Date().toISOString()
     };
@@ -3495,11 +3508,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPagamentos(prev => [...prev, pagSinal]);
     }
 
-    // Gera as repetições se a recorrência manual estilo Google Agenda estiver ativa
+    // Gera as repetições se a recorrência manual estilo Google Agenda estiver ativa (exclusivo para serviços normais avulsos)
     const novosRecorrentes: Agendamento[] = [];
     const novosItensMap: Record<string, string[]> = {};
 
-    if (recorrenciaManual && recorrenciaManual.repeticoes > 1 && grupoId) {
+    if (!isVipParaRecorrencia && recorrenciaManual && recorrenciaManual.repeticoes > 1 && grupoId) {
       const feriadosNacionais = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'];
       const [dataPartOrig, horaPartOrig] = novoAgendamento.inicio.replace(' ', 'T').split('T');
       const [anoOrig, mesOrig, diaOrig] = dataPartOrig.split('-').map(Number);
@@ -3563,7 +3576,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setAgendamentos(prev => [...prev, agendamento, ...novosRecorrentes]);
     salvarAgendamentoSupabase(agendamento, servicosSelecionados);
 
-    if (novosRecorrentes.length > 0) {
+    if (isVipParaRecorrencia && recorrenciaManual && recorrenciaManual.repeticoes > 1) {
+      mostrarNotificacaoGlobal(`👑 1º atendimento e renovação de ${recorrenciaManual.repeticoes} ciclos do Clube VIP reservados na agenda com sucesso!`);
+    } else if (novosRecorrentes.length > 0) {
       setItensAgendamento(prev => ({ ...prev, [id]: servicosSelecionados, ...novosItensMap }));
       mostrarNotificacaoGlobal(`🔁 1º agendamento e mais ${novosRecorrentes.length} repetições (${recorrenciaManual?.tipoLabel}) foram reservados na agenda!`);
     } else if (todasProfsIds.length > 1) {
@@ -3572,19 +3587,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       mostrarNotificacaoGlobal('✅ Agendamento salvo e sincronizado com a nuvem!');
     }
 
-    // Regra de Negócio: Se NÃO for recorrência manual e for Clube VIP (e NÃO for procedimento avulso), agenda as sessões da assinatura
-    const isAvulso = Boolean(
-      agendamento.pago_com_clube === false ||
-      agendamento.observacoes?.includes('Avulso') ||
-      agendamento.observacoes?.includes('avulso')
-    );
-    const isVipParaRecorrencia = !isAvulso && Boolean(
-      agendamento.pago_com_clube &&
-      (planoVipId || agendamento.plano_id || agendamento.observacoes?.includes('Clube VIP'))
-    );
-    if (!recorrenciaManual && !isAvulso && isVipParaRecorrencia) {
+    // Regra de Negócio: Se for Clube VIP (e NÃO for procedimento avulso), agenda as sessões da assinatura (respeitando ciclos de recorrência)
+    if (!isAvulso && isVipParaRecorrencia) {
+      const totalCiclosVip = (recorrenciaManual && recorrenciaManual.repeticoes > 1)
+        ? (recorrenciaManual.ciclosVip || recorrenciaManual.repeticoes)
+        : 1;
       setTimeout(() => {
-        reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados, planoVipId);
+        reservarRecorrenciaSemanalVip(id, agendamento, servicosSelecionados, planoVipId, false, totalCiclosVip);
       }, 100);
     }
 
@@ -5436,44 +5445,61 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     let abateu = false;
     setClientes(prev => {
       const next = prev.map(c => {
-        if (c.id === clienteId && c.assinatura && c.assinatura.saldo_restante > 0) {
-          let novosItens = c.assinatura.itens_saldo;
-          if (novosItens && novosItens.length > 0) {
-            // Tenta abater do serviço específico correspondente
-            let index = -1;
-            if (servicoId) {
-              index = novosItens.findIndex(item => item.servico_id === servicoId && item.saldo_restante > 0);
+        if (c.id === clienteId && c.assinatura) {
+          let saldoAtual = c.assinatura.saldo_restante;
+          let itensAtual = c.assinatura.itens_saldo;
+
+          // Se o saldo do ciclo anterior foi esgotado (<= 0) e uma nova sessão é concluída (renovação de ciclo),
+          // recarrega o saldo base mensal do plano antes do abatimento:
+          if (saldoAtual <= 0 && c.assinatura.total_mes > 0) {
+            saldoAtual = c.assinatura.total_mes;
+            if (itensAtual && itensAtual.length > 0) {
+              itensAtual = itensAtual.map(it => ({
+                ...it,
+                saldo_restante: it.total_mes || 1
+              }));
             }
-            // Se não encontrou o específico, busca o primeiro com saldo
-            if (index === -1) {
-              index = novosItens.findIndex(item => item.saldo_restante > 0);
-            }
-            if (index !== -1) {
-              abateu = true;
-              novosItens = novosItens.map((item, i) => i === index ? {
-                ...item,
-                saldo_restante: Math.max(0, item.saldo_restante - 1)
-              } : item);
-            }
-          } else {
-            abateu = true;
           }
 
-          if (abateu) {
-            const novaAssinatura: AssinaturaCliente = {
-              ...c.assinatura,
-              itens_saldo: novosItens,
-              saldo_restante: Math.max(0, c.assinatura.saldo_restante - 1)
-            };
-            const prefs = {
-              ...(c.preferencias || {}),
-              assinatura: novaAssinatura
-            };
-            return {
-              ...c,
-              assinatura: novaAssinatura,
-              preferencias: prefs
-            };
+          if (saldoAtual > 0) {
+            let novosItens = itensAtual;
+            if (novosItens && novosItens.length > 0) {
+              // Tenta abater do serviço específico correspondente
+              let index = -1;
+              if (servicoId) {
+                index = novosItens.findIndex(item => item.servico_id === servicoId && item.saldo_restante > 0);
+              }
+              // Se não encontrou o específico, busca o primeiro com saldo
+              if (index === -1) {
+                index = novosItens.findIndex(item => item.saldo_restante > 0);
+              }
+              if (index !== -1) {
+                abateu = true;
+                novosItens = novosItens.map((item, i) => i === index ? {
+                  ...item,
+                  saldo_restante: Math.max(0, item.saldo_restante - 1)
+                } : item);
+              }
+            } else {
+              abateu = true;
+            }
+
+            if (abateu) {
+              const novaAssinatura: AssinaturaCliente = {
+                ...c.assinatura,
+                itens_saldo: novosItens,
+                saldo_restante: Math.max(0, saldoAtual - 1)
+              };
+              const prefs = {
+                ...(c.preferencias || {}),
+                assinatura: novaAssinatura
+              };
+              return {
+                ...c,
+                assinatura: novaAssinatura,
+                preferencias: prefs
+              };
+            }
           }
         }
         return c;
@@ -5494,7 +5520,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     agendamentoInicialObj?: Agendamento,
     servicosIniciaisIds?: string[],
     planoIdOverride?: string,
-    forcar?: boolean
+    forcar?: boolean,
+    totalCiclos: number = 1
   ): { success: boolean; criados: number; mensagem: string } => {
     // Evita concorrência e geração duplicada da mesma sessão
     const agoraTs = Date.now();
@@ -5540,9 +5567,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       planosAssinatura
     );
 
-    const totalSessoes = plano?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4;
+    const totalSessoesBase = plano?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4;
 
-    if (totalSessoes <= 1 && (!plano?.itens_servicos || plano.itens_servicos.length <= 1)) {
+    if (totalSessoesBase <= 1 && (!plano?.itens_servicos || plano.itens_servicos.length <= 1)) {
       return { success: false, criados: 0, mensagem: 'O plano VIP possui apenas 1 sessão mensal.' };
     }
 
@@ -5559,7 +5586,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         : [{
             servico_id: (servicosIniciaisIds && servicosIniciaisIds[0]) || (itensAgendamento[agInicial.id] || [])[0] || 's1',
             nome_servico: 'Sessão VIP',
-            quantidade: totalSessoes,
+            quantidade: totalSessoesBase,
             profissional_id: agInicial.profissional_id
           }];
 
@@ -5587,7 +5614,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
 
     // Se a lista de procedimentos for menor que o total mensal previsto, preenche os slots com o serviço base
-    while (filaProcedimentosCiclo.length < totalSessoes) {
+    while (filaProcedimentosCiclo.length < totalSessoesBase) {
       filaProcedimentosCiclo.push({
         servico_id: filaProcedimentosCiclo[0]?.servico_id || servInicialId || 's1',
         nome_servico: filaProcedimentosCiclo[0]?.nome_servico || 'Sessão VIP',
@@ -5595,18 +5622,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
     }
 
-    // O número de semanas/sessões a agendar cobre exatamente as sessões configuradas do ciclo
-    let maxSemanas = totalSessoes;
+    // O número de sessões por ciclo cobre rigorosamente a quantidade mensal do plano (ex: 2 para quinzenal, 4 para semanal)
+    let totalSessoesPorCiclo = totalSessoesBase;
     if (plano?.distribuicao_sessoes && plano.distribuicao_sessoes.length > 0) {
-      maxSemanas = Math.max(...plano.distribuicao_sessoes.map(d => d.sessao_numero));
+      totalSessoesPorCiclo = Math.max(...plano.distribuicao_sessoes.map(d => d.sessao_numero));
     } else if (plano?.itens_servicos && plano.itens_servicos.some(it => it.sessoes && it.sessoes.length > 0)) {
       const sessoesNosItens = plano.itens_servicos.flatMap(it => it.sessoes || []);
       if (sessoesNosItens.length > 0) {
-        maxSemanas = Math.max(...sessoesNosItens);
+        totalSessoesPorCiclo = Math.max(...sessoesNosItens);
       }
     } else {
-      maxSemanas = Math.max(totalSessoes, filaProcedimentosCiclo.length);
+      totalSessoesPorCiclo = totalSessoesBase;
     }
+
+    const totalCiclosEfetivo = Math.max(1, totalCiclos || 1);
+    const totalSessoesTotal = totalSessoesPorCiclo * totalCiclosEfetivo;
 
     // Extrai data e horário originais como strings puras para evitar distorção de fuso horário
     const partesInicio = agInicial.inicio.replace(' ', 'T').split('T');
@@ -5628,8 +5658,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (cliente && plano) {
       const dataInicio1aSessao = agInicial.inicio;
       const dIni = new Date(dataInicio1aSessao);
-      const dRenov = new Date(dIni.getTime() + (plano.validade_dias || 30) * 86400000);
-      const totalCicloReal = Math.max(totalSessoes, maxSemanas);
+      const validadeDiasTotal = (plano.validade_dias || 30) * totalCiclosEfetivo;
+      const dRenov = new Date(dIni.getTime() + validadeDiasTotal * 86400000);
+      const totalCicloReal = totalSessoesPorCiclo;
 
       const assAtualizada: AssinaturaCliente = {
         ...(cliente.assinatura || {
@@ -5664,14 +5695,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const clienteIdFinal = cliente?.id || agInicial.cliente_id;
     const nomePlanoObs = plano?.nome || cliente?.assinatura?.nome_plano || 'Clube VIP';
 
-    for (let semana = 0; semana < maxSemanas; semana++) {
-      const sessaoNum = semana + 1;
+    for (let index = 0; index < totalSessoesTotal; index++) {
+      const cicloAtual = Math.floor(index / totalSessoesPorCiclo) + 1;
+      const sessaoNoCiclo = (index % totalSessoesPorCiclo) + 1;
+      const sessaoNum = sessaoNoCiclo; // Posição do procedimento no plano (1..totalSessoesPorCiclo)
 
-      // Calcula a data da sessão (+ semana * intervaloDias a partir da data do agendamento inicial)
+      // Calcula a data da sessão (+ index * intervaloDias a partir da data do agendamento inicial)
       let dataSemanaStr = dataPart;
-      if (semana > 0) {
+      if (index > 0) {
         const d = new Date(Number(anoStr), Number(mesStr) - 1, Number(diaStr));
-        d.setDate(d.getDate() + semana * intervaloDias);
+        d.setDate(d.getDate() + index * intervaloDias);
 
         let tentativas = 0;
         while (tentativas < 14) {
@@ -5697,7 +5730,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         dataSemanaStr = `${anoNovo}-${mesNovo}-${diaNovo}`;
       }
 
-      const inicioStr = semana === 0
+      const inicioStr = index === 0
         ? agInicial.inicio
         : `${dataSemanaStr}T${(hStr || '10').padStart(2, '0')}:${(mStr || '00').padStart(2, '0')}:${(sStr || '00').padStart(2, '0')}`;
 
@@ -5716,7 +5749,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // Se não houver configuração explícita para esta sessão, usa o fallback da fila sequencial
       if (procsDestaSessao.length === 0) {
-        const procPadrao = filaProcedimentosCiclo[semana] || filaProcedimentosCiclo[0];
+        const procPadrao = filaProcedimentosCiclo[sessaoNoCiclo - 1] || filaProcedimentosCiclo[0];
         const s = servicos.find(item => item.id === procPadrao.servico_id);
         procsDestaSessao = [{
           servico_id: procPadrao.servico_id,
@@ -5773,20 +5806,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       const profSessao = procsDestaSessao[0]?.profissional_id || agInicial.profissional_id;
 
-      if (semana === 0) {
-        // Atualiza agendamento inicial da Sessão 1 com serviços e tag dupla se houver
+      const valorPlano = Number(plano?.preco_mensal) || 0;
+      const ehPrimeiraSessaoDoCiclo = sessaoNoCiclo === 1;
+      const posCicloStr = totalCiclosEfetivo > 1 
+        ? `${sessaoNoCiclo} de ${totalSessoesPorCiclo} (Ciclo ${cicloAtual} de ${totalCiclosEfetivo})`
+        : `${sessaoNoCiclo} de ${totalSessoesPorCiclo}`;
+      const tagCicloObs = totalCiclosEfetivo > 1 ? `[Ciclo ${cicloAtual} de ${totalCiclosEfetivo}] ` : '';
+
+      if (index === 0) {
+        // Atualiza agendamento inicial da Sessão 1 (Ciclo 1)
         const baseObs = agInicial.observacoes?.includes('Sessão 1')
           ? agInicial.observacoes
           : `👑 Clube VIP (${nomePlanoObs}) - Sessão 1 (${nomesServicosCombinados})`;
         let novoObs = baseObs.includes('[PLANO_ID:') ? baseObs : `${baseObs}${idTag}`;
+        if (totalCiclosEfetivo > 1 && !novoObs.includes('Ciclo 1 de')) {
+          novoObs = novoObs.replace(/Sessão 1/g, `Sessão 1 [Ciclo 1 de ${totalCiclosEfetivo}]`);
+        }
         if (tagDuplaSessao && !novoObs.includes('[Co-atendimento:')) {
           novoObs = `${novoObs} ${tagDuplaSessao}`.trim();
         }
         
-        const valorPlano = Number(plano?.preco_mensal) || 0;
         const valorTotalFinal = valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0);
 
-        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id || agInicial.recorrencia_posicao !== `1 de ${maxSemanas}`) {
+        if (agInicial.observacoes !== novoObs || agInicial.fim !== fimStr || agInicial.valor_total !== valorTotalFinal || !agInicial.pago_com_clube || agInicial.plano_id !== plano?.id || agInicial.recorrencia_posicao !== posCicloStr) {
           const atualizado: Agendamento = {
             ...agInicial,
             fim: fimStr,
@@ -5796,14 +5838,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             plano_id: plano?.id || agInicial.plano_id,
             recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
             recorrencia_tipo: 'semanal',
-            recorrencia_posicao: `1 de ${maxSemanas}`
+            recorrencia_posicao: posCicloStr
           };
           salvarAgendamentoSupabase(atualizado, servicosIds);
           setAgendamentos(prev => prev.map(a => a.id === agInicial.id ? atualizado : a));
           setItensAgendamento(prev => ({ ...prev, [agInicial.id]: servicosIds }));
         }
       } else {
-        // Semana > 0: Cria exatamente 1 agendamento por sessão semanal
+        // Demais sessões (index > 0): Cria exatamente 1 agendamento por sessão da série
         const listaAtualAgendamentos = agendamentoInicialObj 
           ? [...agendamentos.filter(a => a.id !== agInicial.id), agInicial]
           : agendamentos;
@@ -5811,7 +5853,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const jaExiste = listaAtualAgendamentos.some(a =>
           a.cliente_id === clienteIdFinal &&
           a.inicio.substring(0, 10) === dataSemanaStr &&
-          a.status !== 'cancelado'
+          a.status !== 'cancelado' &&
+          a.motivo_cancelamento !== 'EXCLUIDO_ADMIN'
         ) || novosAgendamentos.some(a =>
           a.cliente_id === clienteIdFinal &&
           a.inicio.substring(0, 10) === dataSemanaStr
@@ -5819,7 +5862,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (!jaExiste) {
           const novoId = gerarCodigoReserva();
-          const obsSessao = `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} (${nomesServicosCombinados}) ${tagDuplaSessao}`.trim();
+          const obsSessao = `👑 Clube VIP (${nomePlanoObs})${idTag} - Sessão ${sessaoNum} ${tagCicloObs}(${nomesServicosCombinados}) ${tagDuplaSessao}`.trim();
+          // Regra de Negócio: sempre a 1ª sessão de um novo ciclo cobra o valor total da mensalidade do plano;
+          // as demais sessões daquele ciclo são R$ 0,00 (inclusas no pacote):
+          const valorSessaoFinal = ehPrimeiraSessaoDoCiclo ? (valorPlano > 0 ? valorPlano : (agInicial.valor_total || 0)) : 0;
 
           const novoAgendamento: Agendamento = {
             id: novoId,
@@ -5828,14 +5874,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             inicio: inicioStr,
             fim: fimStr,
             status: 'confirmado',
-            valor_total: 0,
+            valor_total: valorSessaoFinal,
             valor_sinal: 0,
             pago_com_clube: true,
             plano_id: plano?.id,
             origem: 'admin',
             recorrencia_grupo_id: agInicial.recorrencia_grupo_id || agInicial.id,
             recorrencia_tipo: 'semanal',
-            recorrencia_posicao: `${sessaoNum} de ${maxSemanas}`,
+            recorrencia_posicao: posCicloStr,
             observacoes: obsSessao,
             criado_em: new Date().toISOString()
           };

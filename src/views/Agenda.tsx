@@ -391,6 +391,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   const isVipMode = agendarComoVip || !!planoVipContratarId;
   const planoAtivoModal = planoClienteObj || (planoVipContratarId ? planosAssinatura.find(p => p.id === planoVipContratarId) : null);
+  const isVipFinal = isVipMode && !isBloqueio;
   const servicosVipIds = useMemo(() => {
     return extrairServicosPlano(planoAtivoModal, assCliente);
   }, [planoAtivoModal, assCliente]);
@@ -950,9 +951,10 @@ export const Agenda: React.FC<AgendaProps> = ({
 
   // Prévia em tempo real das datas que serão preenchidas na agenda (Google Calendar style)
   const previasRecorrencia = useMemo(() => {
-    if (!recorrenciaAtiva || recorrenciaRepeticoes <= 1) return [];
+    if (!recorrenciaAtiva) return [];
+    if (!isVipFinal && recorrenciaRepeticoes <= 1) return [];
+
     const diasSemanaNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    const interval = recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias;
     const [anoStr, mesStr, diaStr] = dataSelecionada.split('-').map(Number);
     const lista: {
       sessaoNum: number;
@@ -963,8 +965,110 @@ export const Agenda: React.FC<AgendaProps> = ({
       ajustado: boolean;
       motivoAjuste?: string;
       conflito: boolean;
+      cicloNum?: number;
+      sessaoNoCiclo?: number;
+      valorCobrado?: number;
+      nomeProcedimento?: string;
     }[] = [];
 
+    // --- Modalidade CLUBE VIP (Recorrência de Ciclos de Assinatura) ---
+    if (isVipFinal && planoAtivoModal) {
+      const freqDias = planoAtivoModal.frequencia_dias || 14;
+      const sessoesPorCiclo = planoAtivoModal.qtd_procedimentos_mes || 2;
+      const totalCiclos = Math.max(1, recorrenciaRepeticoes);
+      const totalSessoesVIP = totalCiclos * sessoesPorCiclo;
+
+      for (let rep = 0; rep < totalSessoesVIP; rep++) {
+        const cicloNum = Math.floor(rep / sessoesPorCiclo) + 1;
+        const sessaoNoCiclo = (rep % sessoesPorCiclo) + 1;
+        const valorCobrado = sessaoNoCiclo === 1 ? (Number(planoAtivoModal.preco_mensal) || resumoServicosSelecionados.precoTotal) : 0;
+        const procsConfig = obterConfiguracaoSessaoVip(planoAtivoModal, sessaoNoCiclo, servicos);
+        const nomeProcedimento = procsConfig.map(p => p.nome_servico).join(' + ') || 'Sessão VIP';
+        const duracaoSessao = calcularDuracaoSessaoVip(planoAtivoModal, sessaoNoCiclo, servicos) || duracaoMinutosAtual || 60;
+        const profIdSessao = procsConfig[0]?.profissional_id || profissionalId;
+
+        if (rep === 0) {
+          const d0 = new Date(anoStr, mesStr - 1, diaStr);
+          const diaSem0 = diasSemanaNomes[d0.getDay()];
+          const dStr0 = `${String(diaStr).padStart(2, '0')}/${String(mesStr).padStart(2, '0')}`;
+          lista.push({
+            sessaoNum: 1,
+            dataStr: dataSelecionada,
+            dataFormatada: dStr0,
+            diaSemana: diaSem0,
+            horario: horaInicio,
+            ajustado: false,
+            conflito: false,
+            cicloNum: 1,
+            sessaoNoCiclo: 1,
+            valorCobrado,
+            nomeProcedimento
+          });
+        } else {
+          const d = new Date(anoStr, mesStr - 1, diaStr);
+          d.setDate(d.getDate() + rep * freqDias);
+          const dataOriginal = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const diaSemOrig = diasSemanaNomes[d.getDay()];
+
+          let tentativas = 0;
+          let foiAjustado = false;
+          let motivo = '';
+
+          while (tentativas < 14) {
+            const diaSem = d.getDay();
+            const expediente = configSalao.horarios_trabalho?.[diaSem];
+            const mStrF = String(d.getMonth() + 1).padStart(2, '0');
+            const dStrF = String(d.getDate()).padStart(2, '0');
+            const mmdd = `${mStrF}-${dStrF}`;
+            const isFeriado = feriadosNacionais.includes(mmdd);
+            const isFechado = !expediente || !expediente.ativo;
+
+            if (!isFeriado && !isFechado) {
+              break;
+            }
+            if (!foiAjustado) {
+              foiAjustado = true;
+              motivo = isFeriado ? `Feriado nacional (${dataOriginal})` : `Salão fechado no ${diaSemOrig}`;
+            }
+            d.setDate(d.getDate() + 1);
+            tentativas++;
+          }
+
+          const aRep = d.getFullYear();
+          const mRep = String(d.getMonth() + 1).padStart(2, '0');
+          const dRep = String(d.getDate()).padStart(2, '0');
+          const dataCalcStr = `${aRep}-${mRep}-${dRep}`;
+          const dataFormatada = `${dRep}/${mRep}`;
+          const diaSemFinal = diasSemanaNomes[d.getDay()];
+
+          // Verifica conflito de horário com outros agendamentos
+          const [hI, mI] = horaInicio.split(':').map(Number);
+          const dFimCalc = new Date(aRep, Number(mRep) - 1, Number(dRep), hI, mI + duracaoSessao);
+          const fimCalcStr = `${aRep}-${mRep}-${dRep}T${String(dFimCalc.getHours()).padStart(2, '0')}:${String(dFimCalc.getMinutes()).padStart(2, '0')}:00`;
+          const inicioCalcStr = `${dataCalcStr}T${horaInicio}:00`;
+          const temConflito = checkConflitoHorario(inicioCalcStr, fimCalcStr, profIdSessao);
+
+          lista.push({
+            sessaoNum: rep + 1,
+            dataStr: dataCalcStr,
+            dataFormatada,
+            diaSemana: diaSemFinal,
+            horario: horaInicio,
+            ajustado: foiAjustado,
+            motivoAjuste: motivo,
+            conflito: temConflito,
+            cicloNum,
+            sessaoNoCiclo,
+            valorCobrado,
+            nomeProcedimento
+          });
+        }
+      }
+      return lista;
+    }
+
+    // --- Modalidade AVULSA (Recorrência Simples por Período) ---
+    const interval = recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias;
     for (let rep = 0; rep < recorrenciaRepeticoes; rep++) {
       if (rep === 0) {
         const d0 = new Date(anoStr, mesStr - 1, diaStr);
@@ -1036,7 +1140,7 @@ export const Agenda: React.FC<AgendaProps> = ({
       }
     }
     return lista;
-  }, [recorrenciaAtiva, recorrenciaRepeticoes, recorrenciaTipo, recorrenciaIntervaloDias, recorrenciaCustomDias, dataSelecionada, horaInicio, duracaoMinutosAtual, profissionalId, configSalao.horarios_trabalho, feriadosNacionais, checkConflitoHorario]);
+  }, [recorrenciaAtiva, recorrenciaRepeticoes, recorrenciaTipo, recorrenciaIntervaloDias, recorrenciaCustomDias, dataSelecionada, horaInicio, duracaoMinutosAtual, profissionalId, configSalao.horarios_trabalho, feriadosNacionais, checkConflitoHorario, isVipFinal, planoAtivoModal, servicos, resumoServicosSelecionados.precoTotal]);
 
   // Salvar agendamento
   const handleCriarAgendamento = (e: React.FormEvent) => {
@@ -1240,22 +1344,27 @@ export const Agenda: React.FC<AgendaProps> = ({
         return;
       }
 
-      const configRecorrencia = (!isBloqueio && !isVipFinal && recorrenciaAtiva && recorrenciaRepeticoes > 1)
+      const configRecorrencia = (!isBloqueio && recorrenciaAtiva && recorrenciaRepeticoes > 1)
         ? {
-            tipo: recorrenciaTipo,
-            intervaloDias: recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias,
+            tipo: isVipFinal ? 'semanal' : recorrenciaTipo,
+            intervaloDias: isVipFinal 
+              ? (planoAtivoModal?.frequencia_dias || 14) 
+              : (recorrenciaTipo === 'personalizado' ? Math.max(1, recorrenciaCustomDias) : recorrenciaIntervaloDias),
             repeticoes: recorrenciaRepeticoes,
-            tipoLabel: recorrenciaTipo === 'semanal' 
-              ? 'Semanal' 
-              : recorrenciaTipo === 'quinzenal' 
-                ? 'Quinzenal (15 dias)' 
-                : recorrenciaTipo === 'dias_20' 
-                  ? 'Manutenção (20 dias)' 
-                  : recorrenciaTipo === 'dias_21'
-                    ? '3 Semanas (21 dias)'
-                    : recorrenciaTipo === 'mensal'
-                      ? 'Mensal (30 dias)'
-                      : `A cada ${recorrenciaCustomDias} dias`
+            tipoLabel: isVipFinal 
+              ? `${recorrenciaRepeticoes} ciclos (${planoAtivoModal?.nome || 'Plano VIP'})`
+              : (recorrenciaTipo === 'semanal' 
+                ? 'Semanal' 
+                : recorrenciaTipo === 'quinzenal' 
+                  ? 'Quinzenal (15 dias)' 
+                  : recorrenciaTipo === 'dias_20' 
+                    ? 'Manutenção (20 dias)' 
+                    : recorrenciaTipo === 'dias_21' 
+                      ? '3 Semanas (21 dias)' 
+                      : recorrenciaTipo === 'mensal' 
+                        ? 'Mensal (30 dias)' 
+                        : `A cada ${recorrenciaCustomDias} dias`),
+            ciclosVip: isVipFinal ? recorrenciaRepeticoes : undefined
           }
         : undefined;
 
@@ -2674,8 +2783,8 @@ export const Agenda: React.FC<AgendaProps> = ({
                     )}
                   </div>
 
-                {/* Seção de Recorrência Automática */}
-                {!isBloqueio && !agendarComoVip && !planoVipContratarId && (
+                {/* Seção de Recorrência Automática (Serviços Avulsos ou Planos VIP) */}
+                {!isBloqueio && (
                   <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-3.5 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2684,10 +2793,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                         </div>
                         <div>
                           <span className="text-xs font-bold text-[#5A4535] block">
-                            Repetir Agendamento (Recorrência)
+                            {isVipFinal ? 'Repetir Ciclos do Plano VIP (Recorrência de Assinatura)' : 'Repetir Agendamento (Recorrência)'}
                           </span>
                           <span className="text-[10px] text-[#8C7A6B]">
-                            Preenche a agenda automaticamente no período escolhido
+                            {isVipFinal 
+                              ? 'Renova e agenda automaticamente os próximos meses/ciclos do plano'
+                              : 'Preenche a agenda automaticamente no período escolhido'}
                           </span>
                         </div>
                       </div>
@@ -2702,7 +2813,114 @@ export const Agenda: React.FC<AgendaProps> = ({
                       </label>
                     </div>
 
-                    {recorrenciaAtiva && (
+                    {recorrenciaAtiva && isVipFinal && (
+                      <div className="pt-2 border-t border-[#EFECE6] space-y-3 animate-in fade-in duration-150">
+                        {/* Detalhes do Plano VIP */}
+                        <div className="bg-white p-2.5 rounded-xl border border-[#EFECE6] flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Crown size={14} className="text-amber-500" />
+                            <span className="text-xs font-bold text-[#5A4535]">
+                              {planoAtivoModal?.nome || 'Plano VIP Selecionado'}
+                            </span>
+                          </div>
+                          <span className="text-[10.5px] font-bold text-[#8C6D58] bg-[#F6ECE8] px-2 py-0.5 rounded-md">
+                            {planoAtivoModal?.qtd_procedimentos_mes || 2} sessões a cada {planoAtivoModal?.frequencia_dias || 14} dias
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-[#8C7A6B] uppercase mb-1">
+                            Renovar por quantos ciclos (meses)?
+                          </label>
+                          <select
+                            value={recorrenciaRepeticoes}
+                            onChange={(e) => setRecorrenciaRepeticoes(Math.max(2, Number(e.target.value)))}
+                            className="w-full bg-white border border-[#EFECE6] rounded-xl px-2.5 py-2 text-xs font-bold text-[#8C6D58] focus:outline-none focus:border-[#8C6D58]"
+                          >
+                            <option value={2}>2 ciclos (2 meses • {2 * (planoAtivoModal?.qtd_procedimentos_mes || 2)} sessões no total)</option>
+                            <option value={3}>3 ciclos (3 meses • {3 * (planoAtivoModal?.qtd_procedimentos_mes || 2)} sessões no total)</option>
+                            <option value={4}>4 ciclos (4 meses • {4 * (planoAtivoModal?.qtd_procedimentos_mes || 2)} sessões no total)</option>
+                            <option value={6}>6 ciclos (Semestral / 6 meses • {6 * (planoAtivoModal?.qtd_procedimentos_mes || 2)} sessões no total)</option>
+                            <option value={12}>12 ciclos (Anual / 12 meses • {12 * (planoAtivoModal?.qtd_procedimentos_mes || 2)} sessões no total)</option>
+                          </select>
+                        </div>
+
+                        {/* Aviso de Regra de Cobrança */}
+                        <div className="text-[11px] text-[#8C7A6B] bg-white p-2.5 rounded-xl border border-[#EFECE6] space-y-1">
+                          <div className="flex items-center gap-1 text-[#8C6D58] font-bold">
+                            <Sparkles size={12} className="text-amber-500" />
+                            Regra Financeira do VIP:
+                          </div>
+                          <p className="text-[10.5px] leading-relaxed">
+                            A <strong>1ª sessão de cada novo ciclo</strong> cobra o valor integral da mensalidade do plano (<strong>R$ {(Number(planoAtivoModal?.preco_mensal) || 0).toFixed(2)}</strong>). As demais sessões daquele ciclo constam como <strong>R$ 0,00</strong> (inclusas no pacote).
+                          </p>
+                        </div>
+
+                        {/* Prévia Interativa das Sessões VIP Geradas */}
+                        <div className="bg-white border border-[#EFECE6] rounded-xl p-2.5">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-[#8C7A6B] uppercase flex items-center gap-1">
+                              <CalendarIcon size={12} />
+                              Datas das {previasRecorrencia.length} sessões agendadas ({recorrenciaRepeticoes} ciclos):
+                            </span>
+                            <span className="text-[9px] text-amber-700 bg-amber-50 font-bold px-2 py-0.5 rounded-full border border-amber-200">
+                              Autopreenchimento VIP ativo
+                            </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                            {previasRecorrencia.map((p) => (
+                              <div
+                                key={p.sessaoNum}
+                                className={`p-2 rounded-xl border text-[11px] flex flex-col justify-between ${
+                                  p.conflito 
+                                    ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                                    : p.ajustado
+                                      ? 'bg-blue-50/60 border-blue-200 text-blue-950'
+                                      : 'bg-[#FAF9F6] border-[#EFECE6] text-[#5A4535]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between font-bold text-[10px] mb-1">
+                                  <span className="bg-white px-1.5 py-0.5 rounded border border-[#EFECE6] text-[#8C6D58]">
+                                    Ciclo {p.cicloNum} • Sessão {p.sessaoNoCiclo}
+                                  </span>
+                                  <span className="text-[#8C7A6B]">{p.diaSemana}</span>
+                                </div>
+                                <div className="font-bold text-xs text-[#5A4535]">
+                                  {p.dataFormatada} às {p.horario}
+                                </div>
+                                <div className="text-[10px] text-[#8C7A6B] truncate mt-0.5" title={p.nomeProcedimento}>
+                                  {p.nomeProcedimento}
+                                </div>
+                                <div className="mt-1.5 pt-1 border-t border-[#EFECE6]/60 flex items-center justify-between">
+                                  <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-md ${
+                                    (p.valorCobrado || 0) > 0 
+                                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                      : 'bg-stone-100 text-stone-600'
+                                  }`}>
+                                    {(p.valorCobrado || 0) > 0 
+                                      ? `R$ ${(p.valorCobrado || 0).toFixed(2)} (Cobrança)`
+                                      : 'R$ 0,00 (Incluso)'}
+                                  </span>
+                                  {p.conflito && (
+                                    <span className="text-[8.5px] text-amber-700 font-bold">
+                                      ⚠️ Possível conflito
+                                    </span>
+                                  )}
+                                  {p.ajustado && !p.conflito && (
+                                    <span className="text-[8px] text-blue-700 font-medium" title={p.motivoAjuste}>
+                                      *Ajustado
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {recorrenciaAtiva && !isVipFinal && (
                       <div className="pt-2 border-t border-[#EFECE6] space-y-3 animate-in fade-in duration-150">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                           <div>
