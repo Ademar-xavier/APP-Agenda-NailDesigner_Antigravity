@@ -406,11 +406,135 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
   const temAssinaturaAtiva = Boolean(
     clienteTemVipAtivo || isVipAgendamento
   );
-  const sessaoNumRawCalculado = agendamento?.recorrencia_posicao || (agendamento?.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
-  const sessaoNumCalculado = sessaoNumRawCalculado ? Number(sessaoNumRawCalculado) : null;
+
+  // Objeto do Plano VIP e Informações do Ciclo
+  const planoVipObj = useMemo(() => {
+    if (!agendamento) return null;
+    return encontrarPlanoVip(
+      agendamento.plano_id || cliente?.assinatura?.plano_id,
+      cliente?.assinatura,
+      agendamento.observacoes,
+      planosAssinatura
+    );
+  }, [agendamento, cliente?.assinatura, planosAssinatura]);
+
+  const {
+    sessaoNumCalculado,
+    totalSessoesPlano,
+    ehSessaoPosterior,
+    ehSessao1,
+    pacoteFinalizado,
+    temSessoesPendentesAProjetar,
+    badgeTextoVip,
+    descricaoFrequenciaVip
+  } = useMemo(() => {
+    if (!agendamento) {
+      return {
+        sessaoNumCalculado: null,
+        totalSessoesPlano: 1,
+        ehSessaoPosterior: false,
+        ehSessao1: false,
+        pacoteFinalizado: false,
+        temSessoesPendentesAProjetar: false,
+        badgeTextoVip: 'VIP',
+        descricaoFrequenciaVip: ''
+      };
+    }
+
+    const recPosStr = agendamento.recorrencia_posicao || '';
+    const matchPos = recPosStr.match(/(\d+)\s+de\s+(\d+)/i);
+    const sessaoNumFromPos = matchPos ? Number(matchPos[1]) : (recPosStr.match(/^(\d+)/) ? Number(recPosStr.match(/^(\d+)/)![1]) : null);
+    const totalFromPos = matchPos ? Number(matchPos[2]) : null;
+
+    const obsMatch = agendamento.observacoes?.match(/Sessão\s*(\d+)/i);
+    const sessaoNumRaw = sessaoNumFromPos || (obsMatch ? Number(obsMatch[1]) : null);
+    const sessaoNum = sessaoNumRaw ? Number(sessaoNumRaw) : null;
+
+    const ehPosterior = Boolean(
+      (sessaoNum !== null && sessaoNum > 1) ||
+      agendamento.observacoes?.match(/Sessão\s*([2-9]|\d{2,})/i) ||
+      (agendamento.recorrencia_posicao && !agendamento.recorrencia_posicao.startsWith('1')) ||
+      agendamento.observacoes?.includes('[Simultâneo]')
+    );
+
+    const ehPrimeira = Boolean(
+      !ehPosterior &&
+      (
+        sessaoNum === 1 ||
+        agendamento.observacoes?.includes('Sessão 1') ||
+        (agendamento.recorrencia_posicao && agendamento.recorrencia_posicao.startsWith('1')) ||
+        (!agendamento.recorrencia_posicao && !obsMatch)
+      )
+    );
+
+    let total = totalFromPos || 0;
+    if (!total && planoVipObj?.distribuicao_sessoes && planoVipObj.distribuicao_sessoes.length > 0) {
+      total = Math.max(...planoVipObj.distribuicao_sessoes.map(d => d.sessao_numero));
+    }
+    if (!total && planoVipObj?.itens_servicos) {
+      const sessoesItens = planoVipObj.itens_servicos.flatMap(it => it.sessoes || []);
+      if (sessoesItens.length > 0) {
+        total = Math.max(...sessoesItens);
+      }
+    }
+    const sessoesDaCliente = agendamentos
+      .filter(a => a.cliente_id === agendamento.cliente_id && a.status !== 'cancelado')
+      .map(a => {
+        const m = a.recorrencia_posicao?.match(/(\d+)\s+de\s+(\d+)/i);
+        if (m) return Math.max(Number(m[1]), Number(m[2]));
+        const sMatch = a.observacoes?.match(/Sessão\s*(\d+)/i);
+        return sMatch ? Number(sMatch[1]) : 0;
+      });
+    const maiorSessaoExistente = sessoesDaCliente.length > 0 ? Math.max(...sessoesDaCliente) : 0;
+    const totalBase = Number(planoVipObj?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4);
+    const totalSessoes = Math.max(total, maiorSessaoExistente, totalBase, sessaoNum || 1);
+
+    const saldoRestanteCliente = cliente?.assinatura?.saldo_restante;
+    const somaItensSaldo = cliente?.assinatura?.itens_saldo?.reduce((acc, it) => acc + (it.saldo_restante || 0), 0);
+    const temSaldoDisponivel = (saldoRestanteCliente !== undefined && saldoRestanteCliente > 0) || (somaItensSaldo !== undefined && somaItensSaldo > 0);
+
+    const pacoteAcabou = Boolean(
+      (cliente?.assinatura && (cliente.assinatura.status === 'cancelado' || (!temSaldoDisponivel && cliente.assinatura.saldo_restante === 0))) ||
+      (agendamento.status === 'concluido' && sessaoNum !== null && sessaoNum >= totalSessoes) ||
+      (sessaoNum !== null && sessaoNum >= totalSessoes && agendamentosFuturosRecorrencia.length === 0)
+    );
+
+    const temPendentes = ehPrimeira && 
+      totalSessoes > 1 && 
+      !pacoteAcabou && 
+      agendamento.status !== 'cancelado';
+
+    let badgeTexto = 'VIP';
+    if (sessaoNum !== null && !isNaN(sessaoNum) && sessaoNum > 0) {
+      if (agendamento.status === 'concluido') {
+        const restApos = Math.max(0, totalSessoes - sessaoNum);
+        badgeTexto = restApos === 0 ? '0 sessões rest. (Finalizado)' : (restApos === 1 ? '1 sessão rest.' : `${restApos} sessões rest.`);
+      } else {
+        const restAtual = Math.max(1, totalSessoes - (sessaoNum - 1));
+        badgeTexto = restAtual === 1 ? '1 sessão rest. (última)' : `${restAtual} sessões rest.`;
+      }
+    } else if (cliente?.assinatura?.saldo_restante !== undefined) {
+      const s = cliente.assinatura.saldo_restante;
+      badgeTexto = s === 0 ? '0 sessões rest. (Finalizado)' : (s === 1 ? '1 sessão rest.' : `${s} sessões rest.`);
+    }
+
+    const intervaloDias = calcularIntervaloVip(planoVipObj, cliente?.assinatura);
+    const { descricaoCompleta } = obterTextoFrequenciaVip(intervaloDias);
+
+    return {
+      sessaoNumCalculado: sessaoNum,
+      totalSessoesPlano: totalSessoes,
+      ehSessaoPosterior: ehPosterior,
+      ehSessao1: ehPrimeira,
+      pacoteFinalizado: pacoteAcabou,
+      temSessoesPendentesAProjetar: temPendentes,
+      badgeTextoVip: badgeTexto,
+      descricaoFrequenciaVip: descricaoCompleta
+    };
+  }, [agendamento, planoVipObj, cliente?.assinatura, agendamentos, agendamentosFuturosRecorrencia.length]);
+
   const isPrimeiraSessaoVip = Boolean(
-    (sessaoNumCalculado === 1 || agendamento?.observacoes?.includes('Sessão 1')) &&
-    isVipAgendamento
+    ehSessao1 && isVipAgendamento
   );
 
   const [usarSaldoClube, setUsarSaldoClube] = useState(isVipAgendamento);
@@ -1516,9 +1640,11 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                     <span className="text-xs font-bold text-amber-950 block">
                       {agendamento.recorrencia_posicao 
                         ? `Sessão ${agendamento.recorrencia_posicao} • Clube VIP`
-                        : (agendamento.observacoes?.match(/Sessão\s*(\d+)/i) 
-                            ? `Sessão ${agendamento.observacoes.match(/Sessão\s*(\d+)/i)![1]} • Clube VIP`
-                            : 'Atendimento Clube VIP')}
+                        : (sessaoNumCalculado 
+                            ? `Sessão ${sessaoNumCalculado} de ${totalSessoesPlano} • Clube VIP`
+                            : (agendamento.observacoes?.match(/Sessão\s*(\d+)/i) 
+                                ? `Sessão ${agendamento.observacoes.match(/Sessão\s*(\d+)/i)![1]} • Clube VIP`
+                                : 'Atendimento Clube VIP'))}
                     </span>
                     <span className="text-[10px] text-amber-800">
                       Procedimento(s) programado(s) para esta sessão
@@ -1534,7 +1660,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
             )}
 
             {/* Aviso e Ação de Projeção de Recorrência VIP Pendente */}
-            {isVip && (agendamento.observacoes?.includes('Sessão 1') || !agendamento.recorrencia_posicao || agendamento.recorrencia_posicao.startsWith('1')) && agendamentosFuturosRecorrencia.length === 0 && (
+            {isVip && temSessoesPendentesAProjetar && agendamentosFuturosRecorrencia.length === 0 && (
               <div className="mb-2.5 p-2.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-2xs animate-in fade-in duration-200">
                 <div className="flex items-start gap-2">
                   <Sparkles size={16} className="text-amber-600 shrink-0 mt-0.5" />
@@ -1573,7 +1699,7 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
             )}
 
-            {isVip && (agendamento.observacoes?.includes('Sessão 1') || !agendamento.recorrencia_posicao || agendamento.recorrencia_posicao.startsWith('1')) && agendamentosFuturosRecorrencia.length > 0 && (
+            {isVip && ehSessao1 && agendamentosFuturosRecorrencia.length > 0 && (
               <div className="mb-2.5 p-2 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex items-center justify-between text-xs text-emerald-900">
                 <span className="flex items-center gap-1.5 font-medium text-[11px]">
                   <CheckCircle size={13} className="text-emerald-600" />
@@ -2163,82 +2289,27 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
         )}
 
         {/* Card Clube VIP & Recorrência Dinâmica */}
-        {temAssinaturaAtiva && (() => {
-          const planoVipObj = encontrarPlanoVip(
-            agendamento.plano_id || cliente?.assinatura?.plano_id,
-            cliente?.assinatura,
-            agendamento.observacoes,
-            planosAssinatura
-          );
-          const intervaloDias = calcularIntervaloVip(planoVipObj, cliente?.assinatura);
-          const { descricaoCompleta } = obterTextoFrequenciaVip(intervaloDias);
-
-          const recPosStr = agendamento.recorrencia_posicao || '';
-          const matchPos = recPosStr.match(/(\d+)\s+de\s+(\d+)/i);
-          const sessaoNumFromPos = matchPos ? Number(matchPos[1]) : null;
-          const totalFromPos = matchPos ? Number(matchPos[2]) : null;
-
-          const sessaoNumRaw = sessaoNumFromPos || (agendamento.observacoes?.match(/Sessão\s*(\d+)/i)?.[1]);
-          const sessaoNum = sessaoNumRaw ? Number(sessaoNumRaw) : null;
-
-          // Determina o total real de sessões do ciclo
-          let totalSessoesPlano = totalFromPos || 0;
-          if (!totalSessoesPlano && planoVipObj?.distribuicao_sessoes && planoVipObj.distribuicao_sessoes.length > 0) {
-            totalSessoesPlano = Math.max(...planoVipObj.distribuicao_sessoes.map(d => d.sessao_numero));
-          }
-          if (!totalSessoesPlano && planoVipObj?.itens_servicos) {
-            const sessoesItens = planoVipObj.itens_servicos.flatMap(it => it.sessoes || []);
-            if (sessoesItens.length > 0) {
-              totalSessoesPlano = Math.max(...sessoesItens);
-            }
-          }
-          // Maior sessão existente nos agendamentos desta cliente para este ciclo
-          const sessoesDaCliente = agendamentos
-            .filter(a => a.cliente_id === agendamento.cliente_id && a.status !== 'cancelado')
-            .map(a => {
-              const m = a.recorrencia_posicao?.match(/(\d+)\s+de\s+(\d+)/i);
-              if (m) return Math.max(Number(m[1]), Number(m[2]));
-              const sMatch = a.observacoes?.match(/Sessão\s*(\d+)/i);
-              return sMatch ? Number(sMatch[1]) : 0;
-            });
-          const maiorSessaoExistente = sessoesDaCliente.length > 0 ? Math.max(...sessoesDaCliente) : 0;
-          const totalBase = Number(planoVipObj?.qtd_procedimentos_mes || cliente?.assinatura?.total_mes || 4);
-          totalSessoesPlano = Math.max(totalSessoesPlano, maiorSessaoExistente, totalBase, sessaoNum || 1);
-
-          let badgeTexto = 'VIP';
-          if (sessaoNum !== null && !isNaN(sessaoNum) && sessaoNum > 0) {
-            if (agendamento.status === 'concluido') {
-              const restApos = Math.max(0, totalSessoesPlano - sessaoNum);
-              badgeTexto = restApos === 0 ? '0 sessões rest. (Finalizado)' : (restApos === 1 ? '1 sessão rest.' : `${restApos} sessões rest.`);
-            } else {
-              const restAtual = Math.max(1, totalSessoesPlano - (sessaoNum - 1));
-              badgeTexto = restAtual === 1 ? '1 sessão rest. (última)' : `${restAtual} sessões rest.`;
-            }
-          } else if (cliente?.assinatura?.saldo_restante !== undefined) {
-            const s = cliente.assinatura.saldo_restante;
-            badgeTexto = s === 0 ? '0 sessões rest.' : (s === 1 ? '1 sessão rest.' : `${s} sessões rest.`);
-          }
-
-          return (
-            <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Crown size={15} className="text-amber-600" />
-                  <span className="text-xs font-bold text-amber-950">
-                    Clube VIP: {planoVipObj?.nome || cliente?.assinatura?.nome_plano || 'Assinatura VIP'}
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
-                  {badgeTexto}
+        {temAssinaturaAtiva && (
+          <div className="mb-4 p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Crown size={15} className="text-amber-600" />
+                <span className="text-xs font-bold text-amber-950">
+                  Clube VIP: {planoVipObj?.nome || cliente?.assinatura?.nome_plano || 'Assinatura VIP'}
                 </span>
               </div>
-
-              <p className="text-[11px] text-amber-900 leading-snug">
-                Os atendimentos deste plano são {descricaoCompleta}.
-              </p>
+              <span className="text-[10px] font-bold bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full">
+                {badgeTextoVip}
+              </span>
             </div>
-          );
-        })()}
+
+            {descricaoFrequenciaVip && (
+              <p className="text-[11px] text-amber-900 leading-snug">
+                Os atendimentos deste plano são {descricaoFrequenciaVip}.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Lembretes WhatsApp e Cobrança de Sinal */}
         {agendamento.status !== 'concluido' && agendamento.status !== 'cancelado' && agendamento.status !== 'falta' && (
