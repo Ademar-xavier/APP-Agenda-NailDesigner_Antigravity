@@ -808,7 +808,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
     const livres: string[] = [];
     const ocupados: { hora: string; motivo: string }[] = [];
-    const horariosAlmoco: string[] = [];
+    const horariosAlmoco: { slot: string; tipo: 'dentro' | 'cruza'; inicioAlmoco: string; fimAlmoco: string; horaFimAgend: string }[] = [];
 
     // No painel interno (profissional), permite horários de início livres, respeitando conflitos reais com outros agendamentos
     const duracaoVerificacao = isBloqueio ? 30 : duracaoMinutosAtual;
@@ -830,7 +830,7 @@ export const Agenda: React.FC<AgendaProps> = ({
 
       let conflitoReal = false;
       let motivoConflito = '';
-      let temConflitoAlmoco = false;
+      let infoAlmoco: { slot: string; tipo: 'dentro' | 'cruza'; inicioAlmoco: string; fimAlmoco: string; horaFimAgend: string } | null = null;
 
       if (!isBloqueio) {
         const profsChecar = obterTodasProfissionaisDosServicos(servicosSelecionados, servicos, equipe, profissionalId);
@@ -848,7 +848,16 @@ export const Agenda: React.FC<AgendaProps> = ({
           // Se não há conflito com cliente, checa se coincide com horário de almoço
           const conflitoAlm = verificarConflitoAlmoco(inicioAgend, fimAgend, pId);
           if (conflitoAlm.temConflito) {
-            temConflitoAlmoco = true;
+            const hIniAlm = conflitoAlm.inicioAlmoco || '12:00';
+            const hFimAlm = conflitoAlm.fimAlmoco || '13:00';
+            const estaDentro = slot >= hIniAlm && slot < hFimAlm;
+            infoAlmoco = {
+              slot,
+              tipo: estaDentro ? 'dentro' : 'cruza',
+              inicioAlmoco: hIniAlm,
+              fimAlmoco: hFimAlm,
+              horaFimAgend: `${horaF}:${minF}`
+            };
           }
         }
       }
@@ -857,8 +866,8 @@ export const Agenda: React.FC<AgendaProps> = ({
         ocupados.push({ hora: slot, motivo: motivoConflito });
       } else {
         livres.push(slot);
-        if (temConflitoAlmoco) {
-          horariosAlmoco.push(slot);
+        if (infoAlmoco) {
+          horariosAlmoco.push(infoAlmoco);
         }
       }
     }
@@ -2617,10 +2626,14 @@ export const Agenda: React.FC<AgendaProps> = ({
                         className="w-full border border-[#EFECE6] rounded-xl px-3 py-2 text-sm text-[#5A4535] bg-[#FAF9F6] focus:outline-none font-medium"
                       >
                         {analiseHorarios.livres.map(h => {
-                          const isAlmoco = analiseHorarios.horariosAlmoco?.includes(h);
+                          const almocoInfo = analiseHorarios.horariosAlmoco?.find(item => item.slot === h);
+                          const isAlmoco = !!almocoInfo;
+                          const descAlmoco = almocoInfo?.tipo === 'cruza'
+                            ? '(Sobrepõe Horário de Almoço - Disponível para liberar)'
+                            : '(Horário de Almoço - Disponível para liberar)';
                           return (
                             <option key={h} value={h}>
-                              {h} {isBloqueio ? '' : (isAlmoco ? '(Horário de Almoço - Disponível para liberar)' : '(Disponível)')}
+                              {h} {isBloqueio ? '' : (isAlmoco ? descAlmoco : '(Disponível)')}
                             </option>
                           );
                         })}
@@ -2722,11 +2735,20 @@ export const Agenda: React.FC<AgendaProps> = ({
                         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
                           {analiseHorarios.livres.map(h => {
                             const isSelected = horaInicio === h;
-                            const isAlmoco = analiseHorarios.horariosAlmoco?.includes(h);
+                            const almocoInfo = analiseHorarios.horariosAlmoco?.find(item => item.slot === h);
+                            const isAlmoco = !!almocoInfo;
+                            const labelAlmoco = almocoInfo?.tipo === 'cruza' ? '(Sobrepõe Almoço)' : '(Almoço)';
+                            const titleTooltip = almocoInfo 
+                              ? (almocoInfo.tipo === 'cruza'
+                                  ? `Inicia às ${h} e termina às ${almocoInfo.horaFimAgend}, sobrepondo o almoço (${almocoInfo.inicioAlmoco} às ${almocoInfo.fimAlmoco})`
+                                  : `Horário dentro do intervalo de almoço (${almocoInfo.inicioAlmoco} às ${almocoInfo.fimAlmoco})`)
+                              : undefined;
+
                             return (
                               <button
                                 key={h}
                                 type="button"
+                                title={titleTooltip}
                                 onClick={() => {
                                   setHoraInicio(h);
                                   setErrorAgendamento('');
@@ -2741,7 +2763,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                               >
                                 {isSelected && <CheckCircle size={12} className="text-white shrink-0" />}
                                 {h}
-                                {isAlmoco && <span className="text-[10px] font-normal opacity-90">(Almoço)</span>}
+                                {isAlmoco && <span className="text-[10px] font-normal opacity-90">{labelAlmoco}</span>}
                               </button>
                             );
                           })}

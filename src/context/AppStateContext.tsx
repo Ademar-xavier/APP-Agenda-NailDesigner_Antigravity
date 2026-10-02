@@ -3272,7 +3272,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const [anoD, mesD, diaD] = dataStr.split('-').map(Number);
     const diaSemana = new Date(anoD, mesD - 1, diaD).getDay();
 
+    // Se o dia da semana não tem expediente no salão (ex: domingo), não projeta almoço padrão do salão
+    // a não ser que haja configuração explícita e ativa para esse dia na profissional
+    const expedienteGeral = configSalao?.horarios_trabalho?.[diaSemana];
     const configDia = prof.horarios_almoco?.[diaSemana];
+    if (!expedienteGeral || !expedienteGeral.ativo) {
+      if (!configDia || !configDia.ativo) {
+        return { temConflito: false };
+      }
+    }
+
     const almocoAtivo = configDia !== undefined ? configDia.ativo : (prof.horario_almoco_ativo !== false);
     if (!almocoAtivo) return { temConflito: false };
 
