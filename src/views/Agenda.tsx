@@ -17,11 +17,13 @@ import {
   Repeat,
   Utensils,
   Tag,
-  ShoppingBag
+  ShoppingBag,
+  Palette
 } from 'lucide-react';
 import { useAppState, normalizarDataHora } from '../context/AppStateContext';
 import { AgendamentoDetalheModal } from '../components/AgendamentoDetalheModal';
-import { PlanoAssinatura, AssinaturaCliente, Agendamento } from '../types';
+import { PlanoAssinatura, AssinaturaCliente, Agendamento, Servico } from '../types';
+import { obterCorDoServico } from '../utils/coresServicos';
 import { 
   encontrarPlanoVip, 
   calcularIntervaloVip, 
@@ -779,6 +781,22 @@ export const Agenda: React.FC<AgendaProps> = ({
       })
       .sort((a, b) => a.inicio.localeCompare(b.inicio));
   }, [agendamentos, dataSelecionada, diaFechado, equipe, currentUser, filtroStatus, busca, clientes, servicos]);
+
+  // Lista única de serviços agendados no dia atual para identificação visual rápida / legenda
+  const servicosUnicosDoDia = useMemo(() => {
+    const mapa = new Map<string, Servico>();
+    agendamentosDoDia.forEach(a => {
+      if (a.cliente_id !== 'bloqueado' && !a.observacoes?.includes('[Almoço]')) {
+        const servs = obterServicosDeAgendamento(a.id);
+        servs.forEach(s => {
+          if (s && s.id && !mapa.has(s.id)) {
+            mapa.set(s.id, s);
+          }
+        });
+      }
+    });
+    return Array.from(mapa.values());
+  }, [agendamentosDoDia, obterServicosDeAgendamento]);
 
   // Duração necessária para o atendimento em minutos
   const duracaoMinutosAtual = useMemo(() => {
@@ -1665,6 +1683,33 @@ export const Agenda: React.FC<AgendaProps> = ({
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Legenda visual dos serviços agendados no dia */}
+            {servicosUnicosDoDia.length > 0 && (
+              <div className="mb-3.5 pb-2.5 border-b border-[#EFECE6] flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+                <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  <Palette size={11} className="text-[#8C6D58]" /> Serviços do dia:
+                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {servicosUnicosDoDia.map(s => {
+                    const corS = s.cor || obterCorDoServico(s);
+                    return (
+                      <span 
+                        key={s.id}
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#FAF9F6] border text-[#5A4535]"
+                        style={{ borderColor: corS }}
+                      >
+                        <span 
+                          className="w-2 h-2 rounded-full shrink-0 shadow-2xs" 
+                          style={{ backgroundColor: corS }} 
+                        />
+                        <span>{s.nome}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {agendamentosDoDia.map((a) => {
               const client = clientes.find(c => c.id === a.cliente_id);
               const prof = equipe.find(u => 
@@ -1676,6 +1721,10 @@ export const Agenda: React.FC<AgendaProps> = ({
                 (a.profissional_id === 'u1' || a.observacoes?.toLowerCase().includes('sheila')) ? 'Sheila Santos' : ''
               );
               const servsDoAgCard = obterServicosDeAgendamento(a.id);
+              const servPrincipal = servsDoAgCard[0];
+              const corDoServico = (a.cliente_id !== 'bloqueado' && servPrincipal)
+                ? (servPrincipal.cor || obterCorDoServico(servPrincipal))
+                : null;
               const servText = a.cliente_id === 'bloqueado' 
                 ? 'Bloqueio' 
                 : (servsDoAgCard.length > 0 
@@ -1747,7 +1796,12 @@ export const Agenda: React.FC<AgendaProps> = ({
                 <div
                   key={a.id}
                   onClick={() => setSelectedAgendamentoId(a.id)}
-                  className={`p-4 border rounded-xl cursor-pointer hover:shadow-sm transition-all ${statusStyles[a.status] || ''}`}
+                  style={corDoServico ? {
+                    borderColor: corDoServico,
+                    borderLeftWidth: '7px',
+                    borderLeftColor: corDoServico
+                  } : undefined}
+                  className={`p-4 border rounded-xl cursor-pointer hover:shadow-md transition-all ${statusStyles[a.status] || ''}`}
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -1801,7 +1855,29 @@ export const Agenda: React.FC<AgendaProps> = ({
                               )}
                             </div>
                             <p className="text-xs opacity-90 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                              {corDoServico && (
+                                <span 
+                                  className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs border border-white"
+                                  style={{ backgroundColor: corDoServico }}
+                                  title={`Cor do serviço: ${servPrincipal?.nome || servText}`}
+                                />
+                              )}
                               <span className="font-semibold text-stone-800">{servText}</span>
+                              {servsDoAgCard.length > 1 && (
+                                <span className="inline-flex items-center gap-1">
+                                  {servsDoAgCard.slice(1).map((subS, subIdx) => {
+                                    const subCor = subS.cor || obterCorDoServico(subS, subIdx + 1);
+                                    return (
+                                      <span 
+                                        key={subS.id || subIdx}
+                                        className="w-2 h-2 rounded-full inline-block shrink-0 shadow-2xs border border-white"
+                                        style={{ backgroundColor: subCor }}
+                                        title={subS.nome}
+                                      />
+                                    );
+                                  })}
+                                </span>
+                              )}
                               {(() => {
                                 const servsDoAg = obterServicosDeAgendamento(a.id);
                                 const temPacoteComDuplaReal = servsDoAg.some(s => {

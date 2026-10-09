@@ -77,6 +77,7 @@ export interface Servico {
   destaque_catalogo?: boolean; // Se o serviço fica em destaque na vitrine
   itens_inclusos?: string[]; // Itens inclusos no procedimento (exibidos em detalhes no catálogo)
   orientacoes_agendamento?: string; // Dicas ou observações pré-agendamento (exibidos em detalhes no catálogo)
+  cor?: string; // Cor de identificação visual da borda na agenda (hex)
 }
 
 export type AgendamentoStatus = 'pendente' | 'confirmado' | 'concluido' | 'cancelado' | 'falta' | 'bloqueado';
@@ -226,6 +227,7 @@ export interface ConfigSalao {
   };
   whatsapp_provedor_ativo?: 'meta' | 'qrcode' | 'desativado';
   catalogo_personalizacao?: CatalogoPersonalizacao;
+  cores_servicos?: { [servicoId: string]: string };
 }
 
 export interface QrCodeWhatsAppConfig {
