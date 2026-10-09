@@ -37,6 +37,7 @@ import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
 import { otimizarImagemWebP, gerarThumbnailWebP } from '../utils/imageOptimizer';
 import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
+import { PALETA_CORES_SERVICOS, obterCorDoServico } from '../utils/coresServicos';
 
 // Compressão automática em WebP ultra-leve para exibição rápida e economia de banda
 const comprimirImagem = (file: File, maxDim = 800, qualidade = 0.75): Promise<string> => {
@@ -105,6 +106,7 @@ export const Servicos: React.FC = () => {
   const [sinalValor, setSinalValor] = useState(0);
   const [intervaloManutencaoDias, setIntervaloManutencaoDias] = useState(20);
   const [descricao, setDescricao] = useState('');
+  const [cor, setCor] = useState<string>('#E0A96D');
   const [fotoServico, setFotoServico] = useState('');
   const [fotoThumbServico, setFotoThumbServico] = useState('');
   const [destaqueCatalogo, setDestaqueCatalogo] = useState(false);
@@ -285,6 +287,7 @@ export const Servicos: React.FC = () => {
     setServicosPacoteDetalhes([]);
     setFotoServico('');
     setFotoThumbServico('');
+    setCor('#E0A96D');
     setDestaqueCatalogo(false);
     setItensInclusosTexto('');
     setOrientacoesAgendamento('');
@@ -294,6 +297,7 @@ export const Servicos: React.FC = () => {
   const handleOpenEditar = (serv: Servico) => {
     setServicoEdicao(serv);
     setNome(serv.nome);
+    setCor(serv.cor || obterCorDoServico(serv));
     const catAlvo = (serv.categoria || '').trim();
     const catEncontrada = categoriasServico.find(c => c.toLowerCase() === catAlvo.toLowerCase());
 
@@ -343,6 +347,7 @@ export const Servicos: React.FC = () => {
   const handleDuplicarServico = (serv: Servico) => {
     setServicoEdicao(null); // ID novo será gerado ao salvar
     setNome(`${serv.nome} (Cópia)`);
+    setCor(serv.cor || obterCorDoServico(serv));
     const catAlvo = (serv.categoria || '').trim();
     const catEncontrada = categoriasServico.find(c => c.toLowerCase() === catAlvo.toLowerCase());
 
@@ -449,7 +454,8 @@ export const Servicos: React.FC = () => {
       foto_thumb: fotoThumbServico || undefined,
       destaque_catalogo: destaqueCatalogo,
       itens_inclusos: itensInclusosList.length > 0 ? itensInclusosList : undefined,
-      orientacoes_agendamento: orientacoesAgendamento.trim() || undefined
+      orientacoes_agendamento: orientacoesAgendamento.trim() || undefined,
+      cor: cor || '#E0A96D'
     };
 
     if (servicoEdicao) {
@@ -1025,9 +1031,14 @@ export const Servicos: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {servicosFiltrados.map((s) => {
                   const descLimpa = limparTextoDescricao(s.descricao);
+                  const corDoServico = s.cor || obterCorDoServico(s);
                   return (
                     <div 
                       key={s.id} 
+                      style={{
+                        borderLeftWidth: '6px',
+                        borderLeftColor: corDoServico
+                      }}
                       className="bg-white p-5 rounded-2xl border border-[#EFECE6] hover:border-[#8C6D58] flex flex-col justify-between gap-4 shadow-sm transition-all"
                     >
                       <div>
@@ -1056,7 +1067,12 @@ export const Servicos: React.FC = () => {
                             )}
                           </div>
                           <div className="text-right">
-                            <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5 flex items-center justify-end gap-1">
+                            <span className="text-xs font-bold text-[#8C7A6B] block uppercase tracking-wider text-[9px] mb-0.5 flex items-center justify-end gap-1.5">
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs border border-white"
+                                style={{ backgroundColor: corDoServico }}
+                                title={`Cor na agenda: ${corDoServico}`}
+                              />
                               {s.is_pacote && (
                                 <span className="bg-[#8C6D58] text-white text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded-md">
                                   Combo
@@ -2374,6 +2390,114 @@ export const Servicos: React.FC = () => {
                       <p className="text-[9px] text-[#8C7A6B] mt-0.5">Informe "0" se este serviço não exigir manutenção recorrente.</p>
                     </div>
                   )}
+                </div>
+
+                {/* Cor de Identificação na Agenda */}
+                <div className="bg-[#FAF9F6] p-4 rounded-xl border border-[#EFECE6] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Palette size={16} className="text-[#8C6D58]" />
+                      <label className="text-xs font-bold text-[#5A4535] uppercase tracking-wide">
+                        Cor de Identificação na Agenda
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="w-5 h-5 rounded-full border-2 border-white shadow-xs inline-block" 
+                        style={{ backgroundColor: cor }} 
+                      />
+                      <span className="text-xs font-mono font-bold text-[#8C6D58] uppercase">
+                        {cor}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#8C7A6B] leading-relaxed">
+                    Escolha uma cor para este serviço. A borda do agendamento na agenda terá esta cor no painel interno, facilitando a identificação rápida do procedimento.
+                  </p>
+
+                  {/* Paleta de Cores Pré-definidas */}
+                  <div className="space-y-1.5 pt-1">
+                    <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                      Cores Sugeridas
+                    </span>
+                    <div className="grid grid-cols-6 sm:grid-cols-9 gap-2">
+                      {PALETA_CORES_SERVICOS.map((p) => {
+                        const isSelected = (cor || '').toLowerCase() === p.hex.toLowerCase();
+                        return (
+                          <button
+                            key={p.hex}
+                            type="button"
+                            onClick={() => setCor(p.hex)}
+                            className={`w-7 h-7 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+                              isSelected 
+                                ? 'ring-2 ring-offset-2 ring-[#8C6D58] scale-110 shadow-sm' 
+                                : 'hover:scale-105 opacity-90 hover:opacity-100 shadow-2xs'
+                            }`}
+                            style={{ backgroundColor: p.hex }}
+                            title={`${p.nome} (${p.hex})`}
+                          >
+                            {isSelected && <Check size={14} className="text-white drop-shadow-md stroke-[3]" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Seletor Customizado de Cor */}
+                  <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-[#EFECE6]">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-[#5A4535]">Personalizar Cor:</label>
+                      <input 
+                        type="color"
+                        value={cor && cor.startsWith('#') && cor.length === 7 ? cor : '#E0A96D'}
+                        onChange={(e) => setCor(e.target.value)}
+                        className="w-8 h-8 rounded-lg cursor-pointer border border-[#EFECE6] bg-white p-0.5"
+                        title="Escolher cor personalizada"
+                      />
+                      <input 
+                        type="text"
+                        value={cor}
+                        onChange={(e) => setCor(e.target.value)}
+                        placeholder="#E0A96D"
+                        maxLength={7}
+                        className="w-24 bg-white border border-[#EFECE6] rounded-lg px-2 py-1 text-xs font-mono font-bold text-[#5A4535] uppercase focus:outline-none focus:border-[#8C6D58]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Prévia de como ficará na Agenda */}
+                  <div className="pt-2.5 border-t border-[#EFECE6] space-y-1.5">
+                    <span className="text-[10px] font-bold text-[#8C7A6B] uppercase tracking-wider block">
+                      Prévia da Borda na Agenda:
+                    </span>
+                    <div 
+                      className="p-3 bg-white rounded-xl text-xs flex items-center justify-between shadow-2xs transition-all border"
+                      style={{ 
+                        borderColor: cor, 
+                        borderLeftWidth: '6px',
+                        borderLeftColor: cor 
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-1 font-bold text-[11px] bg-stone-100 px-2 py-0.5 rounded text-[#5A4535]">
+                          <Clock size={11} /> 10:00 - 11:30
+                        </div>
+                        <div>
+                          <p className="font-bold text-[#5A4535] text-xs">Exemplo: Maria Silva</p>
+                          <p className="text-[11px] text-[#8C7A6B] flex items-center gap-1.5 mt-0.5">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs border border-white" 
+                              style={{ backgroundColor: cor }} 
+                            />
+                            <span className="font-semibold text-stone-800">{nome || 'Nome do Serviço'}</span> · Sheila Santos
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-extrabold text-[#5A4535]">
+                        {formatarMoeda(preco || 0)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
               </div>

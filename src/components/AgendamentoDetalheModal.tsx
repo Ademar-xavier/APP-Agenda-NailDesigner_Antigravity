@@ -39,6 +39,7 @@ import {
   agendamentoEnvolveProfissional,
   normalizarTextoVip
 } from '../utils/planoVipHelper';
+import { obterCorDoServico } from '../utils/coresServicos';
 
 interface AgendamentoDetalheModalProps {
   agendamentoId: string;
@@ -1296,6 +1297,9 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
     bloqueado: 'Bloqueado'
   };
 
+  const servPrincipalModal = servs[0];
+  const corPrincipalModal = (!isBloqueio && servPrincipalModal) ? (servPrincipalModal.cor || obterCorDoServico(servPrincipalModal)) : null;
+
   return (
     <div 
       className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 z-50 overflow-y-auto"
@@ -1304,6 +1308,10 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
       <div 
         className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-xl border border-[#EFECE6] my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
+        style={corPrincipalModal ? {
+          borderTopWidth: '6px',
+          borderTopColor: corPrincipalModal
+        } : undefined}
       >
         
         {/* Header (Like Claude's UI) */}
@@ -1747,16 +1755,30 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
               </div>
             ) : (
               <div className="space-y-1.5 text-xs text-[#5A4535]">
-                {servs.map((s) => (
-                  <div key={s.id} className="p-2.5 rounded-xl bg-white border border-[#EFECE6] shadow-2xs space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <span className="font-semibold text-stone-800 flex items-center gap-1.5">
-                          {s.nome}
-                          {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
-                        </span>
-                        <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
-                      </div>
+                {servs.map((s) => {
+                  const corS = s.cor || obterCorDoServico(s);
+                  return (
+                    <div 
+                      key={s.id} 
+                      style={{
+                        borderLeftWidth: '5px',
+                        borderLeftColor: corS
+                      }}
+                      className="p-2.5 rounded-xl bg-white border border-[#EFECE6] shadow-2xs space-y-1.5"
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-semibold text-stone-800 flex items-center gap-1.5">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-2xs border border-white"
+                              style={{ backgroundColor: corS }}
+                              title={`Cor: ${corS}`}
+                            />
+                            {s.nome}
+                            {isVip && <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded border border-amber-200">Sessão VIP</span>}
+                          </span>
+                          <span className="text-[10px] text-[#8C7A6B] block">Duração do procedimento: {s.duracao_minutos} min</span>
+                        </div>
                       <div className="text-right">
                         {agendamento.pago_com_clube ? (
                           <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -1807,7 +1829,8 @@ export const AgendamentoDetalheModal: React.FC<AgendamentoDetalheModalProps> = (
                       );
                     })()}
                   </div>
-                ))}
+                );
+              })}
               </div>
             )}
 

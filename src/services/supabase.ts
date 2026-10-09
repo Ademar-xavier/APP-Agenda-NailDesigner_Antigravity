@@ -77,6 +77,7 @@ export const encodeServicoDescricao = (
   descricaoOriginal: string | null | undefined, 
   extra: { 
     categoria?: string;
+    cor?: string;
     is_pacote?: boolean;
     servicos_pacote?: string[];
     sinal_tipo?: string; 
@@ -92,7 +93,8 @@ export const encodeServicoDescricao = (
   }
 ) => {
   const cleanDesc = (descricaoOriginal || '').replace(/<!--NAIL_META:[\s\S]*?-->/g, '').trim();
-  const hasExtra = (extra.sinal_tipo && extra.sinal_tipo !== 'nenhum') || 
+  const hasExtra = !!extra.cor ||
+                   (extra.sinal_tipo && extra.sinal_tipo !== 'nenhum') || 
                    (extra.sinal_valor !== undefined && extra.sinal_valor > 0) || 
                    (extra.materiais_utilizados && extra.materiais_utilizados.length > 0) ||
                    (extra.servicos_pacote_detalhes && extra.servicos_pacote_detalhes.length > 0) ||
@@ -128,9 +130,10 @@ export const salvarServicoSupabase = async (servico: any) => {
   try {
     const diasManutencao = Number(servico.intervalo_manutencao_dias !== undefined ? servico.intervalo_manutencao_dias : (servico.retorno_dias ?? 20));
     
-    // Codifica metadados adicionais (sinal, insumos, fotos, catálogo, itens inclusos, combo) na descrição sem quebrar colunas
+    // Codifica metadados adicionais (cor, sinal, insumos, fotos, catálogo, itens inclusos, combo) na descrição sem quebrar colunas
     const descricaoComMetadados = encodeServicoDescricao(servico.descricao, {
       categoria: servico.categoria || 'Geral',
+      cor: servico.cor,
       is_pacote: Boolean(servico.is_pacote),
       servicos_pacote: servico.servicos_pacote || servico.itens_combo || [],
       servicos_pacote_detalhes: servico.servicos_pacote_detalhes || [],
