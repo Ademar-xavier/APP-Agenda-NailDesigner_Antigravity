@@ -2,10 +2,8 @@
 // Permite entrega em tempo real mesmo com o aplicativo fechado ou minimizado no Android
 import crypto from 'node:crypto';
 
-const FALLBACK_SA_B64 = 'eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6InNoZWlsYS1zYW50b3MtbmFpbHMiLCJwcml2YXRlX2tleV9pZCI6IjU3NWU4NTY5N2ZkMTZhYjEwNWM1NzIwZjhmZjI5Mzc1MzNmNDUwMWUiLCJwcml2YXRlX2tleSI6Ii0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0tLVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFEcnVNbnBWM2hpeCtGVlxuQW1TYk1mSHBFcnZVcnJEbW81cnE4QTNHclhWd1JyNzJ3WWNBL3BJU05OejNiRmJHSTB1TlB6YVJZZ1prWnd6VlxudnRRNlkyRHhaVmdqYmN2U3I1NGVQMWFDOE9WTWRxUVlkSFhxdGdzMjJSVDlTaE8yUnVCZkFHWHpSRSsvSWtYVVxuQXJHUDFVTG9oTTY5R3lCRi96K3REamZLSEVoVXJyRFF3RVdCMTNIRzlnK0FaeE1mUHFaY1J6YVZlTGU5SDVCUVxuNGtFSnFGR2xvdTFJSElxNnZaZ01oYmFHZ1p1LzU5YllleEpISHFkZkU4cmxUSDlNbjNLOG5yUEVjWUVsUld6S1xuWnJzaS9BWGEzUHlBUEduMWNCd3pxZ1JySW1meTJvL3FVRHJ6NS9kVWRCR1pDbGlTaWdxejFCNUFpL0dMSDJGbFxuVGxReEpIWHJBZ01CQUFFQ2dnRUFiVGtubmM2aEFxeDVWYW1STW5RM0VuZFN2MTdlcTAvOXRZVGI3VVpzbDBUQVxuc1pmRTFZb2Y1djNGc1lQcXhVNlBjSGhzOFhxSldiYUNOUHlDWERlMk1NUnp6WjdQaGVWSUQ5M3JXU3NFSktVSVxucmlnd2h6d3BBQllnYXFrTGJ6ZHlPYkwyaW4wSnNwZlA0VWdLUElwbHdWWGdjYkdEQjh3WkZqZnpVOXc5QzdjdVxuZ00veUdUTFlFZWtJbkx6WnRKWXFjOE8zL2h5RGE4WTkrcEFQU2tNQ1RhY0NxcG9KTzJQaDEvekx1V2crYWYyQlxubGlpTmYrTnlMRnNmUGZyL1psUStjUkl1T1U1RndQUmpoK1V0VjYyemlvcnQ4cDQvSEZaTWU0bG9DMnA0T2ZQQlxubkFMSTJROG1yYnhZQzUvOXpsUVBndzdzS2NKZWlMdVZlRUQvdTRJRFFRS0JnUUQrRWRzb2xOVVpiSW1vL0tVTVxuTEFscWRFcU05a3U1ZG1xVkhjUHN2dElFUnFGZ1c1TCszNG9zY21JT0htZm9SNUJOZnBQRjNCRFVVNzBPYS9CZFxuY2Y2TSt4WEIvU2FpWktET3JMNk9KUy8zRG9pbkd2QUdCdWphZXkrK1Q1eGh0SlRLRnZGYzlDeUJtN01Wekd5L1xuQjJYSDZNRCtYTEMvanJPNXl4Ums4MFR5NFFLQmdRRHRnejliN0d0bWFyZllxNFR3S3YzZlhsSCt3b1R6RkJZZlxuNDdzZGpXUWNRRXowdW5TNW9QQlNoZm92QkxlTXVRK3dnUDVCd0JDTC9ONitmTzZwcitoQXJuZ1FqNzNkdEl0alxuNzhZWHNJSTFGZ29HajJ3b1crZ2pYV1lOcHVWUVlpS0JKWkgydmkvNy9aSEVrc0pDVkpMMWtsUE1takp5QlY5V1xuSW1NUzlNa09Td0tCZ0IwekdDajEwZmYyRFd3cWZSMkZBaUFGOVh0MTR3WVJvZlk1VVljbjl5TWVxdlZVRVBUUlxuNUNOdmtlMWxlVE9zNWR6Q0syR1dCU2toNXB4OXMwWktENk5NU0JmZmJFMUZtMldsWE5FaFhQM2I0Y0N5eTlzbFxuZUNXRCt0eTRjWlNaR0hDUmFuUHdiQjBKTSsvUmFyNFpyNHptSnlnVXB3dWM3dkx2Y0F5YUdOYUJBb0dBT3R2b1xucXE0WEc0VmMxQndGVU1OR3NNRWVEc1ZEenoxdUVpOE1ZdEYwT3JBUW9pRkc1ZTJsUUw0azl0dnpaTE5EMlJqT1xuYVpyZ1B1REdqbXhGZE5XNzk3T0UyNDNUbm9xc2RIS3FJNXJCV2NpQmFZakhZK1VLelNETE5wemlmUjRrc042UFxub3BjVkt4eDJzRUV5Vk4vQ240cklxNDZXNjd5N0dJeGpBd0tZaEtzQ2dZRUFrSjZuVTlIem5JOXdMQnRDaC9YQ1xuRXpwUzh3aVhJNkV6SGFRcmN4VmFJUmYvZkVvZWVVZk5LZEJjY3NFbk1vbkR0REhZWmx1SUpZUUtXVG5PRlhVdVxuMzNHdk1hanoxdHp3VHVnUzZQNXROcDN5NzZ2MGZZQXlUcXVHNEx0OTgxWFhwaFVxTmZMdVZSRFYxbVl6SEVWaFxuak5RcGxvUjZHaG1YbEhYWktveVk5cU09XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLCJjbGllbnRfZW1haWwiOiJmaXJlYmFzZS1hZG1pbnNkay1mYnN2Y0BzaGVpbGEtc2FudG9zLW5haWxzLmlhbS5nc2VydmljZWFjY291bnQuY29tIiwiY2xpZW50X2lkIjoiMTAxNTE0ODk4MzIxNzY0MzUyMzY3IiwiYXV0aF91cmkiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20vby9vYXV0aDIvYXV0aCIsInRva2VuX3VyaSI6Imh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rva2VuIiwiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjoiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vb2F1dGgyL3YxL2NlcnRzIiwiY2xpZW50X3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9yb2JvdC92MS9tZXRhZGF0YS94NTA5L2ZpcmViYXNlLWFkbWluc2RrLWZic3ZjJTQwc2hlaWxhLXNhbnRvcy1uYWlscy5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsInVuaXZlcnNlX2RvbWFpbiI6Imdvb2dsZWFwaXMuY29tIn0=';
-
-const FALLBACK_SUPABASE_URL = Buffer.from('aHR0cHM6Ly9za2R2YXhlemhza2ZzZmhtdmFqdC5zdXBhYmFzZS5jbw==', 'base64').toString();
-const FALLBACK_SUPABASE_KEY = Buffer.from('c2JfcHVibGlzaGFibGVfc2R6ZUxCZFFlVWdmWS03c0h3UFc1Z18yVXFaM1JhcA==', 'base64').toString();
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
 function base64url(str) {
   return Buffer.from(str).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -13,6 +11,10 @@ function base64url(str) {
 
 // Obtém o Access Token OAuth2 para chamar a API v1 do Firebase Cloud Messaging
 async function obterAccessTokenGoogle(serviceAccount) {
+  if (!serviceAccount || !serviceAccount.client_email || !serviceAccount.private_key) {
+    throw new Error('Credenciais de Service Account inválidas.');
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claim = base64url(JSON.stringify({
@@ -110,13 +112,14 @@ async function enviarMensagemFcmV1(accessToken, projectId, tokenDispositivo, dad
 
 // Busca os tokens FCM ativos cadastrados na tabela configuracoes do Supabase
 async function buscarTokensFcmSupabase() {
-  const url = `${FALLBACK_SUPABASE_URL}/rest/v1/configuracoes?id=eq.salao_principal&select=config_salao`;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return [];
+  const url = `${SUPABASE_URL}/rest/v1/configuracoes?id=eq.salao_principal&select=config_salao`;
   try {
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'apikey': FALLBACK_SUPABASE_KEY,
-        'Authorization': 'Bearer ' + FALLBACK_SUPABASE_KEY,
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
         'Accept': 'application/json'
       }
     });
@@ -130,9 +133,14 @@ async function buscarTokensFcmSupabase() {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Internal-Secret');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -143,19 +151,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-    const { titulo, mensagem, detalhes, agendamentoId, tipo, tokens: tokensInformados } = body;
-
+    // 1. Obtenção Segura da Service Account via Variável de Ambiente
     let serviceAccount = null;
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       try {
         serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      } catch (e) {}
+      } catch (e) {
+        console.error('Falha ao analisar FIREBASE_SERVICE_ACCOUNT_JSON:', e);
+      }
     }
-    if (!serviceAccount) {
-      const decoded = Buffer.from(FALLBACK_SA_B64, 'base64').toString('utf8');
-      serviceAccount = JSON.parse(decoded);
+
+    if (!serviceAccount || !serviceAccount.private_key || !serviceAccount.client_email) {
+      return res.status(503).json({
+        erro: 'Configuração do Firebase não encontrada. Defina FIREBASE_SERVICE_ACCOUNT_JSON nas variáveis de ambiente da Vercel.'
+      });
     }
+
+    const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
+    const { titulo, mensagem, detalhes, agendamentoId, tipo, tokens: tokensInformados } = body;
 
     let tokens = Array.isArray(tokensInformados) && tokensInformados.length > 0
       ? tokensInformados
@@ -173,10 +186,10 @@ export default async function handler(req, res) {
 
     const envios = await Promise.all(
       tokens.map(token => enviarMensagemFcmV1(accessToken, serviceAccount.project_id, token, {
-        titulo: titulo || 'Novo Agendamento 💅',
-        mensagem: corpoCompleto,
-        agendamentoId,
-        tipo
+        titulo: String(titulo || 'Novo Agendamento 💅').slice(0, 100),
+        mensagem: String(corpoCompleto).slice(0, 500),
+        agendamentoId: String(agendamentoId || '').slice(0, 50),
+        tipo: String(tipo || 'agendamento').slice(0, 50)
       }))
     );
 

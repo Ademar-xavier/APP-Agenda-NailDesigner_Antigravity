@@ -1,8 +1,10 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
-// Permite conexões seguras mesmo através de proxies corporativos/antivírus
-app.commandLine.appendSwitch('ignore-certificate-errors');
+// Permite ignorar erros de certificado SSL estritamente em ambiente de desenvolvimento local
+if (process.env.NODE_ENV === 'development') {
+  app.commandLine.appendSwitch('ignore-certificate-errors');
+}
 
 function createWindow () {
   const win = new BrowserWindow({

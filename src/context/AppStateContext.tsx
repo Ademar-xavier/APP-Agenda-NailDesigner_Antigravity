@@ -403,12 +403,12 @@ const configSalaoInicial: ConfigSalao = {
     contato_geral: 'Olá, {cliente}! Tudo bem? Gostaria de agendar seu horário conosco no Sheila Santos Nails? 💕\n\n📅 Escolha o melhor dia e horário pelo nosso link online:\n{link_agendamento}'
   },
   qrcode_whatsapp: {
-    ativo: true,
+    ativo: false,
     provedor: 'evolution',
-    instancia: 'salao-sheila',
-    token: '7D254EAC0B52-4E75-9417-6F264AAE1EC5',
-    apiUrl: 'https://evolution-api-production-cdeb.up.railway.app',
-    numeroAlertaProfissional: '35 99714-1856',
+    instancia: '',
+    token: '',
+    apiUrl: '',
+    numeroAlertaProfissional: '',
     notificarClienteAoAgendar: true,
     notificarProfissionalAoAgendar: true
   }
@@ -800,6 +800,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   });
 
+  // Higienização de Segurança: NUNCA persiste senhas de profissionais no localStorage do navegador
+  const salvarEquipeLocalStorage = (lista: Usuario[]) => {
+    try {
+      const sanitizada = (lista || []).map(({ senha, ...resto }) => resto);
+      localStorage.setItem('nail_equipe', JSON.stringify(sanitizada));
+    } catch (e) {}
+  };
+
   // Estado de Equipe e Autenticação (Sincroniza estritamente conforme o banco e armazenamento local)
   const [equipe, setEquipe] = useState<Usuario[]>(() => {
     try {
@@ -859,9 +867,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     try {
       if (currentUser) {
+        const { senha, ...userSemSenha } = currentUser;
         sessionStorage.setItem('nail_session_active', '1');
-        sessionStorage.setItem('nail_current_user', JSON.stringify(currentUser));
-        localStorage.setItem('nail_session_user', JSON.stringify(currentUser));
+        sessionStorage.setItem('nail_current_user', JSON.stringify(userSemSenha));
+        localStorage.setItem('nail_session_user', JSON.stringify(userSemSenha));
       } else {
         sessionStorage.removeItem('nail_session_active');
         sessionStorage.removeItem('nail_current_user');
@@ -1119,7 +1128,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [itensAgendamento]);
 
   useEffect(() => {
-    localStorage.setItem('nail_equipe', JSON.stringify(equipe));
+    salvarEquipeLocalStorage(equipe);
   }, [equipe]);
 
   // Estado de Sincronização em Nuvem (Supabase)
@@ -1444,7 +1453,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
 
         setEquipe(usuariosComSenha);
-        try { localStorage.setItem('nail_equipe', JSON.stringify(usuariosComSenha)); } catch (e) {}
+        salvarEquipeLocalStorage(usuariosComSenha);
       }
 
       // 6. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
@@ -2305,7 +2314,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     const nextEquipe = [...equipe, novo];
     setEquipe(nextEquipe);
-    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+    salvarEquipeLocalStorage(nextEquipe);
 
     salvarUsuarioSupabase(novo).then();
     const res = await salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe });
@@ -2319,7 +2328,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateEquipe = async (id: string, updated: Partial<Usuario>) => {
     const nextEquipe = equipe.map(u => u.id === id ? { ...u, ...updated } : u);
     setEquipe(nextEquipe);
-    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+    salvarEquipeLocalStorage(nextEquipe);
 
     const membro = nextEquipe.find(u => u.id === id);
     if (membro) {
@@ -2336,7 +2345,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteEquipe = async (id: string) => {
     const nextEquipe = equipe.filter(u => u.id !== id);
     setEquipe(nextEquipe);
-    try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+    salvarEquipeLocalStorage(nextEquipe);
 
     try { supabase.from('usuarios').delete().eq('id', id).then(); } catch (e) {}
     salvarConfiguracoesSupabase({ configSalao, equipe: nextEquipe }).then();
@@ -2461,7 +2470,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       setEquipe(nextEquipe);
-      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+      salvarEquipeLocalStorage(nextEquipe);
 
       // Limpa qualquer cancelamento ou bloqueio pontual que estava nesta data para valer o novo padrão
       const agsFiltrados = agendamentos.filter(a => {
@@ -2503,7 +2512,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       setEquipe(nextEquipe);
-      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+      salvarEquipeLocalStorage(nextEquipe);
 
       // Limpa bloqueios pontuais nesta data para valer o padrão de todo o salão
       const agsFiltrados = agendamentos.filter(a => {
@@ -2600,7 +2609,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       });
 
       setEquipe(nextEquipe);
-      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+      salvarEquipeLocalStorage(nextEquipe);
 
       // Remove eventuais agendamentos pontuais de almoço nesta data
       const agsFiltrados = agendamentos.filter(a => {
@@ -2629,7 +2638,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }));
 
       setEquipe(nextEquipe);
-      try { localStorage.setItem('nail_equipe', JSON.stringify(nextEquipe)); } catch (e) {}
+      salvarEquipeLocalStorage(nextEquipe);
 
       const agsFiltrados = agendamentos.filter(a => {
         const isPontualDesteDia = a.inicio.startsWith(data) && 
@@ -2704,7 +2713,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
         return u;
       });
-      try { localStorage.setItem('nail_equipe', JSON.stringify(equipeAtualizada)); } catch (e) {}
+      salvarEquipeLocalStorage(equipeAtualizada);
       salvarConfiguracoesSupabase({ configSalao, equipe: equipeAtualizada }).catch(() => {});
       return equipeAtualizada;
     });

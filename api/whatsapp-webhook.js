@@ -1,18 +1,14 @@
 // Vercel Serverless Function: Webhook Oficial da Meta Cloud API (WhatsApp Business)
 // Recebe as respostas de cliques dos botões enviados para as clientes e atualiza o Supabase em tempo real!
+import crypto from 'node:crypto';
 
-const FALLBACK_URL = typeof Buffer !== 'undefined'
-  ? Buffer.from('aHR0cHM6Ly9za2R2YXhlemhza2ZzZmhtdmFqdC5zdXBhYmFzZS5jbw==', 'base64').toString()
-  : '';
-const FALLBACK_KEY = typeof Buffer !== 'undefined'
-  ? Buffer.from('c2JfcHVibGlzaGFibGVfc2R6ZUxCZFFlVWdmWS03c0h3UFc1Z18yVXFaM1JhcA==', 'base64').toString()
-  : '';
-
-const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_URL).trim();
-const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || FALLBACK_KEY).trim();
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 const VERIFY_TOKEN = (process.env.META_VERIFY_TOKEN || '').trim();
+const APP_SECRET = (process.env.META_APP_SECRET || '').trim();
 
 const supabaseRest = async (path, options = {}) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
   const url = `${SUPABASE_URL}/rest/v1/${path}`;
   const headers = {
     'apikey': SUPABASE_ANON_KEY,
@@ -43,7 +39,7 @@ export default async function handler(req, res) {
     const token = query['hub.verify_token'];
     const challenge = query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN) {
       console.log('Webhook da Meta verificado com sucesso no Vercel!');
       return res.status(200).send(String(challenge || 'OK'));
     }
@@ -53,6 +49,27 @@ export default async function handler(req, res) {
   // 2. Recebimento de mensagens e cliques da cliente (POST Request)
   if (req.method === 'POST') {
     try {
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+
+      // Validação Criptográfica da Assinatura HMAC SHA256 enviada pela Meta
+      if (APP_SECRET) {
+        const signature = req.headers['x-hub-signature-256'];
+        if (!signature || typeof signature !== 'string') {
+          console.warn('Webhook Meta rejeitado: Assinatura X-Hub-Signature-256 ausente.');
+          return res.status(401).json({ erro: 'Assinatura X-Hub-Signature-256 ausente.' });
+        }
+
+        const expectedSignature = 'sha256=' + crypto.createHmac('sha256', APP_SECRET).update(rawBody).digest('hex');
+
+        const sigBuf = Buffer.from(signature);
+        const expBuf = Buffer.from(expectedSignature);
+
+        if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+          console.warn('Webhook Meta rejeitado: Assinatura HMAC SHA-256 inválida.');
+          return res.status(401).json({ erro: 'Assinatura HMAC SHA-256 inválida.' });
+        }
+      }
+
       const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
 
       if (body.object === 'whatsapp_business_account') {
@@ -68,28 +85,38 @@ export default async function handler(req, res) {
               if (msg.type === 'interactive' && msg.interactive) {
                 const buttonReply = msg.interactive.button_reply;
                 if (buttonReply) {
-                  const actionId = buttonReply.id;
+                  const actionId = String(buttonReply.id || '');
                   console.log(`Resposta de botão recebida: ${actionId} de ${msg.from}`);
 
+                  // Sanitização do ID de agendamento (somente caracteres alfanuméricos e underscores)
+                  const extrairIdSeguro = (prefixo) => {
+                    const idBruto = actionId.replace(prefixo, '');
+                    return idBruto.replace(/[^a-zA-Z0-9_-]/g, '');
+                  };
+
                   if (actionId.startsWith('CONFIRMAR_')) {
-                    const agendamentoId = actionId.replace('CONFIRMAR_', '');
-                    await supabaseRest(`agendamentos?id=eq.${agendamentoId}`, {
-                      method: 'PATCH',
-                      body: JSON.stringify({
-                        status: 'confirmado',
-                        confirmado_pelo_cliente: true,
-                        confirmado_em: new Date().toISOString()
-                      })
-                    });
+                    const agendamentoId = extrairIdSeguro('CONFIRMAR_');
+                    if (agendamentoId) {
+                      await supabaseRest(`agendamentos?id=eq.${encodeURIComponent(agendamentoId)}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({
+                          status: 'confirmado',
+                          confirmado_pelo_cliente: true,
+                          confirmado_em: new Date().toISOString()
+                        })
+                      });
+                    }
                   } else if (actionId.startsWith('CANCELAR_')) {
-                    const agendamentoId = actionId.replace('CANCELAR_', '');
-                    await supabaseRest(`agendamentos?id=eq.${agendamentoId}`, {
-                      method: 'PATCH',
-                      body: JSON.stringify({
-                        status: 'cancelado',
-                        motivo_cancelamento: 'Cancelado pela cliente via WhatsApp'
-                      })
-                    });
+                    const agendamentoId = extrairIdSeguro('CANCELAR_');
+                    if (agendamentoId) {
+                      await supabaseRest(`agendamentos?id=eq.${encodeURIComponent(agendamentoId)}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({
+                          status: 'cancelado',
+                          motivo_cancelamento: 'Cancelado pela cliente via WhatsApp'
+                        })
+                      });
+                    }
                   }
                 }
               }

@@ -1,8 +1,8 @@
 // Vercel Serverless Function: Envio de Mensagens via WhatsApp QR Code (Z-API / Evolution API / Gateway Personalizado)
 // Permite envio de alertas automáticos sem burocracia do Facebook / Meta
 
-const FALLBACK_SUPABASE_URL = Buffer.from('aHR0cHM6Ly9za2R2YXhlemhza2ZzZmhtdmFqdC5zdXBhYmFzZS5jbw==', 'base64').toString();
-const FALLBACK_SUPABASE_KEY = Buffer.from('c2JfcHVibGlzaGFibGVfc2R6ZUxCZFFlVWdmWS03c0h3UFc1Z18yVXFaM1JhcA==', 'base64').toString();
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+const SUPABASE_ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim();
 
 function normalizarTelefone(telefone) {
   if (!telefone) return '';
@@ -13,14 +13,49 @@ function normalizarTelefone(telefone) {
   return limpo;
 }
 
+// Proteção Anti-SSRF: Bloqueia conexões a redes internas, loopback, metadados da nuvem e esquemas inseguros
+function validarUrlDestinoSegura(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return false;
+  try {
+    const parsed = new URL(urlStr);
+    // 1. Exige obrigatoriamente HTTPS
+    if (parsed.protocol !== 'https:') return false;
+
+    const host = parsed.hostname.toLowerCase();
+
+    // 2. Bloqueia loopback, localhost e link-local (metadados AWS/GCP/Azure)
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      host === '::1' ||
+      host === '[::1]' ||
+      host.startsWith('127.') ||
+      host.startsWith('169.254.') || // Cloud Metadata
+      host.startsWith('10.') ||      // RFC1918 Private
+      host.startsWith('192.168.') || // RFC1918 Private
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) || // RFC1918 Private
+      host.endsWith('.internal') ||
+      host.endsWith('.local')
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function buscarConfigQrCodeSupabase() {
-  const url = `${FALLBACK_SUPABASE_URL}/rest/v1/configuracoes?id=eq.salao_principal&select=config_salao`;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const url = `${SUPABASE_URL}/rest/v1/configuracoes?id=eq.salao_principal&select=config_salao`;
   try {
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        'apikey': FALLBACK_SUPABASE_KEY,
-        'Authorization': 'Bearer ' + FALLBACK_SUPABASE_KEY,
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
         'Accept': 'application/json'
       }
     });
@@ -33,7 +68,12 @@ async function buscarConfigQrCodeSupabase() {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -53,9 +93,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ erro: 'Destinatário e mensagem são obrigatórios.' });
     }
 
-    const cfg = configInformada && (configInformada.instancia || configInformada.apiUrl)
-      ? configInformada
-      : await buscarConfigQrCodeSupabase();
+    const telefoneFinal = normalizarTelefone(destinatario);
+    if (!/^\d{10,15}$/.test(telefoneFinal)) {
+      return res.status(400).json({ erro: 'Formato de telefone inválido.' });
+    }
+
+    // Prioriza configuração salva e validada no Supabase
+    const cfgBanco = await buscarConfigQrCodeSupabase();
+    const cfg = (cfgBanco && cfgBanco.ativo) ? cfgBanco : configInformada;
 
     if (!cfg || !cfg.ativo) {
       return res.status(200).json({
@@ -64,15 +109,12 @@ export default async function handler(req, res) {
       });
     }
 
-    const telefoneFinal = normalizarTelefone(destinatario);
     const provedor = cfg.provedor || 'zapi';
-
     let urlDestino = '';
     let headersRequisicao = { 'Content-Type': 'application/json' };
     let corpoEnvio = {};
 
     if (provedor === 'zapi') {
-      // Z-API (Gateway Líder em QR Code no Brasil)
       const instancia = (cfg.instancia || '').trim();
       const token = (cfg.token || '').trim();
       if (!instancia || !token) {
@@ -81,18 +123,17 @@ export default async function handler(req, res) {
 
       urlDestino = cfg.apiUrl && cfg.apiUrl.includes('/send-text')
         ? cfg.apiUrl
-        : `https://api.z-api.io/instances/${instancia}/token/${token}/send-text`;
+        : `https://api.z-api.io/instances/${encodeURIComponent(instancia)}/token/${encodeURIComponent(token)}/send-text`;
 
       if (cfg.clientToken) {
-        headersRequisicao['Client-Token'] = cfg.clientToken.trim();
+        headersRequisicao['Client-Token'] = String(cfg.clientToken).trim();
       }
 
       corpoEnvio = {
         phone: telefoneFinal,
-        message: mensagem
+        message: String(mensagem).slice(0, 2000)
       };
     } else if (provedor === 'evolution') {
-      // Evolution API (v1 / v2)
       const apiUrl = (cfg.apiUrl || '').replace(/\/$/, '').trim();
       const instancia = (cfg.instancia || '').trim();
       const token = (cfg.token || '').trim();
@@ -101,17 +142,16 @@ export default async function handler(req, res) {
         return res.status(400).json({ erro: 'URL da API e Nome da Instância da Evolution API são obrigatórios.' });
       }
 
-      urlDestino = `${apiUrl}/message/sendText/${instancia}`;
+      urlDestino = `${apiUrl}/message/sendText/${encodeURIComponent(instancia)}`;
       if (token) {
         headersRequisicao['apikey'] = token;
       }
 
       corpoEnvio = {
         number: telefoneFinal,
-        text: mensagem
+        text: String(mensagem).slice(0, 2000)
       };
     } else {
-      // Gateway Genérico / Webhook Personalizado
       const apiUrl = (cfg.apiUrl || '').trim();
       if (!apiUrl) {
         return res.status(400).json({ erro: 'URL do Endpoint é obrigatória para Gateway Personalizado.' });
@@ -119,17 +159,22 @@ export default async function handler(req, res) {
 
       urlDestino = apiUrl;
       if (cfg.token) {
-        headersRequisicao['Authorization'] = `Bearer ${cfg.token.trim()}`;
+        headersRequisicao['Authorization'] = `Bearer ${String(cfg.token).trim()}`;
       }
 
       corpoEnvio = {
         phone: telefoneFinal,
-        telefone: telefoneFinal,
         number: telefoneFinal,
-        message: mensagem,
-        text: mensagem,
-        mensagem: mensagem
+        message: String(mensagem).slice(0, 2000),
+        text: String(mensagem).slice(0, 2000)
       };
+    }
+
+    // Validação Anti-SSRF estrita antes de efetuar fetch
+    if (!validarUrlDestinoSegura(urlDestino)) {
+      return res.status(400).json({
+        erro: 'URL de destino inválida ou não permitida. Apenas conexões HTTPS externas seguras são aceitas.'
+      });
     }
 
     // Executa o disparo para o provedor
@@ -152,7 +197,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         sucesso: false,
         status: respostaApi.status,
-        mensagem: `O provedor WhatsApp retornou código ${respostaApi.status}. Verifique se a instância está conectada ao QR Code.`,
+        mensagem: `O provedor WhatsApp retornou código ${respostaApi.status}. Verifique se a instância está conectada.`,
         detalhes: jsonResposta
       });
     }
