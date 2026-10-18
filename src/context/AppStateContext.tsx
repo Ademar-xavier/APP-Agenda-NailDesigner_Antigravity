@@ -1360,9 +1360,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // 3. Lista de Espera da Nuvem
-      if (dados.listaEspera) {
+      if (dados.listaEspera && dados.listaEspera.length > 0) {
         setListaEspera(dados.listaEspera);
         try { localStorage.setItem('nail_lista_espera', JSON.stringify(dados.listaEspera)); } catch (e) {}
+      } else if (forcarSobrescrita && dados.listaEspera && dados.listaEspera.length === 0) {
+        setListaEspera([]);
+        try { localStorage.setItem('nail_lista_espera', JSON.stringify([])); } catch (e) {}
       }
 
       // 4. Serviços da Nuvem (com regras de sinal e intervalo de manutenção preservados)
@@ -1457,7 +1460,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
 
       // 6. Materiais da Nuvem (calculando custo_por_uso para evitar NaN)
-      if (dados.materiais) {
+      if (dados.materiais && dados.materiais.length > 0) {
         const matsValidos = dados.materiais.filter((m: any) =>
           !m.nome?.startsWith('[EXCLUIDO]') &&
           m.ativo !== false
@@ -1477,10 +1480,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
         setMateriais(matsFormatados);
         try { localStorage.setItem('nail_materiais', JSON.stringify(matsFormatados)); } catch (e) {}
+      } else if (forcarSobrescrita && dados.materiais && dados.materiais.length === 0) {
+        setMateriais([]);
+        try { localStorage.setItem('nail_materiais', JSON.stringify([])); } catch (e) {}
       }
 
       // 8. Despesas da Nuvem
-      if (dados.despesas) {
+      if (dados.despesas && dados.despesas.length > 0) {
         const despsValidas = dados.despesas.filter((d: any) =>
           !d.descricao?.includes('[EXCLUIDO_ADMIN]') &&
           !d.descricao?.startsWith('[EXCLUIDO]')
@@ -1543,6 +1549,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
         setDespesas(despsFormatadas);
         try { localStorage.setItem('nail_despesas', JSON.stringify(despsFormatadas)); } catch (e) {}
+      } else if (forcarSobrescrita && dados.despesas && dados.despesas.length === 0) {
+        setDespesas([]);
+        try { localStorage.setItem('nail_despesas', JSON.stringify([])); } catch (e) {}
       }
 
       // 9. Configurações Gerais do Salão (Técnicas, Formatos, Categorias)
