@@ -38,7 +38,8 @@ import {
   Info,
   ShieldCheck,
   Bell,
-  QrCode
+  QrCode,
+  Download
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -68,6 +69,12 @@ export const Configuracoes: React.FC = () => {
     configSalao, 
     updateConfigSalao, 
     servicos,
+    clientes,
+    agendamentos,
+    materiais,
+    despesas,
+    listaEspera,
+    currentUser,
     equipe, 
     addEquipe, 
     updateEquipe,
@@ -245,6 +252,49 @@ export const Configuracoes: React.FC = () => {
         });
       }
     });
+  };
+
+  const handleExportarBackup = () => {
+    try {
+      const backupData = {
+        sistema: 'Sheila Santos Nails Designer',
+        versao: '2.0',
+        data_geracao: new Date().toISOString(),
+        salvo_por: currentUser?.nome || configSalao?.proprietaria || 'Sheila Santos',
+        clientes,
+        agendamentos,
+        servicos,
+        materiais,
+        despesas,
+        equipe,
+        configSalao,
+        listaEspera
+      };
+
+      const jsonStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dataStr = new Date().toISOString().split('T')[0];
+      link.href = url;
+      link.download = `backup_sheila_santos_nails_${dataStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      mostrarAlerta({
+        titulo: 'Backup Exportado com Sucesso! 💾',
+        mensagem: 'O arquivo com todos os dados do salão (clientes, agendamentos, serviços, materiais e financeiro) foi baixado com segurança no seu dispositivo.',
+        tipo: 'sucesso'
+      });
+    } catch (e: any) {
+      mostrarAlerta({
+        titulo: 'Erro ao Gerar Backup',
+        mensagem: e.message || 'Falha ao exportar os dados.',
+        tipo: 'erro'
+      });
+    }
   };
 
   // --- META WHATSAPP CONFIG STATE ---
@@ -847,11 +897,19 @@ export const Configuracoes: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Opção de Limpar Cache e Manutenção */}
+                {/* Opção de Backup e Manutenção deste Aparelho */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[#E8DEC9]/40">
-                  <span className="text-[11px] text-[#8C7A6B]">
-                    Manutenção deste aparelho:
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportarBackup}
+                      className="text-xs font-bold text-[#8C6D58] hover:text-[#5A4535] bg-white border border-[#E5D5C5] hover:border-[#8C6D58] px-3.5 py-2 rounded-xl flex items-center gap-2 transition-all shadow-xs active:scale-98 cursor-pointer"
+                      title="Baixar arquivo de backup com todos os dados do salão no seu computador ou celular"
+                    >
+                      <Download size={14} className="text-[#8C6D58]" />
+                      <span>Exportar Backup Offline (JSON)</span>
+                    </button>
+                  </div>
                   <div>
                     <button
                       type="button"
