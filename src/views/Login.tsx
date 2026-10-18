@@ -14,6 +14,7 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [bloqueioSegundos, setBloqueioSegundos] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // Verifica se há bloqueio ativo por excesso de tentativas
   useEffect(() => {
@@ -38,7 +39,7 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
     return () => clearInterval(timer);
   }, [bloqueioSegundos]);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -61,21 +62,28 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
       return;
     }
 
-    const success = loginWithCredentials(targetUser, pwd);
-    if (success) {
-      resetarFalhasLogin();
-      setIsAdmin(true);
-      try {
-        window.history.replaceState({ nailView: 'dashboard', logged: true }, '', '#admin');
-      } catch (e) {}
-    } else {
-      const falha = registrarFalhaLogin();
-      if (falha.bloqueouAgora) {
-        setBloqueioSegundos(falha.segundosRestantes);
-        setError(`Múltiplas tentativas incorretas detectadas! O acesso foi bloqueado por ${falha.segundosRestantes} segundos para proteção da conta.`);
+    setLoading(true);
+    try {
+      const success = await loginWithCredentials(targetUser, pwd);
+      if (success) {
+        resetarFalhasLogin();
+        setIsAdmin(true);
+        try {
+          window.history.replaceState({ nailView: 'dashboard', logged: true }, '', '#admin');
+        } catch (e) {}
       } else {
-        setError('Usuário ou senha incorretos. Verifique suas credenciais.');
+        const falha = registrarFalhaLogin();
+        if (falha.bloqueouAgora) {
+          setBloqueioSegundos(falha.segundosRestantes);
+          setError(`Múltiplas tentativas incorretas detectadas! O acesso foi bloqueado por ${falha.segundosRestantes} segundos para proteção da conta.`);
+        } else {
+          setError('Usuário ou senha incorretos. Verifique suas credenciais.');
+        }
       }
+    } catch (err: any) {
+      setError(err?.message || 'Erro ao processar autenticação.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -171,13 +179,22 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
           {/* Submit com proteção anti-força bruta */}
           <button
             type="submit"
-            disabled={bloqueioSegundos > 0}
+            disabled={bloqueioSegundos > 0 || loading}
             className="w-full bg-[#8C6D58] hover:bg-[#725743] disabled:bg-[#444] disabled:opacity-60 text-white py-3.5 rounded-xl text-xs font-bold transition-all shadow-md mt-2 flex items-center justify-center gap-1.5 active:scale-98"
           >
-            <Shield size={14} />
-            <span>
-              {bloqueioSegundos > 0 ? `Bloqueado (${bloqueioSegundos}s)` : 'Acessar Painel'}
-            </span>
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Autenticando com Supabase...
+              </span>
+            ) : (
+              <>
+                <Shield size={14} />
+                <span>
+                  {bloqueioSegundos > 0 ? `Bloqueado (${bloqueioSegundos}s)` : 'Acessar Painel'}
+                </span>
+              </>
+            )}
           </button>
         </form>
 

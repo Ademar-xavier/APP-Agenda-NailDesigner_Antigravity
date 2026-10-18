@@ -137,8 +137,8 @@ interface AppStateContextType {
   
   // Ações de Autenticação
   login: (usuarioId: string) => void;
-  loginWithCredentials: (identificador: string, senhaDigitada: string) => boolean;
-  logout: () => void;
+  loginWithCredentials: (identificador: string, senhaDigitada: string) => Promise<boolean>;
+  logout: () => Promise<void>;
 
   // Ações de Equipe
   addEquipe: (membro: Omit<Usuario, 'id' | 'ativo'>) => void;
@@ -835,29 +835,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const [currentUser, setCurrentUser] = useState<Usuario | null>(() => {
     try {
-      const isSessionAlive = sessionStorage.getItem('nail_session_active') === '1';
-      if (isSessionAlive) {
-        // A sessão continua viva (o app foi minimizado ou reaberto no mesmo ciclo de vida)
-        const savedSession = sessionStorage.getItem('nail_current_user');
-        if (savedSession) {
-          const parsed = JSON.parse(savedSession);
-          if (parsed && parsed.id) return parsed;
-        }
-        const savedLocal = localStorage.getItem('nail_session_user');
-        if (savedLocal) {
-          const parsed = JSON.parse(savedLocal);
-          if (parsed && parsed.id) {
-            sessionStorage.setItem('nail_current_user', savedLocal);
-            return parsed;
-          }
-        }
-      } else {
-        // App foi completamente fechado/encerrado (cold start)!
-        // Limpa para exigir login novamente conforme regra de segurança
-        localStorage.removeItem('nail_session_user');
-        localStorage.removeItem('nail_current_user');
-        sessionStorage.removeItem('nail_current_user');
-        sessionStorage.removeItem('nail_session_active');
+      const savedSession = sessionStorage.getItem('nail_current_user') || localStorage.getItem('nail_session_user');
+      if (savedSession) {
+        const parsed = JSON.parse(savedSession);
+        if (parsed && parsed.id) return parsed;
       }
     } catch (e) {}
     return null;
@@ -879,6 +860,57 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (e) {}
   }, [currentUser]);
+
+  // Reidratação e escuta da sessão oficial do Supabase Auth
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setCurrentUser(prev => {
+          if (prev) return prev;
+          const userFound = equipe.find(u => 
+            u.email?.toLowerCase() === session.user.email?.toLowerCase() || 
+            u.perfil === 'admin'
+          );
+          return userFound || {
+            id: 'admin_master',
+            nome: 'Sheila Santos',
+            email: session.user.email || 'sheila@salao.com',
+            telefone: '',
+            perfil: 'admin',
+            ativo: true,
+            especialidade: 'Especialista Master'
+          };
+        });
+      }
+    }).catch(() => {});
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        setCurrentUser(prev => {
+          if (prev) return prev;
+          const userFound = equipe.find(u => 
+            u.email?.toLowerCase() === session.user.email?.toLowerCase() || 
+            u.perfil === 'admin'
+          );
+          return userFound || {
+            id: 'admin_master',
+            nome: 'Sheila Santos',
+            email: session.user.email || 'sheila@salao.com',
+            telefone: '',
+            perfil: 'admin',
+            ativo: true,
+            especialidade: 'Especialista Master'
+          };
+        });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [equipe]);
 
   const [despesas, setDespesas] = useState<Despesa[]>(() => {
     const saved = localStorage.getItem('nail_despesas');
@@ -2260,33 +2292,59 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const loginWithCredentials = (identificador: string, senhaDigitada: string): boolean => {
+  const loginWithCredentials = async (identificador: string, senhaDigitada: string): Promise<boolean> => {
     const termo = identificador.trim().toLowerCase();
     
-    // Procura por ID, e-mail, nome ou se digitou 'admin'
+    // Normaliza identificador: se for 'admin', 'sheila' ou sem '@', direciona para o e-mail oficial
+    const emailTentativa = (termo === 'admin' || termo === 'sheila' || !termo.includes('@'))
+      ? 'sheila@salao.com'
+      : termo;
+
+    // 1. Tenta autenticar diretamente no Supabase Auth nativo
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailTentativa,
+        password: senhaDigitada
+      });
+
+      if (!error && data?.session?.user) {
+        let user = equipe.find(u => 
+          u.email?.toLowerCase() === emailTentativa || 
+          u.perfil === 'admin'
+        );
+
+        if (!user) {
+          user = {
+            id: 'admin_master',
+            nome: 'Sheila Santos',
+            email: emailTentativa,
+            telefone: '',
+            perfil: 'admin',
+            ativo: true,
+            especialidade: 'Especialista Master',
+            senha: senhaDigitada
+          };
+        }
+
+        setCurrentUser(user);
+        
+        // Dispara sincronização em nuvem agora que possui o token 'authenticated'
+        sincronizarComNuvem(false).catch(() => {});
+        return true;
+      }
+    } catch (authErr) {
+      console.warn('Tentativa de autenticação via Supabase Auth:', authErr);
+    }
+
+    // 2. Fallback de contingência local para administradores/equipe se não houver internet
     let user = equipe.find(u => 
       u.ativo && (
         u.id.toLowerCase() === termo ||
-        u.email.toLowerCase() === termo ||
+        u.email?.toLowerCase() === termo ||
         u.nome.toLowerCase().includes(termo) ||
         (termo === 'admin' && u.perfil === 'admin')
       )
     );
-
-    // Se a equipe não tem ninguém ativo ou não encontrou o admin e digitou admin / admin
-    if (!user && (termo === 'admin' || termo === 'admin@salao.com' || equipe.length === 0)) {
-      const adminDefault: Usuario = {
-        id: 'admin_master',
-        nome: 'Administrador',
-        email: 'admin@salao.com',
-        telefone: '',
-        perfil: 'admin',
-        ativo: true,
-        senha: ENV_ADMIN_PASSWORD
-      };
-      setEquipe(prev => [adminDefault, ...prev.filter(u => u.id !== 'admin_master')]);
-      user = adminDefault;
-    }
 
     if (user) {
       const senhaValida = user.senha || (user.perfil === 'admin' ? ENV_ADMIN_PASSWORD : 'admin');
@@ -2297,10 +2355,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return true;
       }
     }
+
     return false;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
     try {
       sessionStorage.removeItem('nail_session_active');
       sessionStorage.removeItem('nail_current_user');
