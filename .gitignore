@@ -18,6 +18,11 @@ dist-ssr
 !.env.example
 *-firebase-adminsdk-*.json
 *service-account*.json
+*sheila-santos-nails*.json
+Backup/
+backup/
+backups/
+*.csv
 
 # Editor
 .vscode/*
