@@ -8,11 +8,15 @@
 -- 0. GARANTIR PERMISSÕES DO SCHEMA PUBLIC E RECARREGAR POSTGREST CACHE
 -- Resolve o erro PGRST002 (Could not query the database for the schema cache)
 -- ==============================================================================
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+GRANT USAGE ON SCHEMA public TO authenticator, anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticator, anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticator, anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO authenticator, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO authenticator, anon, authenticated, service_role;
+
+ALTER ROLE authenticator RESET pgrst.db_schemas;
+NOTIFY pgrst, 'reload config';
+NOTIFY pgrst, 'reload schema';
 
 -- Garantir colunas adicionais para sincronização 100% perfeita entre App e Supabase
 ALTER TABLE IF EXISTS servicos ADD COLUMN IF NOT EXISTS is_pacote BOOLEAN DEFAULT false;
