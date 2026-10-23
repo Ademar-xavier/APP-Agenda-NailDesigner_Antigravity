@@ -110,6 +110,13 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
+
+  // Define dinamicamente o título da página com o nome do salão
+  useEffect(() => {
+    if (configSalao?.nome) {
+      document.title = `Agendamento Online | ${configSalao.nome}`;
+    }
+  }, [configSalao?.nome]);
   
   // Agendamento State
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>(() => {
@@ -814,7 +821,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
         <div className="text-center mb-6 border-b border-[#FFF0F4] pb-4">
           <div className="w-32 h-32 md:w-36 md:h-36 rounded-full bg-white border-2 border-[#FCE4EC] mx-auto flex items-center justify-center mb-3 overflow-hidden shadow-lg p-0.5">
             <img 
-              src="./logo.png?v=3" 
+              src={configSalao?.logo_url || "./logo.png?v=3"} 
               alt={`Logo ${configSalao.nome || 'Salão de Beleza'}`} 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
@@ -823,7 +830,7 @@ export const PublicBooking: React.FC<PublicBookingProps> = ({ setIsAdmin, client
                 if (parent) {
                   const span = document.createElement('span');
                   span.className = 'text-2xl font-serif text-[#D48B70] font-extrabold';
-                  span.innerText = 'SS';
+                  span.innerText = (configSalao.nome || 'SS').substring(0, 2).toUpperCase();
                   parent.appendChild(span);
                 }
               }}

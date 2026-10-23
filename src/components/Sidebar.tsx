@@ -78,8 +78,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-6 border-b border-[#EFECE6] flex flex-col items-center text-center">
           <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
             <img 
-              src="./logo.png?v=3" 
-              alt="Logo Sheila Santos Nails Designer" 
+              src={configSalao?.logo_url || "./logo.png?v=3"} 
+              alt={`Logo ${configSalao?.nome || 'Salão'}`} 
               className="w-full h-full object-cover rounded-full" 
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (parent) {
                   const span = document.createElement('span');
                   span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
-                  span.innerText = 'SS';
+                  span.innerText = (configSalao?.nome || 'SS').substring(0, 2).toUpperCase();
                   parent.appendChild(span);
                 }
               }}

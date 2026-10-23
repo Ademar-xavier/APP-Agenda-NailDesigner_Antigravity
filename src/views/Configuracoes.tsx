@@ -61,6 +61,7 @@ import {
   LicencaInfo 
 } from '../services/licencaService';
 import { salvarConfiguracoesSupabase } from '../services/supabase';
+import { uploadImagemCloudinary } from '../services/cloudinary';
 import { getBookingUrl, getCatalogoUrl } from '../utils/urlHelper';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
@@ -446,6 +447,8 @@ export const Configuracoes: React.FC = () => {
 
   // Form Geral Fields
   const [nome, setNome] = useState(configSalao.nome);
+  const [logoUrl, setLogoUrl] = useState(configSalao.logo_url || '');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [proprietaria, setProprietaria] = useState(configSalao.proprietaria);
   const [telefone, setTelefone] = useState(configSalao.telefone);
   const [email, setEmail] = useState(configSalao.email);
@@ -622,10 +625,28 @@ export const Configuracoes: React.FC = () => {
     triggerSuccess();
   };
 
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingLogo(true);
+      const url = await uploadImagemCloudinary(file, 'logos_saloes');
+      if (url) {
+        setLogoUrl(url);
+        exibirToast('✅ Logo carregada! Clique em "Salvar Alterações" para aplicar.');
+      }
+    } catch (err) {
+      exibirToast('⚠️ Erro ao enviar logotipo. Verifique sua conexão.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleSalvarGeral = async (e: React.FormEvent) => {
     e.preventDefault();
     const updated = {
       nome,
+      logo_url: logoUrl,
       proprietaria,
       telefone,
       email,
@@ -926,6 +947,47 @@ export const Configuracoes: React.FC = () => {
 
               <form onSubmit={handleSalvarGeral} className="space-y-6">
                 <h3 className="font-serif font-bold text-base text-[#5A4535] border-b border-[#FAF9F6] pb-2">Configurações Gerais</h3>
+              
+                {/* Logotipo do Salão (White-Label) */}
+                <div className="bg-[#FAF9F6] border border-[#EFECE6] rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-20 h-20 rounded-full bg-white border-2 border-[#FCE4EC] overflow-hidden shadow-sm shrink-0 flex items-center justify-center p-0.5">
+                    {logoUrl ? (
+                      <img src={logoUrl} alt="Logo do Salão" className="w-full h-full object-cover rounded-full" />
+                    ) : (
+                      <div className="text-2xl font-serif text-[#D48B70] font-bold">
+                        {(nome || 'SS').substring(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 text-center sm:text-left space-y-1">
+                    <p className="text-xs font-bold text-[#5A4535]">Logotipo do Salão (Sua Marca)</p>
+                    <p className="text-[11px] text-[#8C7A6B]">
+                      Aparece na barra lateral, tela de login, link público de agendamento e confirmação.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1 justify-center sm:justify-start">
+                      <label className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white transition-colors ${uploadingLogo ? 'bg-stone-400' : 'bg-[#8C6D58] hover:bg-[#725743]'}`}>
+                        <UploadCloud size={14} />
+                        <span>{uploadingLogo ? 'Enviando...' : 'Enviar Nova Logo'}</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          disabled={uploadingLogo}
+                          onChange={handleUploadLogo} 
+                        />
+                      </label>
+                      {logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setLogoUrl('')}
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 transition-colors"
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

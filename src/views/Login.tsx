@@ -8,7 +8,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
-  const { loginWithCredentials } = useAppState();
+  const { loginWithCredentials, configSalao } = useAppState();
   const [usuarioInput, setUsuarioInput] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -97,8 +97,8 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
         {/* Logo no topo - Imagem 2 Rosa com Borda Suave */}
         <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] flex items-center justify-center mb-6 overflow-hidden shadow-xl p-0.5">
           <img 
-            src="./logo.png?v=3" 
-            alt="Logo Sheila Santos Nails Designer" 
+            src={configSalao?.logo_url || "./logo.png?v=3"} 
+            alt={`Logo ${configSalao?.nome || 'Painel de Gestão'}`} 
             className="w-full h-full object-cover rounded-full"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
@@ -106,7 +106,7 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
               if (parent) {
                 const span = document.createElement('span');
                 span.className = 'text-3xl font-serif text-[#D48B70] font-extrabold';
-                span.innerText = 'SS';
+                span.innerText = (configSalao?.nome || 'SS').substring(0, 2).toUpperCase();
                 parent.appendChild(span);
               }
             }}

@@ -25,6 +25,7 @@ import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/lice
 function AppContent() {
   const { 
     currentUser, 
+    configSalao,
     notificacaoGlobal, 
     modalAlerta, 
     fecharAlerta, 
@@ -33,6 +34,13 @@ function AppContent() {
     fecharNotificacaoClienteAcao,
     obterServicosDeAgendamento
   } = useAppState();
+
+  // Sincroniza dinamicamente o título da página com o nome do salão ativo
+  useEffect(() => {
+    if (configSalao?.nome) {
+      document.title = `${configSalao.nome} | Gestão & Agendamento`;
+    }
+  }, [configSalao?.nome]);
   
   // Status da Chave de Licença ou Assinatura Mensal Ativa
   const [temLicenca, setTemLicenca] = useState<boolean>(() => isLicencaAtiva());

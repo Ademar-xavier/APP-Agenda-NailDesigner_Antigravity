@@ -82,6 +82,12 @@ export const PublicCatalogo: React.FC = () => {
   const [chipAtivo, setChipAtivo] = useState<string>('todos');
   const [copiadoLink, setCopiadoLink] = useState(false);
 
+  useEffect(() => {
+    if (configSalao?.nome) {
+      document.title = `Catálogo de Serviços | ${configSalao.nome}`;
+    }
+  }, [configSalao?.nome]);
+
   // Modal / Drawer de Detalhes do Serviço
   const [servicoDetalhe, setServicoDetalhe] = useState<Servico | null>(null);
   const [extrasSelecionados, setExtrasSelecionados] = useState<string[]>([]);
@@ -320,8 +326,8 @@ export const PublicCatalogo: React.FC = () => {
           {/* Logo e Nome do Estúdio */}
           <a href="#inicio" className="flex items-center gap-3 group">
             <img 
-              src="/logo.png" 
-              alt={configSalao.nome || 'Sheila Santos Nails'} 
+              src={configSalao?.logo_url || "/logo.png"} 
+              alt={configSalao.nome || 'Salão'} 
               className="w-10 h-10 rounded-full object-cover shadow-xs border border-[#EEDDE1] transition-transform duration-200 group-hover:scale-105"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';

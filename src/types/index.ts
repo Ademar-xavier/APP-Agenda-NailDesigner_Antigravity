@@ -173,6 +173,7 @@ export interface Notificacao {
 
 export interface ConfigSalao {
   salao_id?: string;
+  logo_url?: string;
   nome: string;
   proprietaria: string;
   telefone: string;

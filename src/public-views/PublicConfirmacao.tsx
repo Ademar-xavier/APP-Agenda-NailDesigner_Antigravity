@@ -80,6 +80,7 @@ export const PublicConfirmacao: React.FC = () => {
   const [profissionalNome, setProfissionalNome] = useState<string>('Sheila Santos');
   const [dadosSalao, setDadosSalao] = useState<{
     nome: string;
+    logo_url?: string;
     proprietaria: string;
     telefone: string;
     endereco: string;
@@ -293,6 +294,7 @@ export const PublicConfirmacao: React.FC = () => {
         if (configSalaoContext?.nome) {
           setDadosSalao({
             nome: configSalaoContext.nome || 'Sheila Santos Nails',
+            logo_url: configSalaoContext.logo_url || '',
             proprietaria: configSalaoContext.proprietaria || 'Sheila Santos',
             telefone: (configSalaoContext.telefone || '3597141856').replace(/\D/g, ''),
             endereco: configSalaoContext.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
@@ -315,6 +317,7 @@ export const PublicConfirmacao: React.FC = () => {
             const cs = configData.config_salao;
             setDadosSalao({
               nome: cs.nome || 'Sheila Santos Nails',
+              logo_url: cs.logo_url || '',
               proprietaria: cs.proprietaria || 'Sheila Santos',
               telefone: (cs.telefone || '3597141856').replace(/\D/g, ''),
               endereco: cs.endereco || 'Rua Coronel Gabriel Penha de Paiva, 699 - Vila Paiva, Varginha - MG',
@@ -648,7 +651,7 @@ export const PublicConfirmacao: React.FC = () => {
       <div className="min-h-screen bg-[#FAF9F6] flex flex-col items-center justify-center p-4">
         <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5 animate-pulse">
           <img 
-            src="./logo.png?v=3" 
+            src={dadosSalao.logo_url || "./logo.png?v=3"} 
             alt={dadosSalao.nome || 'Salão de Beleza'} 
             className="w-full h-full object-cover rounded-full"
             onError={(e) => {
@@ -669,7 +672,7 @@ export const PublicConfirmacao: React.FC = () => {
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-[#EFECE6] shadow-sm space-y-5">
           <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center mx-auto border-2 border-[#FCE4EC] overflow-hidden shadow-sm p-0.5">
             <img 
-              src="./logo.png?v=3" 
+              src={dadosSalao.logo_url || "./logo.png?v=3"} 
               alt={dadosSalao.nome || 'Salão de Beleza'} 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
@@ -720,8 +723,8 @@ export const PublicConfirmacao: React.FC = () => {
         <div className="text-center space-y-1.5 pb-2">
           <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-2 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
             <img 
-              src="./logo.png?v=3" 
-              alt={dadosSalao.nome || "Sheila Santos Nails Designer"} 
+              src={dadosSalao.logo_url || "./logo.png?v=3"} 
+              alt={dadosSalao.nome || "Salão de Beleza"} 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -729,7 +732,7 @@ export const PublicConfirmacao: React.FC = () => {
                 if (parent) {
                   const span = document.createElement('span');
                   span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
-                  span.innerText = 'SS';
+                  span.innerText = (dadosSalao.nome || 'SS').substring(0, 2).toUpperCase();
                   parent.appendChild(span);
                 }
               }}
