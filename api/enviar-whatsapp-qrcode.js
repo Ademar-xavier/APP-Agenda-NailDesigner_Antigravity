@@ -84,10 +84,18 @@ function verificarRateLimit(ip, limite = 20, janelaMs = 60000) {
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
-  if (origin) {
+  const isAllowedOrigin = !origin || 
+    origin.includes('vercel.app') || 
+    origin.includes('localhost') || 
+    origin.includes('127.0.0.1') || 
+    origin.startsWith('capacitor://');
+
+  if (isAllowedOrigin && origin) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
+  } else if (!origin) {
     res.setHeader('Access-Control-Allow-Origin', '*');
+  } else {
+    return res.status(403).json({ erro: 'Acesso negado: Origem não autorizada.' });
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-App-Source');

@@ -12,8 +12,6 @@ const FALLBACK_KEY = typeof atob !== 'undefined'
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || FALLBACK_URL).trim();
 export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY).trim();
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // Tenant padrão e resolvedor multi-tenant (SaaS)
 /**
  * Normaliza qualquer formato de identificador ou slug para o salao_id canônico do banco
@@ -78,15 +76,27 @@ export const getActiveSalaoId = (): string => {
   return 'salao_sheila';
 };
 
+export const CURRENT_SALAO_ID = getActiveSalaoId();
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: {
+    headers: {
+      'x-salao-id': CURRENT_SALAO_ID
+    }
+  }
+});
+
 export const setActiveSalaoId = (salaoId: string) => {
   try {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('nail_salao_id', salaoId.trim().toLowerCase());
+      const canonical = normalizarSalaoId(salaoId);
+      localStorage.setItem('nail_salao_id', canonical);
+      if ((supabase as any)?.rest?.headers) {
+        (supabase as any).rest.headers['x-salao-id'] = canonical;
+      }
     }
   } catch (e) {}
 };
-
-export const CURRENT_SALAO_ID = getActiveSalaoId();
 
 // Cache em memória para detecção dinâmica da existência da coluna salao_id no Supabase
 let _hasSalaoIdColumn: boolean | null = null;

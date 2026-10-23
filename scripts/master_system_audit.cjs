@@ -5,7 +5,11 @@ const crypto = require('crypto');
 
 const url = Buffer.from('aHR0cHM6Ly9za2R2YXhlemhza2ZzZmhtdmFqdC5zdXBhYmFzZS5jbw==', 'base64').toString();
 const key = Buffer.from('c2JfcHVibGlzaGFibGVfc2R6ZUxCZFFlVWdmWS03c0h3UFc1Z18yVXFaM1JhcA==', 'base64').toString();
-const supabase = createClient(url, key);
+const supabase = createClient(url, key, {
+  global: {
+    headers: { 'x-salao-id': 'salao_sheila' }
+  }
+});
 
 async function runMasterAudit() {
   console.log('================================================================');

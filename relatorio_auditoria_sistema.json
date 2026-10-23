@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-23T20:47:44.939Z",
+  "timestamp": "2026-10-23T21:51:09.034Z",
   "totalTests": 42,
   "testsPassed": 42,
   "testsFailed": 0,
@@ -16,22 +16,22 @@
         {
           "name": "Tabela clientes",
           "status": "PASS",
-          "details": "128 registros | salao_id ativo"
+          "details": "134 registros | salao_id ativo"
         },
         {
           "name": "Tabela servicos",
           "status": "PASS",
-          "details": "17 registros | salao_id ativo"
+          "details": "19 registros | salao_id ativo"
         },
         {
           "name": "Tabela materiais",
           "status": "PASS",
-          "details": "18 registros | salao_id ativo"
+          "details": "20 registros | salao_id ativo"
         },
         {
           "name": "Tabela despesas",
           "status": "PASS",
-          "details": "16 registros | salao_id ativo"
+          "details": "18 registros | salao_id ativo"
         },
         {
           "name": "Tabela usuarios",
@@ -254,12 +254,12 @@
         {
           "name": "Base de clientes da Sheila",
           "status": "PASS",
-          "details": "118 clientes cadastrados preservados"
+          "details": "122 clientes cadastrados preservados"
         },
         {
           "name": "Catálogo de serviços da Sheila",
           "status": "PASS",
-          "details": "18 serviços preservados"
+          "details": "20 serviços preservados"
         }
       ]
     },
