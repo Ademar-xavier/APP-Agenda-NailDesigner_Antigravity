@@ -1123,7 +1123,7 @@ export const Financeiro: React.FC = () => {
         {/* KPI 6: Ocupação */}
         <div className="bg-white p-3.5 rounded-xl border border-[#EFECE6] shadow-sm flex flex-col justify-between">
           <div>
-            <span className="text-[9px] font-bold text-[#8C7A6B] uppercase tracking-wider block">Ocupação</span>
+            <span className="text-[9px] font-bold text-[#8C7A6B] uppercase tracking-wider block">Ocupação do Mês</span>
             <h3 className="text-sm font-extrabold text-[#5A4535] mt-1.5">{taxaOcupacao}%</h3>
           </div>
         </div>

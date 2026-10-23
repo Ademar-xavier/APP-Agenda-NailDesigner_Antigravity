@@ -447,9 +447,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <TrendingUp size={24} />
           </div>
           <div>
-            <p className="text-xs font-medium text-[#8C7A6B] uppercase tracking-wider">Ocupação da Agenda</p>
+            <p className="text-xs font-medium text-[#8C7A6B] uppercase tracking-wider">Ocupação da Agenda (Hoje)</p>
             <h3 className="text-lg font-bold text-[#5A4535] mt-1">{taxaOcupacao}%</h3>
-            <p className="text-xs text-[#8C7A6B] mt-0.5">{minutosAgendadosHoje} min ocupados</p>
+            <p className="text-xs text-[#8C7A6B] mt-0.5">{minutosAgendadosHoje} min ocupados hoje</p>
           </div>
         </div>
 
