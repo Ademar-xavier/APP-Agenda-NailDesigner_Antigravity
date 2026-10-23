@@ -19,6 +19,7 @@ import { Cadastros } from './views/Cadastros';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import { InstalarApp } from './views/InstalarApp';
 import { AtivacaoLicenca } from './views/AtivacaoLicenca';
+import { SuperAdmin } from './views/SuperAdmin';
 import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
 
 function AppContent() {
@@ -64,6 +65,12 @@ function AppContent() {
     }
 
     return false;
+  });
+
+  const [isSuperAdminRoute, setIsSuperAdminRoute] = useState<boolean>(() => {
+    return window.location.hash.toLowerCase().includes('superadmin') || 
+           window.location.search.toLowerCase().includes('superadmin') ||
+           window.location.pathname.toLowerCase().includes('superadmin');
   });
 
   const [isConfirmarRoute, setIsConfirmarRoute] = useState<boolean>(() => {
@@ -144,34 +151,46 @@ function AppContent() {
         window.location.search.includes('app=1') ||
         isLocalhost;
 
-      if (hash.includes('confirmar') || window.location.search.toLowerCase().includes('confirmar')) {
+      if (hash.includes('superadmin') || window.location.search.toLowerCase().includes('superadmin')) {
+        setIsSuperAdminRoute(true);
+        setIsConfirmarRoute(false);
+        setIsInstalarRoute(false);
+        setIsCatalogoRoute(false);
+        setIsAgendarRoute(false);
+      } else if (hash.includes('confirmar') || window.location.search.toLowerCase().includes('confirmar')) {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(true);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
         setIsAgendarRoute(false);
       } else if (hash.includes('catalogo')) {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(true);
         setIsAgendarRoute(false);
       } else if (hash.includes('instalar')) {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(false);
         setIsInstalarRoute(true);
         setIsCatalogoRoute(false);
         setIsAgendarRoute(false);
       } else if (hash.includes('admin')) {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
         setIsAgendarRoute(false);
         setIsAdmin(true);
       } else if (hash.includes('agendar')) {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
         setIsAgendarRoute(true);
         setIsAdmin(false);
       } else if (hash === '' || hash === '#') {
+        setIsSuperAdminRoute(false);
         setIsConfirmarRoute(false);
         setIsInstalarRoute(false);
         setIsCatalogoRoute(false);
@@ -488,6 +507,8 @@ function AppContent() {
         return <Financeiro />;
       case 'configuracoes':
         return <Configuracoes />;
+      case 'superadmin':
+        return <SuperAdmin onVoltar={() => handleSetCurrentView('configuracoes')} />;
       default:
         return (
           <Dashboard 
@@ -510,6 +531,20 @@ function AppContent() {
 
   // Verifica se o usuário solicitou explicitamente a tela de agendamento (via link, botão ou hash #agendar)
   const isExplicitAgendamento = window.location.hash.toLowerCase().includes('agendar');
+
+  // 0. Super Admin para Ademar gerenciar salões e licenças comerciais
+  if (isSuperAdminRoute) {
+    return (
+      <>
+        <SuperAdmin onVoltar={() => {
+          setIsSuperAdminRoute(false);
+          setIsAdmin(true);
+          window.location.hash = 'admin';
+        }} />
+        {renderModalAlerta()}
+      </>
+    );
+  }
 
   // 0. Se for rota pública de confirmação de agendamento em 1 toque (#confirmar?id=...)
   if (isConfirmarRoute) {

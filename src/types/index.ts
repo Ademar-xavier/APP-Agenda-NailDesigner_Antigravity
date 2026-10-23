@@ -460,3 +460,19 @@ export interface FechamentoComissao {
   pago: boolean;
   observacoes?: string;
 }
+
+export interface SalaoLicenca {
+  id: string;
+  chave: string;
+  titular: string;
+  tipo: 'vitalicio' | 'mensal' | 'teste';
+  status: 'ativo' | 'bloqueado' | 'cancelado';
+  data_expiracao: string | null;
+  telefone: string;
+  valor_mensalidade: number | null;
+  criado_em?: string;
+  salao_id?: string;
+  slug?: string;
+  email_proprietaria?: string;
+  observacoes?: string;
+}

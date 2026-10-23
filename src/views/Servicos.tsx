@@ -35,6 +35,7 @@ import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
 import { getCatalogoUrl } from '../utils/urlHelper';
+import { uploadImagemCloudinary } from '../services/cloudinary';
 import { otimizarImagemWebP, gerarThumbnailWebP } from '../utils/imageOptimizer';
 import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
 import { PALETA_CORES_SERVICOS, obterCorDoServico } from '../utils/coresServicos';
@@ -179,6 +180,14 @@ export const Servicos: React.FC = () => {
       ]);
       setFotoServico(full);
       setFotoThumbServico(thumb);
+
+      // Envia de forma assíncrona para o Cloudinary para obter a URL leve de CDN
+      uploadImagemCloudinary(file, 'servicos_catalogo').then(cdnUrl => {
+        if (cdnUrl && cdnUrl.startsWith('http')) {
+          setFotoServico(cdnUrl);
+          setFotoThumbServico(cdnUrl);
+        }
+      }).catch(err => console.warn('Erro ao enviar imagem de serviço para Cloudinary:', err));
     } catch (err) {
       console.error('Erro ao comprimir imagem de serviço para WebP:', err);
     }
@@ -790,6 +799,13 @@ export const Servicos: React.FC = () => {
     try {
       const base64 = await otimizarImagemWebP(file, 900, 0.75);
       setCatHeroFotoUrl(base64);
+
+      // Envia de forma assíncrona para o Cloudinary para obter a URL leve de CDN
+      uploadImagemCloudinary(file, 'catalogo_capa').then(cdnUrl => {
+        if (cdnUrl && cdnUrl.startsWith('http')) {
+          setCatHeroFotoUrl(cdnUrl);
+        }
+      }).catch(err => console.warn('Erro ao enviar capa do catálogo para Cloudinary:', err));
     } catch (err) {
       console.error('Erro ao comprimir imagem de capa do catálogo:', err);
     }

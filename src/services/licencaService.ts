@@ -9,6 +9,7 @@ export interface LicencaInfo {
   dataAtivacao: string;
   dataExpiracao: string | null; // null se vitalício
   diasRestantes?: number;
+  salao_id?: string;
   sig?: string; // Assinatura de integridade anti-tampering
 }
 
@@ -20,7 +21,7 @@ const ENV_KEY_MENSAL = (import.meta.env.VITE_LICENSE_KEY_MENSAL || '').trim().to
 
 // Gera assinatura de integridade criptográfica para a licença salva no aparelho (anti-tampering)
 const assinarLicenca = (info: LicencaInfo): string => {
-  return gerarHashSeguro(`${info.chave}#${info.tipo}#${info.titular}#${info.dataAtivacao}#${info.dataExpiracao || 'none'}`);
+  return gerarHashSeguro(`${info.chave}#${info.tipo}#${info.titular}#${info.dataAtivacao}#${info.dataExpiracao || 'none'}#${info.salao_id || 'default'}`);
 };
 
 // Obter dados da licença atual gravada no aparelho com verificação de integridade
@@ -32,7 +33,8 @@ export const obterLicencaAtual = (): LicencaInfo | null => {
 
     // Verificação de Integridade Criptográfica (Bloqueia tentativas de invasão via localStorage)
     const assinaturaEsperada = assinarLicenca(info);
-    if (info.sig && info.sig !== assinaturaEsperada) {
+    const assinaturaLegada = gerarHashSeguro(`${info.chave}#${info.tipo}#${info.titular}#${info.dataAtivacao}#${info.dataExpiracao || 'none'}`);
+    if (info.sig && info.sig !== assinaturaEsperada && info.sig !== assinaturaLegada) {
       // Violação de segurança detectada: alguém tentou forjar a licença!
       localStorage.removeItem(STORAGE_KEY);
       return null;
@@ -88,6 +90,8 @@ export const verificarLicencaNuvem = async (chave: string): Promise<LicencaInfo 
       }
     }
 
+    const salaoId = data.salao_id || (data.chave?.includes('SHEILA') ? 'salao_sheila' : (data.chave?.includes('ADEMAR') ? 'superadmin' : `salao_${data.id.substring(0, 8)}`));
+
     const infoAtualizada: LicencaInfo = {
       ativa,
       tipo: data.tipo || 'mensal',
@@ -95,11 +99,15 @@ export const verificarLicencaNuvem = async (chave: string): Promise<LicencaInfo 
       titular: data.titular || 'Sheila Santos',
       dataAtivacao: data.criado_em || new Date().toISOString(),
       dataExpiracao: data.data_expiracao || null,
-      diasRestantes
+      diasRestantes,
+      salao_id: salaoId
     };
 
     infoAtualizada.sig = assinarLicenca(infoAtualizada);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(infoAtualizada));
+    if (salaoId) {
+      localStorage.setItem('nail_salao_id', salaoId);
+    }
     return infoAtualizada;
   } catch (e) {
     return null;

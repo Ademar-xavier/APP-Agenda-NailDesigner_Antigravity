@@ -14,12 +14,84 @@ export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || FALL
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Tenant padrão para isolamento multi-tenant (SaaS)
-export const CURRENT_SALAO_ID = 'salao_principal';
+// Tenant padrão e resolvedor multi-tenant (SaaS)
+export const getActiveSalaoId = (): string => {
+  try {
+    if (typeof window !== 'undefined') {
+      // 1. Checa query param na URL (ex: ?salao=slug ou ?s=slug)
+      const searchParams = new URLSearchParams(window.location.search);
+      const salaoParam = searchParams.get('salao') || searchParams.get('s');
+      if (salaoParam && salaoParam.trim()) {
+        const clean = salaoParam.trim().toLowerCase();
+        localStorage.setItem('nail_salao_id', clean);
+        return clean;
+      }
+
+      // 2. Checa hash param (ex: #agendar?salao=slug ou #admin?salao=slug)
+      if (window.location.hash.includes('salao=')) {
+        const hashMatch = window.location.hash.match(/salao=([a-zA-Z0-9_-]+)/i);
+        if (hashMatch && hashMatch[1]) {
+          const clean = hashMatch[1].trim().toLowerCase();
+          localStorage.setItem('nail_salao_id', clean);
+          return clean;
+        }
+      }
+
+      // 3. Checa licença ativa gravada localmente
+      const licRaw = localStorage.getItem('nail_app_licenca_ativa_v1');
+      if (licRaw) {
+        try {
+          const lic = JSON.parse(licRaw);
+          if (lic?.salao_id && typeof lic.salao_id === 'string' && lic.salao_id.trim()) {
+            return lic.salao_id.trim();
+          }
+        } catch (e) {}
+      }
+
+      // 4. Checa tenant salvo explicitamente no localStorage
+      const savedSalao = localStorage.getItem('nail_salao_id');
+      if (savedSalao && savedSalao.trim()) {
+        return savedSalao.trim();
+      }
+    }
+  } catch (e) {}
+
+  // Fallback padrão seguro para manter todos os dados da Sheila 100% preservados
+  return 'salao_sheila';
+};
+
+export const setActiveSalaoId = (salaoId: string) => {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('nail_salao_id', salaoId.trim().toLowerCase());
+    }
+  } catch (e) {}
+};
+
+export const CURRENT_SALAO_ID = getActiveSalaoId();
+
+// Cache em memória para detecção dinâmica da existência da coluna salao_id no Supabase
+let _hasSalaoIdColumn: boolean | null = null;
+
+export const verificarColunaMultiTenantExiste = async (forceCheck = false): Promise<boolean> => {
+  if (_hasSalaoIdColumn !== null && !forceCheck) return _hasSalaoIdColumn;
+  try {
+    const { error } = await supabase.from('agendamentos').select('salao_id').limit(1);
+    if (error && (error.code === '42703' || error.message?.includes('column agendamentos.salao_id does not exist') || error.message?.includes('schema cache'))) {
+      _hasSalaoIdColumn = false;
+      return false;
+    }
+    _hasSalaoIdColumn = true;
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 
 // --- SALVAR / ATUALIZAR CLIENTES ---
 export const salvarClienteSupabase = async (cliente: Cliente) => {
   try {
+    const salaoId = cliente.salao_id || getActiveSalaoId();
     const sexoFinal = cliente.sexo || (cliente.preferencias as any)?.sexo || 'feminino';
     const prefs = {
       ...(cliente.preferencias || {}),
@@ -38,11 +110,15 @@ export const salvarClienteSupabase = async (cliente: Cliente) => {
       alergias: cliente.alergias || null,
       preferencias: prefs,
       consentimento_imagem: !!cliente.consentimento_imagem,
-      criado_em: cliente.criado_em || new Date().toISOString()
+      criado_em: cliente.criado_em || new Date().toISOString(),
+      salao_id: salaoId
     };
 
-    const { error } = await supabase.from('clientes').upsert({ ...payload, sexo: sexoFinal });
+    let { error } = await supabase.from('clientes').upsert({ ...payload, sexo: sexoFinal });
     if (error) {
+      if (error.code === '42703' || error.message?.includes('column')) {
+        delete payload.salao_id;
+      }
       // Se houver erro de coluna sexo ausente no banco relacional, tenta sem a coluna (já salvo em preferências)
       await supabase.from('clientes').upsert(payload);
     }
@@ -148,6 +224,8 @@ export const salvarServicoSupabase = async (servico: any) => {
       orientacoes_agendamento: servico.orientacoes_agendamento
     });
 
+    const salaoId = servico.salao_id || getActiveSalaoId();
+
     // Envia exatamente as colunas existentes na tabela servicos do Supabase
     const payloadCompleto: any = {
       id: servico.id,
@@ -159,7 +237,8 @@ export const salvarServicoSupabase = async (servico: any) => {
       ativo: servico.ativo !== false,
       retorno_dias: diasManutencao,
       is_pacote: !!servico.is_pacote,
-      itens_combo: servico.servicos_pacote || servico.itens_combo || []
+      itens_combo: servico.servicos_pacote || servico.itens_combo || [],
+      salao_id: salaoId
     };
 
     let { error } = await supabase.from('servicos').upsert(payloadCompleto);
@@ -297,7 +376,9 @@ export const salvarAgendamentoSupabase = async (
       obsFinal = `${obsFinal} [RECORRENCIA:${gId}|${rTipo}|${rPos}]`.trim();
     }
 
-    const { error } = await supabase.from('agendamentos').upsert({
+    const salaoId = agendamento.salao_id || getActiveSalaoId();
+
+    const payloadAg: any = {
       id: agendamento.id,
       cliente_id: agendamento.cliente_id,
       profissional_id: agendamento.profissional_id || 'u1',
@@ -311,26 +392,22 @@ export const salvarAgendamentoSupabase = async (
       motivo_cancelamento: agendamento.motivo_cancelamento || null,
       cancelado_por: agendamento.cancelado_por || null,
       itens_servicos: servicosSalvar || [],
-      criado_em: agendamento.criado_em || new Date().toISOString()
-    });
+      criado_em: agendamento.criado_em || new Date().toISOString(),
+      salao_id: salaoId
+    };
+
+    let { error } = await supabase.from('agendamentos').upsert(payloadAg);
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      delete payloadAg.salao_id;
+      const res = await supabase.from('agendamentos').upsert(payloadAg);
+      error = res.error;
+    }
+
     if (error) {
       console.error('Erro ao salvar agendamento no Supabase:', error);
       if (error.code === '23503' && clienteInfo) {
         await salvarClienteSupabase(clienteInfo as Cliente);
-        await supabase.from('agendamentos').upsert({
-          id: agendamento.id,
-          cliente_id: agendamento.cliente_id,
-          profissional_id: agendamento.profissional_id || 'u1',
-          inicio: agendamento.inicio,
-          fim: agendamento.fim,
-          status: agendamento.status,
-          valor_total: Number(agendamento.valor_total) || 0,
-          valor_sinal: Number(agendamento.valor_sinal) || 0,
-          observacoes: obsFinal || null,
-          origem: agendamento.origem || 'cliente',
-          itens_servicos: servicosSalvar || [],
-          criado_em: agendamento.criado_em || new Date().toISOString()
-        });
+        await supabase.from('agendamentos').upsert(payloadAg);
       }
     }
   } catch (e) {
@@ -478,28 +555,31 @@ export const salvarListaEsperaSupabase = async (item: ListaEspera, clienteInfo?:
       }
     }
 
-    const { error } = await supabase.from('lista_espera').upsert({
+    const salaoId = item.salao_id || getActiveSalaoId();
+
+    const payloadLista: any = {
       id: item.id,
       cliente_id: item.cliente_id,
       servico_id: item.servico_id,
       data_preferida: item.data_preferida,
       periodo_preferido: item.periodo_preferido,
       status: item.status,
-      criado_em: item.criado_em || new Date().toISOString()
-    });
+      criado_em: item.criado_em || new Date().toISOString(),
+      salao_id: salaoId
+    };
+
+    let { error } = await supabase.from('lista_espera').upsert(payloadLista);
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      delete payloadLista.salao_id;
+      const res = await supabase.from('lista_espera').upsert(payloadLista);
+      error = res.error;
+    }
+
     if (error) {
       console.error('Erro ao salvar lista de espera no Supabase:', error);
       if (error.code === '23503' && clienteInfo) {
         await salvarClienteSupabase(clienteInfo as Cliente);
-        await supabase.from('lista_espera').upsert({
-          id: item.id,
-          cliente_id: item.cliente_id,
-          servico_id: item.servico_id,
-          data_preferida: item.data_preferida,
-          periodo_preferido: item.periodo_preferido,
-          status: item.status,
-          criado_em: item.criado_em || new Date().toISOString()
-        });
+        await supabase.from('lista_espera').upsert(payloadLista);
       }
     }
   } catch (e) {
@@ -518,15 +598,23 @@ export const atualizarStatusListaEsperaSupabase = async (id: string, status: str
 };
 
 // --- SALVAR / ATUALIZAR FOTO CLIENTE ---
-export const salvarFotoClienteSupabase = async (foto: { id: string; cliente_id: string; url: string; tipo: string; criado_em?: string }) => {
+export const salvarFotoClienteSupabase = async (foto: { id: string; cliente_id: string; url: string; tipo: string; criado_em?: string; salao_id?: string }) => {
   try {
-    const { error } = await supabase.from('fotos_clientes').upsert({
+    const salaoId = foto.salao_id || getActiveSalaoId();
+    const payloadFoto: any = {
       id: foto.id,
       cliente_id: foto.cliente_id,
       url: foto.url,
       tipo: foto.tipo,
-      criado_em: foto.criado_em || new Date().toISOString()
-    });
+      criado_em: foto.criado_em || new Date().toISOString(),
+      salao_id: salaoId
+    };
+
+    let { error } = await supabase.from('fotos_clientes').upsert(payloadFoto);
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      delete payloadFoto.salao_id;
+      await supabase.from('fotos_clientes').upsert(payloadFoto);
+    }
     if (error) console.error('Erro ao salvar foto no Supabase:', error);
   } catch (e) {
     console.error('Falha em salvarFotoClienteSupabase:', e);
@@ -565,6 +653,7 @@ export const carregarFotosClienteSupabase = async (clienteId: string): Promise<a
 // --- SALVAR / ATUALIZAR MATERIAL ---
 export const salvarMaterialSupabase = async (material: any) => {
   try {
+    const salaoId = material.salao_id || getActiveSalaoId();
     const preco = Number(material.preco_compra) || 0;
     const rend = Number(material.rendimento) || 1;
     const custo = (typeof material.custo_por_uso === 'number' && !isNaN(material.custo_por_uso) && material.custo_por_uso > 0)
@@ -578,12 +667,14 @@ export const salvarMaterialSupabase = async (material: any) => {
       preco_compra: preco,
       rendimento: rend,
       custo_por_uso: custo,
-      ativo: material.ativo !== false
+      ativo: material.ativo !== false,
+      salao_id: salaoId
     };
 
     let { error } = await supabase.from('materiais').upsert(payload);
-    if (error && error.code === 'PGRST204') {
+    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column'))) {
       delete payload.custo_por_uso;
+      delete payload.salao_id;
       const res = await supabase.from('materiais').upsert(payload);
       error = res.error;
     }
@@ -613,6 +704,7 @@ export const deletarMaterialSupabase = async (id: string) => {
 // --- SALVAR / ATUALIZAR USUÁRIO DA EQUIPE ---
 export const salvarUsuarioSupabase = async (usuario: any) => {
   try {
+    const salaoId = usuario.salao_id || getActiveSalaoId();
     const payload: any = {
       id: usuario.id,
       nome: usuario.nome,
@@ -620,7 +712,8 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
       telefone: usuario.telefone || '',
       perfil: usuario.perfil || 'profissional',
       ativo: usuario.ativo !== false,
-      senha: usuario.senha || 'admin'
+      senha: usuario.senha || 'admin',
+      salao_id: salaoId
     };
 
     if (usuario.servicos_habilitados && Array.isArray(usuario.servicos_habilitados)) {
@@ -648,7 +741,7 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
     let { error } = await supabase.from('usuarios').upsert(payload);
 
     // Se a tabela usuarios não tiver colunas extras ainda, faz fallback seguro
-    if (error && (error.code === 'PGRST204' || error.code === '42703')) {
+    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column'))) {
       delete payload.servicos_habilitados;
       delete payload.chave_pix;
       delete payload.usar_pix_proprio;
@@ -656,6 +749,7 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
       delete payload.horario_almoco_ativo;
       delete payload.horario_almoco_inicio;
       delete payload.horario_almoco_fim;
+      delete payload.salao_id;
       const res = await supabase.from('usuarios').upsert(payload);
       error = res.error;
     }
@@ -673,6 +767,7 @@ export const salvarUsuarioSupabase = async (usuario: any) => {
 // --- SALVAR / ATUALIZAR DESPESA ---
 export const salvarDespesaSupabase = async (despesa: any) => {
   try {
+    const salaoId = despesa.salao_id || getActiveSalaoId();
     let descFinal = despesa.descricao || '';
     const meta: any = {};
     if (despesa.tipo_destino) meta.td = despesa.tipo_destino;
@@ -693,14 +788,22 @@ export const salvarDespesaSupabase = async (despesa: any) => {
       descFinal = `${descFinal} [DESP_META:${JSON.stringify(meta)}]`.trim();
     }
 
-    const { error } = await supabase.from('despesas').upsert({
+    const payloadDesp: any = {
       id: despesa.id,
       descricao: descFinal,
       categoria: despesa.categoria,
       valor: Number(despesa.valor) || 0,
       data: despesa.data,
-      pago: despesa.pago !== false
-    });
+      pago: despesa.pago !== false,
+      salao_id: salaoId
+    };
+
+    let { error } = await supabase.from('despesas').upsert(payloadDesp);
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      delete payloadDesp.salao_id;
+      const res = await supabase.from('despesas').upsert(payloadDesp);
+      error = res.error;
+    }
     if (error && error.code !== 'PGRST205') console.error('Erro ao salvar despesa no Supabase:', error);
   } catch (e) {}
 };
@@ -725,7 +828,9 @@ export const deletarDespesaSupabase = async (id: string) => {
 export const salvarTokenFcmSupabase = async (token: string) => {
   if (!token) return;
   try {
-    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+    const activeSalao = getActiveSalaoId();
+    const configRowId = (activeSalao === 'salao_sheila' || !activeSalao) ? 'salao_principal' : activeSalao;
+    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', configRowId).maybeSingle();
     const configSalao = data?.config_salao || {};
     const tokensExistentes: string[] = Array.isArray(configSalao.fcm_tokens) ? configSalao.fcm_tokens : [];
     if (!tokensExistentes.includes(token)) {
@@ -754,12 +859,16 @@ export const salvarConfiguracoesSupabase = async (dados: {
   equipe?: any[];
   planosAssinatura?: any[];
   produtos?: any[];
+  salaoIdOverride?: string;
 }) => {
   try {
+    const activeSalao = dados.salaoIdOverride || getActiveSalaoId();
+    const configRowId = (activeSalao === 'salao_sheila' || !activeSalao) ? 'salao_principal' : activeSalao;
+
     // Busca dados atuais na nuvem para mesclar e NUNCA sobrescrever listas não passadas com array vazio
     let atual: any = null;
     try {
-      const { data } = await supabase.from('configuracoes').select('*').eq('id', 'salao_principal').maybeSingle();
+      const { data } = await supabase.from('configuracoes').select('*').eq('id', configRowId).maybeSingle();
       atual = data;
     } catch (e) {}
 
@@ -821,16 +930,23 @@ export const salvarConfiguracoesSupabase = async (dados: {
     configSalaoObj.categorias_despesa = categoriasDespesaFinal;
 
     const payload: any = {
-      id: 'salao_principal',
+      id: configRowId,
       config_salao: configSalaoObj,
       tecnicas: tecnicasFinal,
       formatos: formatosFinal,
       categorias_servico: categoriasServicoFinal,
       categorias_despesa: categoriasDespesaFinal,
+      salao_id: activeSalao,
       atualizado_em: new Date().toISOString()
     };
 
-    const { error } = await supabase.from('configuracoes').upsert(payload);
+    let { error } = await supabase.from('configuracoes').upsert(payload);
+    if (error && (error.code === '42703' || error.message?.includes('column'))) {
+      delete payload.salao_id;
+      const res = await supabase.from('configuracoes').upsert(payload);
+      error = res.error;
+    }
+
     if (error && error.code !== 'PGRST205') {
       console.error('Erro ao salvar configuracoes no Supabase:', error);
       return { sucesso: false, erro: error.message };
@@ -844,17 +960,53 @@ export const salvarConfiguracoesSupabase = async (dados: {
 // --- BUSCAR DADOS DA NUVEM (SINCRONIZAÇÃO INICIAL) ---
 // OTIMIZAÇÃO: Fotos de clientes são pesadas (Base64) e NÃO são baixadas em massa aqui.
 // Elas são carregadas sob demanda apenas na abertura da ficha da cliente em Clientes.tsx.
-export const carregarDadosNuvemSupabase = async () => {
+export const carregarDadosNuvemSupabase = async (salaoIdOverride?: string) => {
   try {
+    const activeSalao = salaoIdOverride || getActiveSalaoId();
+    const hasCol = await verificarColunaMultiTenantExiste();
+
+    let clientesQuery = supabase.from('clientes').select('*');
+    let agendamentosQuery = supabase.from('agendamentos').select('*');
+    let listaQuery = supabase.from('lista_espera').select('*');
+    let servicosQuery = supabase.from('servicos').select('*');
+    let usuariosQuery = supabase.from('usuarios').select('*');
+    let matQuery = supabase.from('materiais').select('*');
+    let despQuery = supabase.from('despesas').select('*');
+    let configQuery = supabase.from('configuracoes').select('*');
+
+    if (hasCol) {
+      if (activeSalao === 'salao_sheila') {
+        clientesQuery = clientesQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        agendamentosQuery = agendamentosQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        listaQuery = listaQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        servicosQuery = servicosQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        usuariosQuery = usuariosQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        matQuery = matQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        despQuery = despQuery.or('salao_id.eq.salao_sheila,salao_id.is.null');
+        configQuery = configQuery.or('salao_id.eq.salao_sheila,salao_id.is.null,id.eq.salao_principal');
+      } else {
+        clientesQuery = clientesQuery.eq('salao_id', activeSalao);
+        agendamentosQuery = agendamentosQuery.eq('salao_id', activeSalao);
+        listaQuery = listaQuery.eq('salao_id', activeSalao);
+        servicosQuery = servicosQuery.eq('salao_id', activeSalao);
+        usuariosQuery = usuariosQuery.eq('salao_id', activeSalao);
+        matQuery = matQuery.eq('salao_id', activeSalao);
+        despQuery = despQuery.eq('salao_id', activeSalao);
+        configQuery = configQuery.or(`id.eq.${activeSalao},salao_id.eq.${activeSalao}`);
+      }
+    } else {
+      configQuery = configQuery.eq('id', 'salao_principal');
+    }
+
     const [clientesRes, agendamentosRes, listaRes, servicosRes, usuariosRes, matRes, despRes, configRes] = await Promise.all([
-      supabase.from('clientes').select('*'),
-      supabase.from('agendamentos').select('*'),
-      supabase.from('lista_espera').select('*'),
-      supabase.from('servicos').select('*'),
-      supabase.from('usuarios').select('*'),
-      supabase.from('materiais').select('*'),
-      supabase.from('despesas').select('*'),
-      supabase.from('configuracoes').select('*')
+      clientesQuery,
+      agendamentosQuery,
+      listaQuery,
+      servicosQuery,
+      usuariosQuery,
+      matQuery,
+      despQuery,
+      configQuery
     ]);
 
     const clientesValidos = (clientesRes.data || []).filter((c: any) => 
@@ -878,6 +1030,16 @@ export const carregarDadosNuvemSupabase = async () => {
       !d.descricao?.startsWith('[EXCLUIDO]')
     );
 
+    // Seleciona a configuração do salão ativo
+    let configAchada = configRes.data?.[0] || null;
+    if (Array.isArray(configRes.data) && configRes.data.length > 1) {
+      if (activeSalao !== 'salao_sheila') {
+        configAchada = configRes.data.find((c: any) => c.id === activeSalao || c.salao_id === activeSalao) || configRes.data[0];
+      } else {
+        configAchada = configRes.data.find((c: any) => c.id === 'salao_principal' || c.salao_id === 'salao_sheila') || configRes.data[0];
+      }
+    }
+
     return {
       clientes: clientesValidos,
       agendamentos: agendamentosRes.data || [],
@@ -887,7 +1049,7 @@ export const carregarDadosNuvemSupabase = async () => {
       fotos: [],
       materiais: materiaisValidos,
       despesas: despesasValidas,
-      configuracoes: configRes.data?.[0] || null
+      configuracoes: configAchada
     };
   } catch (e) {
     console.error('Erro ao carregar dados do Supabase:', e);
@@ -981,12 +1143,16 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
     });
     const atualizados = [novoAviso, ...filtrados].slice(0, 50);
 
+    const activeSalao = getActiveSalaoId();
+    const configRowId = (activeSalao === 'salao_sheila' || !activeSalao) ? 'salao_principal' : activeSalao;
+
     await supabase.from('configuracoes').upsert({
-      id: 'salao_principal',
+      id: configRowId,
       config_salao: {
         ...configSalao,
         avisos_nao_lidos: atualizados
       },
+      salao_id: activeSalao,
       atualizado_em: new Date().toISOString()
     });
   } catch (err) {
@@ -1019,14 +1185,17 @@ export const enviarNotificacaoRealtimeMultiDispositivos = async (notificacao: {
 // --- PERSISTIR LISTA DE AVISOS ATUALIZADA (QUANDO DER BAIXA / MARCAR COMO LIDO) ---
 export const persistirAvisosNaoLidosSupabase = async (avisos: any[]) => {
   try {
-    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', 'salao_principal').maybeSingle();
+    const activeSalao = getActiveSalaoId();
+    const configRowId = (activeSalao === 'salao_sheila' || !activeSalao) ? 'salao_principal' : activeSalao;
+    const { data } = await supabase.from('configuracoes').select('config_salao').eq('id', configRowId).maybeSingle();
     const configSalao = data?.config_salao || {};
     await supabase.from('configuracoes').upsert({
-      id: 'salao_principal',
+      id: configRowId,
       config_salao: {
         ...configSalao,
         avisos_nao_lidos: avisos
       },
+      salao_id: activeSalao,
       atualizado_em: new Date().toISOString()
     });
 

@@ -36,6 +36,7 @@ import {
   deletarFotoClienteSupabase,
   carregarFotosClienteSupabase
 } from '../services/supabase';
+import { uploadImagemCloudinary } from '../services/cloudinary';
 import { getBookingUrl, gerarLinkWhatsApp, preencherTemplateWhatsApp, formatarTratamentoGenero, detectarGeneroPorNome } from '../utils/urlHelper';
 import { gerarIdSeguro } from '../utils/cryptoHelper';
 import { ModalAnamnese } from '../components/ModalAnamnese';
@@ -491,12 +492,30 @@ export const Clientes: React.FC<ClientesProps> = ({
           console.error('Erro ao gravar fotos no localStorage:', err);
         }
 
-        // Sincroniza cada foto no Supabase
-        novasFotos.forEach(f => {
+        // Sincroniza cada foto no Cloudinary (CDN) e no Supabase
+        novasFotos.forEach(async f => {
+          let urlFinal = f.url;
+          try {
+            const urlCdn = await uploadImagemCloudinary(f.url, 'clientes_fotos');
+            if (urlCdn && urlCdn.startsWith('http')) {
+              urlFinal = urlCdn;
+              // Atualiza o estado e cache local com a URL limpa do Cloudinary
+              setFotosClientes(current => {
+                const arr = current[selectedClienteIdForDetails] || [];
+                const up = arr.map(item => item.id === f.id ? { ...item, url: urlCdn } : item);
+                const next = { ...current, [selectedClienteIdForDetails]: up };
+                try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(next)); } catch (e) {}
+                return next;
+              });
+            }
+          } catch (e) {
+            console.warn('Fallback para upload local:', e);
+          }
+
           salvarFotoClienteSupabase({
             id: f.id,
             cliente_id: selectedClienteIdForDetails,
-            url: f.url,
+            url: urlFinal,
             tipo: f.tipo,
             criado_em: f.criado_em
           });
@@ -538,11 +557,29 @@ export const Clientes: React.FC<ClientesProps> = ({
         console.error('Erro ao gravar fotos no localStorage:', err);
       }
 
-      novasFotos.forEach(f => {
+      // Sincroniza cada foto no Cloudinary (CDN) e no Supabase
+      novasFotos.forEach(async f => {
+        let urlFinal = f.url;
+        try {
+          const urlCdn = await uploadImagemCloudinary(f.url, 'clientes_fotos');
+          if (urlCdn && urlCdn.startsWith('http')) {
+            urlFinal = urlCdn;
+            setFotosClientes(current => {
+              const arr = current[selectedClienteIdForDetails] || [];
+              const up = arr.map(item => item.id === f.id ? { ...item, url: urlCdn } : item);
+              const next = { ...current, [selectedClienteIdForDetails]: up };
+              try { localStorage.setItem('nail_cliente_fotos_v2', JSON.stringify(next)); } catch (e) {}
+              return next;
+            });
+          }
+        } catch (e) {
+          console.warn('Fallback para upload local:', e);
+        }
+
         salvarFotoClienteSupabase({
           id: f.id,
           cliente_id: selectedClienteIdForDetails,
-          url: f.url,
+          url: urlFinal,
           tipo: f.tipo,
           criado_em: f.criado_em
         });
