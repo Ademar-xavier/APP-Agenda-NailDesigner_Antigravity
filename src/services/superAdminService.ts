@@ -182,7 +182,31 @@ export const cadastrarNovoSalao = async (dados: {
     const payloadConfig: any = {
       id: salaoId,
       salao_id: salaoId,
-      config_salao: configInicialObj,
+      config_salao: {
+        ...configInicialObj,
+        planos_assinatura: [
+          {
+            id: `plano_${salaoId}_vip`,
+            nome: 'Clube Nails VIP (Exemplo)',
+            preco: 180,
+            beneficios: '2 Manutenções em Gel no mês + 1 Spa dos Pés com desconto exclusivo',
+            frequencia: 'mensal',
+            servicos_inclusos: ['Manutenção de Alongamento', 'Pedicure Spa'],
+            ativo: true
+          }
+        ]
+      },
+      planos_assinatura: [
+        {
+          id: `plano_${salaoId}_vip`,
+          nome: 'Clube Nails VIP (Exemplo)',
+          preco: 180,
+          beneficios: '2 Manutenções em Gel no mês + 1 Spa dos Pés com desconto exclusivo',
+          frequencia: 'mensal',
+          servicos_inclusos: ['Manutenção de Alongamento', 'Pedicure Spa'],
+          ativo: true
+        }
+      ],
       tecnicas: ['Fibra de Vidro', 'Gel Moldado', 'Tips', 'Esmaltação em Gel', 'Banho de Gel'],
       formatos: ['Quadrada', 'Almond', 'Stiletto', 'Bailarina', 'Redonda'],
       categorias_servico: ['Alongamento', 'Manutenção', 'Mão', 'Pé', 'Decoração'],
@@ -227,6 +251,103 @@ export const cadastrarNovoSalao = async (dados: {
     try {
       await supabase.from('usuarios').upsert(usuarioProprietaria);
     } catch (e) {}
+
+    // 5. Cadastra clientes exemplo para o salão ver a tela populada
+    const clientesPadrao = [
+      {
+        id: `cli_${salaoId}_1`,
+        nome: 'Mariana Silva (Exemplo)',
+        telefone: '11998765432',
+        instagram: '@mari.unhas',
+        observacoes: 'Cliente exemplo VIP. Prefere formato Almond e unhas em gel decoradas.',
+        consentimento_imagem: true,
+        salao_id: salaoId,
+        criado_em: new Date().toISOString()
+      },
+      {
+        id: `cli_${salaoId}_2`,
+        nome: 'Camila Santos (Exemplo)',
+        telefone: '11987654321',
+        instagram: '@camilas.beleza',
+        observacoes: 'Cliente exemplo. Gosta de esmaltação em gel nude e atendimento pontual.',
+        consentimento_imagem: true,
+        salao_id: salaoId,
+        criado_em: new Date().toISOString()
+      }
+    ];
+    for (const c of clientesPadrao) {
+      try {
+        await supabase.from('clientes').upsert(c);
+      } catch (e) {}
+    }
+
+    // 6. Cadastra agendamentos exemplo (Hoje e Amanhã) para a agenda ficar dinâmica e visual
+    const hojeIso = new Date().toISOString().split('T')[0];
+    const amanhaDate = new Date();
+    amanhaDate.setDate(amanhaDate.getDate() + 1);
+    const amanhaIso = amanhaDate.toISOString().split('T')[0];
+
+    const agendamentosPadrao = [
+      {
+        id: `ag_${salaoId}_1`,
+        cliente_id: `cli_${salaoId}_1`,
+        profissional_id: `u_${salaoId}`,
+        inicio: `${hojeIso}T14:00:00`,
+        fim: `${hojeIso}T16:00:00`,
+        status: 'confirmado',
+        valor_total: 160,
+        valor_sinal: 30,
+        observacoes: 'Atendimento exemplo. Sinal Pix de R$ 30 recebido com sucesso!',
+        origem: 'cliente',
+        itens_servicos: [`${salaoId}_s1`],
+        salao_id: salaoId,
+        criado_em: new Date().toISOString()
+      },
+      {
+        id: `ag_${salaoId}_2`,
+        cliente_id: `cli_${salaoId}_2`,
+        profissional_id: `u_${salaoId}`,
+        inicio: `${amanhaIso}T10:00:00`,
+        fim: `${amanhaIso}T11:00:00`,
+        status: 'pendente',
+        valor_total: 70,
+        valor_sinal: 15,
+        observacoes: 'Agendamento online exemplo aguardando confirmação.',
+        origem: 'cliente',
+        itens_servicos: [`${salaoId}_s2`],
+        salao_id: salaoId,
+        criado_em: new Date().toISOString()
+      }
+    ];
+    for (const ag of agendamentosPadrao) {
+      try {
+        await supabase.from('agendamentos').upsert(ag);
+      } catch (e) {}
+    }
+
+    // 7. Cadastra materiais exemplo no estoque (com custo por uso)
+    const materiaisPadrao = [
+      { id: `mat_${salaoId}_1`, nome: 'Gel Construtor Nude 30g', marca: 'Vòlia', preco_compra: 89.90, rendimento: 15, custo_por_uso: 5.99, ativo: true, salao_id: salaoId },
+      { id: `mat_${salaoId}_2`, nome: 'Prep Higienizador 500ml', marca: 'Cuccio', preco_compra: 38.00, rendimento: 40, custo_por_uso: 0.95, ativo: true, salao_id: salaoId },
+      { id: `mat_${salaoId}_3`, nome: 'Lixa Boomerang 100/180', marca: 'Honey Girl', preco_compra: 8.50, rendimento: 3, custo_por_uso: 2.83, ativo: true, salao_id: salaoId },
+      { id: `mat_${salaoId}_4`, nome: 'Top Coat Alto Brilho 15ml', marca: 'D&Z', preco_compra: 45.00, rendimento: 25, custo_por_uso: 1.80, ativo: true, salao_id: salaoId }
+    ];
+    for (const m of materiaisPadrao) {
+      try {
+        await supabase.from('materiais').upsert(m);
+      } catch (e) {}
+    }
+
+    // 8. Cadastra despesas exemplo para o painel financeiro mostrar gráficos e métricas
+    const despesasPadrao = [
+      { id: `desp_${salaoId}_1`, descricao: 'Reposição de Géis e Insumos do Salão [DESP_META:{"fp":"pix","td":"salao"}]', categoria: 'Produtos e Insumos', valor: 181.40, data: hojeIso, fixo: false, salao_id: salaoId, criado_em: new Date().toISOString() },
+      { id: `desp_${salaoId}_2`, descricao: 'Energia Elétrica e Internet do Estúdio [DESP_META:{"fp":"pix","td":"salao"}]', categoria: 'Aluguel e Luz', valor: 135.00, data: hojeIso, fixo: true, salao_id: salaoId, criado_em: new Date().toISOString() }
+    ];
+    for (const d of despesasPadrao) {
+      try {
+        await supabase.from('despesas').upsert(d);
+      } catch (e) {}
+    }
 
     // 3. Monta o texto pronto para WhatsApp
     const baseUrl = window.location.origin;
