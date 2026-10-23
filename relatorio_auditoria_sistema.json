@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-23T18:39:53.318Z",
+  "timestamp": "2026-10-23T19:10:53.148Z",
   "totalTests": 42,
   "testsPassed": 42,
   "testsFailed": 0,
@@ -11,27 +11,27 @@
         {
           "name": "Tabela agendamentos",
           "status": "PASS",
-          "details": "311 registros | salao_id ativo"
+          "details": "312 registros | salao_id ativo"
         },
         {
           "name": "Tabela clientes",
           "status": "PASS",
-          "details": "116 registros | salao_id ativo"
+          "details": "119 registros | salao_id ativo"
         },
         {
           "name": "Tabela servicos",
           "status": "PASS",
-          "details": "12 registros | salao_id ativo"
+          "details": "13 registros | salao_id ativo"
         },
         {
           "name": "Tabela materiais",
           "status": "PASS",
-          "details": "13 registros | salao_id ativo"
+          "details": "14 registros | salao_id ativo"
         },
         {
           "name": "Tabela despesas",
           "status": "PASS",
-          "details": "11 registros | salao_id ativo"
+          "details": "12 registros | salao_id ativo"
         },
         {
           "name": "Tabela usuarios",
@@ -56,7 +56,7 @@
         {
           "name": "Tabela licencas",
           "status": "PASS",
-          "details": "5 registros | salao_id ativo"
+          "details": "6 registros | salao_id ativo"
         }
       ]
     },
@@ -213,7 +213,7 @@
         {
           "name": "Consulta do catálogo de licenças",
           "status": "PASS",
-          "details": "5 licenças cadastradas"
+          "details": "6 licenças cadastradas"
         },
         {
           "name": "Licença Mestre Ademar Xavier",
@@ -249,17 +249,17 @@
         {
           "name": "Base histórica de agendamentos da Sheila",
           "status": "PASS",
-          "details": "312 agendamentos preservados intactos"
+          "details": "313 agendamentos preservados intactos"
         },
         {
           "name": "Base de clientes da Sheila",
           "status": "PASS",
-          "details": "111 clientes cadastrados preservados"
+          "details": "113 clientes cadastrados preservados"
         },
         {
           "name": "Catálogo de serviços da Sheila",
           "status": "PASS",
-          "details": "13 serviços preservados"
+          "details": "14 serviços preservados"
         }
       ]
     },

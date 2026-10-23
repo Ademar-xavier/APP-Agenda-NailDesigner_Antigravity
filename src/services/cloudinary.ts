@@ -31,6 +31,20 @@ export const uploadImagemCloudinary = async (
     return source;
   }
 
+  // 1. Validação de Segurança (OWASP File Upload Protection)
+  // Limita tamanho a no máximo 5 MB e restringe a formatos de imagem permitidos
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+  if (source instanceof File || source instanceof Blob) {
+    if (source.size > MAX_FILE_SIZE) {
+      console.warn(`Arquivo excede o limite de 5MB (${(source.size / (1024 * 1024)).toFixed(1)}MB). Upload cancelado.`);
+      throw new Error('O arquivo excede o tamanho máximo permitido de 5MB.');
+    }
+    if (source.type && !source.type.startsWith('image/')) {
+      console.warn(`Tentativa de upload de formato não permitido: ${source.type}.`);
+      throw new Error('Apenas arquivos de imagem (JPG, PNG, WebP) são permitidos.');
+    }
+  }
+
   try {
     const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
     const formData = new FormData();

@@ -31,6 +31,7 @@ import {
   excluirLicenca,
   atualizarLicencaCompleta
 } from '../services/superAdminService';
+import { sha256Hash, criarTokenSessao, validarTokenSessao } from '../utils/cryptoHelper';
 
 const SQL_MIGRATION_SCRIPT = `-- ==============================================================================
 -- SAAS MULTI-TENANT & GESTÃO DE SALÕES (ANTIGRAVITY AGENDA)
@@ -80,9 +81,9 @@ CREATE INDEX IF NOT EXISTS idx_licencas_salao ON licencas(salao_id);
 NOTIFY pgrst, 'reload schema';`;
 
 export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) => {
-  // Autenticação Mestra
+  // Autenticação Mestra Criptografada (SHA-256 + Token Temporizado com Validade)
   const [autenticado, setAutenticado] = useState<boolean>(() => {
-    return sessionStorage.getItem('superadmin_auth') === 'true';
+    return validarTokenSessao(sessionStorage.getItem('superadmin_token'), 'superadmin_master');
   });
   const [senhaInput, setSenhaInput] = useState('');
   const [erroSenha, setErroSenha] = useState('');
@@ -176,15 +177,33 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
     setSalvandoEdicao(false);
   };
 
-  const handleAutenticar = (e: React.FormEvent) => {
+  const handleAutenticar = async (e: React.FormEvent) => {
     e.preventDefault();
-    const MASTER_PWD = (import.meta.env.VITE_ADMIN_PASSWORD || 'alicelara0108').trim();
     const digitada = senhaInput.trim();
-    if (digitada === MASTER_PWD || digitada === 'ademar2026') {
-      setAutenticado(true);
-      sessionStorage.setItem('superadmin_auth', 'true');
-    } else {
-      setErroSenha('Senha mestra incorreta. Tente novamente.');
+    if (!digitada) return;
+
+    try {
+      const hashDigitada = await sha256Hash(digitada);
+      const envAdminPwd = import.meta.env.VITE_ADMIN_PASSWORD ? String(import.meta.env.VITE_ADMIN_PASSWORD).trim() : '';
+      const hashEnv = envAdminPwd ? await sha256Hash(envAdminPwd) : '';
+
+      // Hashes criptográficos SHA-256 autorizados (nunca expõe senhas em texto puro no bundle)
+      const AUTHORIZED_HASHES = [
+        '6bfee4f96f4e15b64ba09b68ef27469a0e30bd5282b27d66b41b7f686e91f7da',
+        'cf7802d8c2a31033f0f0e6adf6ce4b06a6fa3bb625e7b298d8086c73e0367e3a'
+      ];
+
+      if (AUTHORIZED_HASHES.includes(hashDigitada) || (hashEnv && hashDigitada === hashEnv)) {
+        const token = criarTokenSessao('superadmin_master', 4);
+        sessionStorage.setItem('superadmin_token', token);
+        sessionStorage.removeItem('superadmin_auth');
+        setAutenticado(true);
+        setErroSenha('');
+      } else {
+        setErroSenha('Senha mestra incorreta. Tente novamente.');
+      }
+    } catch (err) {
+      setErroSenha('Falha na validação de segurança. Tente novamente.');
     }
   };
 

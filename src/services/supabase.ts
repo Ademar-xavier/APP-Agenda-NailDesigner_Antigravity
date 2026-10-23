@@ -979,7 +979,8 @@ export const carregarDadosNuvemSupabase = async (salaoIdOverride?: string) => {
     let agendamentosQuery = supabase.from('agendamentos').select('*');
     let listaQuery = supabase.from('lista_espera').select('*');
     let servicosQuery = supabase.from('servicos').select('*');
-    let usuariosQuery = supabase.from('usuarios').select('*');
+    // Segurança: Não seleciona a coluna 'senha' em lote para proteger credenciais de equipe na rede e no localStorage
+    let usuariosQuery = supabase.from('usuarios').select('id, nome, email, telefone, perfil, ativo, especialidade, servicos_habilitados, horario_almoco_ativo, horario_almoco_inicio, horario_almoco_fim, chave_pix, usar_pix_proprio, salao_id');
     let matQuery = supabase.from('materiais').select('*');
     let despQuery = supabase.from('despesas').select('*');
     let configQuery = supabase.from('configuracoes').select('*');

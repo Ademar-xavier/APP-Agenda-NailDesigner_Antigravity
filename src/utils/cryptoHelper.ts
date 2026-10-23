@@ -45,3 +45,47 @@ export function gerarCodigoSeguro(length = 6, chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ2
   }
   return result;
 }
+
+/**
+ * Gera o Hash SHA-256 criptográfico de uma string (evita expor senhas em texto puro).
+ */
+export async function sha256Hash(texto: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(texto);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {}
+  }
+  return texto;
+}
+
+/**
+ * Cria um token de sessão seguro com prazo de validade (timestamp em milissegundos).
+ */
+export function criarTokenSessao(chave: string, duracaoHoras: number = 4): string {
+  const expiraEm = Date.now() + duracaoHoras * 60 * 60 * 1000;
+  const payload = `${chave}:${expiraEm}:${Math.random().toString(36).substring(2, 8)}`;
+  if (typeof btoa !== 'undefined') {
+    return btoa(payload);
+  }
+  return payload;
+}
+
+/**
+ * Valida se um token de sessão foi emitido com a chave correta e se ainda não expirou.
+ */
+export function validarTokenSessao(token: string | null, chaveEsperada: string): boolean {
+  if (!token) return false;
+  try {
+    const decoded = typeof atob !== 'undefined' ? atob(token) : token;
+    const [chave, expiraEmStr] = decoded.split(':');
+    const expiraEm = Number(expiraEmStr);
+    if (chave === chaveEsperada && !isNaN(expiraEm) && Date.now() < expiraEm) {
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}

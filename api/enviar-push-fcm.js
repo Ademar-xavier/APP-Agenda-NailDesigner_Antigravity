@@ -132,6 +132,21 @@ async function buscarTokensFcmSupabase() {
   }
 }
 
+// Rate Limiter em memória por IP (máximo 15 envios de push por minuto por IP)
+const ipRateLimit = new Map();
+function verificarRateLimit(ip, limite = 15, janelaMs = 60000) {
+  const now = Date.now();
+  const registro = ipRateLimit.get(ip) || { count: 0, resetAt: now + janelaMs };
+  if (now > registro.resetAt) {
+    registro.count = 1;
+    registro.resetAt = now + janelaMs;
+  } else {
+    registro.count++;
+  }
+  ipRateLimit.set(ip, registro);
+  return registro.count <= limite;
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   if (origin) {
@@ -140,7 +155,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Internal-Secret');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Internal-Secret, X-App-Source');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -148,6 +163,12 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ erro: 'Método não permitido. Use POST.' });
+  }
+
+  // 1. Proteção de Taxa (Rate Limit) por IP
+  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  if (!verificarRateLimit(clientIp, 15, 60000)) {
+    return res.status(429).json({ erro: 'Muitas requisições. Aguarde um momento antes de reenviar notificações.' });
   }
 
   try {
