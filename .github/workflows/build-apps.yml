@@ -1,4 +1,4 @@
-name: Build Mobile and Desktop Apps
+name: Build Mobile App (Android APK)
 
 on:
   push:
@@ -51,28 +51,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-  windows:
-    name: Build Windows Desktop
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Setup Node.js
-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Electron App
-        run: npm run electron:build
-
-      - name: Upload Windows Executable Artifact
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
-        with:
-          name: sheila-santos-nails-designer-windows
-          path: dist-electron/*.exe
-          if-no-files-found: error
