@@ -59,15 +59,15 @@ const EXTRAS_PADRAO: ExtraItem[] = [
   }
 ];
 
-// Fotos temáticas em alta resolução como fallback
+// Fotos temáticas locais em alta resolução como fallback garantido
 const FOTOS_FALLBACK: Record<string, string> = {
-  alongamento: 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=800&auto=format&fit=crop&q=80',
-  manutencao: 'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?w=800&auto=format&fit=crop&q=80',
-  esmaltacao: 'https://images.unsplash.com/photo-1604654894610-df63bc536371?w=800&auto=format&fit=crop&q=80',
-  mao: 'https://images.unsplash.com/photo-1519014816548-bf5fe059798b?w=800&auto=format&fit=crop&q=80',
-  pe: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=800&auto=format&fit=crop&q=80',
-  decoracao: 'https://images.unsplash.com/photo-1599839575945-a9e5af0c3fa5?w=800&auto=format&fit=crop&q=80',
-  geral: 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=800&auto=format&fit=crop&q=80'
+  alongamento: './images/alongamento.jpg',
+  manutencao: './images/manutencao.jpg',
+  esmaltacao: './images/esmaltacao.jpg',
+  mao: './images/mao.jpg',
+  pe: './images/pe.jpg',
+  decoracao: './images/decoracao.jpg',
+  geral: './images/hero_catalogo.jpg'
 };
 
 export const PublicCatalogo: React.FC = () => {
@@ -97,7 +97,7 @@ export const PublicCatalogo: React.FC = () => {
   const heroSelo = personalizacao.hero_selo || 'Atendimento com hora marcada';
   const heroTitulo = personalizacao.hero_titulo || 'Unhas impecáveis,\nno seu estilo.';
   const heroSubtitulo = personalizacao.hero_subtitulo || 'Escolha seu serviço, veja o tempo estimado e encontre o melhor horário para você com atendimento exclusivo e técnicas modernas de alta durabilidade.';
-  const heroFotoUrl = personalizacao.hero_foto_url || 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
+  const heroFotoUrl = personalizacao.hero_foto_url || './images/hero_catalogo.jpg';
   const heroCardSub = personalizacao.hero_card_subtitulo || 'Alongamentos & Cuidados';
   const heroCardTag = personalizacao.hero_card_tag || 'Alta Durabilidade';
   const badge1 = personalizacao.badge_confianca_1 || 'Materiais 100% esterilizados';
@@ -468,7 +468,10 @@ export const PublicCatalogo: React.FC = () => {
                   loading="lazy"
                   decoding="async"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1632345031435-8727f6897d53?w=900&auto=format&fit=crop&q=85';
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('hero_catalogo.jpg')) {
+                      target.src = './images/hero_catalogo.jpg';
+                    }
                   }}
                 />
                 
@@ -607,6 +610,12 @@ export const PublicCatalogo: React.FC = () => {
                       className="w-full h-full object-cover object-center group-hover:scale-104 transition-transform duration-500"
                       loading="lazy"
                       decoding="async"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (!target.src.includes('alongamento.jpg')) {
+                          target.src = './images/alongamento.jpg';
+                        }
+                      }}
                     />
                     
                     {/* Tags Flutuantes */}
@@ -979,6 +988,12 @@ export const PublicCatalogo: React.FC = () => {
                 className="w-full h-full object-cover"
                 loading="lazy"
                 decoding="async"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  if (!target.src.includes('alongamento.jpg')) {
+                    target.src = './images/alongamento.jpg';
+                  }
+                }}
               />
               <button
                 onClick={() => setServicoDetalhe(null)}

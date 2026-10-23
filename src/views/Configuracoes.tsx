@@ -39,8 +39,7 @@ import {
   ShieldCheck,
   Bell,
   QrCode,
-  Download,
-  BookOpen
+  Download
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { GoogleSyncModal } from '../components/GoogleSyncModal';
@@ -815,27 +814,12 @@ export const Configuracoes: React.FC = () => {
           <p className="text-xs text-[#8C7A6B]">Personalize expediente, chaves Pix, regras de sinal e mensagens automáticas</p>
         </div>
         
-        <div className="flex items-center gap-3">
-          <a
-            href="./manual.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-[#FAF5F0] to-[#FFF9F8] hover:from-[#F3ECE0] hover:to-[#FAF5F0] text-[#8C6D58] border border-[#E8D7CE] hover:border-[#D48B70] rounded-xl text-xs font-bold transition-all shadow-2xs group"
-            title="Abrir o Manual Oficial do Sistema em nova aba"
-          >
-            <BookOpen size={15} className="text-[#D48B70] group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">Manual de Uso Oficial</span>
-            <span className="sm:hidden">Manual</span>
-            <ExternalLink size={13} className="text-[#8C7A6B] opacity-70 group-hover:opacity-100" />
-          </a>
-
-          {saveSuccess && (
-            <div className="bg-[#EBF7EE] text-[#2B7A4B] border border-[#C2EAD0] text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
-              <Check size={16} />
-              <span>Configurações salvas!</span>
-            </div>
-          )}
-        </div>
+        {saveSuccess && (
+          <div className="bg-[#EBF7EE] text-[#2B7A4B] border border-[#C2EAD0] text-xs font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm">
+            <Check size={16} />
+            <span>Configurações salvas!</span>
+          </div>
+        )}
       </div>
 
       {/* Tabs Layout */}
@@ -867,26 +851,6 @@ export const Configuracoes: React.FC = () => {
               </button>
             );
           })}
-
-          {/* Link para o Manual Oficial */}
-          <div className="pt-3 mt-1 border-t border-[#EFECE6] hidden lg:block">
-            <a
-              href="./manual.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-between p-3 rounded-xl border border-dashed border-[#D48B70]/60 bg-[#FAF5F0]/70 hover:bg-[#FAF5F0] text-[#8C6D58] transition-all group"
-              title="Abrir o Manual Completo com imagens em nova aba"
-            >
-              <div className="flex items-center gap-2.5">
-                <BookOpen size={16} className="text-[#D48B70]" />
-                <div className="text-left">
-                  <p className="text-xs font-bold text-[#5A4535] leading-tight">Manual de Uso</p>
-                  <p className="text-[10px] text-[#8C7A6B]">Guia visual do produto</p>
-                </div>
-              </div>
-              <ExternalLink size={13} className="text-[#8C7A6B] group-hover:translate-x-0.5 transition-transform" />
-            </a>
-          </div>
         </div>
 
         {/* Tab Content Container */}
