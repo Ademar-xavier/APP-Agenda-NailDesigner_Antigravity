@@ -22,27 +22,71 @@ export const getBaseAppUrl = (): string => {
 };
 
 /**
+ * Obtém o slug ativo do salão atual para geração de links multi-tenant
+ */
+export const getActiveSalaoSlug = (): string => {
+  try {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search);
+      const salaoParam = searchParams.get('salao') || searchParams.get('s');
+      if (salaoParam && salaoParam.trim()) {
+        const clean = salaoParam.trim().toLowerCase();
+        if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
+        return clean.replace(/^salao_/, '').replace(/_/g, '-');
+      }
+      if (window.location.hash.includes('salao=')) {
+        const hashMatch = window.location.hash.match(/salao=([a-zA-Z0-9_-]+)/i);
+        if (hashMatch && hashMatch[1]) {
+          const clean = hashMatch[1].trim().toLowerCase();
+          if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
+          return clean.replace(/^salao_/, '').replace(/_/g, '-');
+        }
+      }
+      const saved = localStorage.getItem('nail_salao_id');
+      if (saved && saved.trim()) {
+        const clean = saved.trim().toLowerCase();
+        if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
+        return clean.replace(/^salao_/, '').replace(/_/g, '-');
+      }
+    }
+  } catch (e) {}
+  return 'sheila';
+};
+
+/**
  * Gera a URL da Página Pública de Confirmação em 1 Toque
  */
-export const getConfirmationUrl = (agendamentoId: string): string => {
+export const getConfirmationUrl = (agendamentoId: string, slugOverride?: string): string => {
   const base = getBaseAppUrl();
-  return `${base}/#confirmar?id=${agendamentoId}`;
+  const slug = slugOverride || getActiveSalaoSlug();
+  return `${base}/#confirmar?id=${agendamentoId}&salao=${slug}`;
 };
 
 /**
  * Gera a URL da Página Pública de Auto-Agendamento
  */
-export const getBookingUrl = (): string => {
+export const getBookingUrl = (slugOverride?: string): string => {
   const base = getBaseAppUrl();
-  return `${base}/#agendar`;
+  const slug = slugOverride || getActiveSalaoSlug();
+  return `${base}/#agendar?salao=${slug}`;
 };
 
 /**
  * Gera a URL da Página Pública de Catálogo de Serviços
  */
-export const getCatalogoUrl = (): string => {
+export const getCatalogoUrl = (slugOverride?: string): string => {
   const base = getBaseAppUrl();
-  return `${base}/#catalogo`;
+  const slug = slugOverride || getActiveSalaoSlug();
+  return `${base}/#catalogo?salao=${slug}`;
+};
+
+/**
+ * Gera a URL do Painel de Administração / PWA do Salão
+ */
+export const getAdminPwaUrl = (slugOverride?: string): string => {
+  const base = getBaseAppUrl();
+  const slug = slugOverride || getActiveSalaoSlug();
+  return `${base}/#admin?salao=${slug}`;
 };
 
 /**

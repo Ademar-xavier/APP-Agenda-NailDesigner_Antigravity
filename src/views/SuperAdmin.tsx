@@ -19,7 +19,9 @@ import {
   TrendingUp,
   Clock,
   ArrowLeft,
-  Edit
+  Edit,
+  Smartphone,
+  Link as LinkIcon
 } from 'lucide-react';
 import { SalaoLicenca } from '../types';
 import { verificarColunaMultiTenantExiste } from '../services/supabase';
@@ -115,6 +117,8 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
 
   // Feedbacks
   const [chaveCopiadaId, setChaveCopiadaId] = useState<string | null>(null);
+  const [linkAdminCopiadoId, setLinkAdminCopiadoId] = useState<string | null>(null);
+  const [linkAgendamentoCopiadoId, setLinkAgendamentoCopiadoId] = useState<string | null>(null);
   const [textoCopiado, setTextoCopiado] = useState(false);
 
   // Modal Editar Licença Completa
@@ -227,6 +231,45 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
     navigator.clipboard.writeText(chave);
     setChaveCopiadaId(id);
     setTimeout(() => setChaveCopiadaId(null), 2500);
+  };
+
+  const handleCopiarLinkAdmin = (s: SalaoLicenca) => {
+    const slug = s.slug || (s.chave?.includes('SHEILA') ? 'sheila' : 'salao');
+    const url = `${window.location.origin}/#admin?salao=${slug}`;
+    navigator.clipboard.writeText(url);
+    setLinkAdminCopiadoId(s.id);
+    setTimeout(() => setLinkAdminCopiadoId(null), 2500);
+  };
+
+  const handleCopiarLinkAgendamento = (s: SalaoLicenca) => {
+    const slug = s.slug || (s.chave?.includes('SHEILA') ? 'sheila' : 'salao');
+    const url = `${window.location.origin}/#agendar?salao=${slug}`;
+    navigator.clipboard.writeText(url);
+    setLinkAgendamentoCopiadoId(s.id);
+    setTimeout(() => setLinkAgendamentoCopiadoId(null), 2500);
+  };
+
+  const handleAbrirMensagemAcesso = (s: SalaoLicenca) => {
+    const baseUrl = window.location.origin;
+    const slug = s.slug || (s.chave?.includes('SHEILA') ? 'sheila' : 'salao');
+    const linkApp = `${baseUrl}/#admin?salao=${slug}`;
+    const linkAgendamento = `${baseUrl}/#agendar?salao=${slug}`;
+    const validadeFormatada = s.data_expiracao ? new Date(s.data_expiracao).toLocaleDateString('pt-BR') : 'Vitalícia';
+
+    const textoWhatsApp = `✨ *Acesso ao seu Sistema de Gestão & Agendamento!* ✨\n\n` +
+      `Olá, *${s.titular}*! Seguem os links oficiais de acesso ao seu aplicativo:\n\n` +
+      `🔑 *Sua Chave de Acesso Oficial:*\n` +
+      `*${s.chave}*\n\n` +
+      `📲 *Link de Acesso Administrativo (Seu Painel PWA):*\n` +
+      `${linkApp}\n\n` +
+      `🔗 *Link de Agendamento das suas Clientes:*\n` +
+      `${linkAgendamento}\n\n` +
+      `📅 *Validade da Assinatura:* ${validadeFormatada}\n\n` +
+      `Qualquer dúvida ou suporte, estou à disposição! Bons atendimentos e muito sucesso! 💅✨`;
+
+    setMensagemSucessoWhats(textoWhatsApp);
+    setTelefoneWhatsDestino(s.telefone ? s.telefone.replace(/\D/g, '') : '');
+    setModalSucessoAberto(true);
   };
 
   const handleAlternarStatus = async (s: SalaoLicenca) => {
@@ -612,6 +655,25 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                             )}
                             <span className="text-slate-500">Slug: <code className="text-slate-300 font-mono text-[10px]">{s.slug}</code></span>
                           </div>
+                          {/* Atalhos rápidos para copiar links */}
+                          <div className="flex items-center gap-1.5 mt-2">
+                            <button
+                              onClick={() => handleCopiarLinkAdmin(s)}
+                              className="px-2 py-0.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-medium flex items-center gap-1 transition-colors"
+                              title="Copiar Link PWA de Acesso Administrativo para o Salão"
+                            >
+                              {linkAdminCopiadoId === s.id ? <Check size={11} className="text-emerald-400" /> : <Smartphone size={11} />}
+                              <span>{linkAdminCopiadoId === s.id ? 'PWA Copiado!' : 'Copiar PWA'}</span>
+                            </button>
+                            <button
+                              onClick={() => handleCopiarLinkAgendamento(s)}
+                              className="px-2 py-0.5 rounded-md bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-medium flex items-center gap-1 transition-colors"
+                              title="Copiar Link de Agendamento Online das Clientes"
+                            >
+                              {linkAgendamentoCopiadoId === s.id ? <Check size={11} className="text-emerald-400" /> : <LinkIcon size={11} />}
+                              <span>{linkAgendamentoCopiadoId === s.id ? 'Agendar Copiado!' : 'Link Clientes'}</span>
+                            </button>
+                          </div>
                         </td>
 
                         {/* Chave de Licença */}
@@ -697,6 +759,15 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                               title="Editar dados da licença, chave e tempo de validade"
                             >
                               <Edit size={13} />
+                            </button>
+
+                            {/* Ver/Reenviar dados e links de acesso no WhatsApp */}
+                            <button
+                              onClick={() => handleAbrirMensagemAcesso(s)}
+                              className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] transition-colors"
+                              title="Ver/Reenviar dados e links de acesso no WhatsApp"
+                            >
+                              <MessageCircle size={13} />
                             </button>
 
                             {/* Abrir Link do Salão */}

@@ -15,6 +15,24 @@ export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || FALL
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Tenant padrão e resolvedor multi-tenant (SaaS)
+/**
+ * Normaliza qualquer formato de identificador ou slug para o salao_id canônico do banco
+ * Ex: 'sheila' -> 'salao_sheila'
+ * Ex: 'studio-bella' -> 'salao_studio_bella'
+ * Ex: 'salao_studio_bella' -> 'salao_studio_bella'
+ */
+export const normalizarSalaoId = (paramOrSlug?: string | null): string => {
+  if (!paramOrSlug) return 'salao_sheila';
+  const clean = paramOrSlug.trim().toLowerCase();
+  if (clean === 'sheila' || clean === 'salao_sheila' || clean === 'sheilasantos' || clean === 'default' || clean === '') {
+    return 'salao_sheila';
+  }
+  if (clean.startsWith('salao_')) {
+    return clean;
+  }
+  return `salao_${clean.replace(/[^a-z0-9]/g, '_')}`;
+};
+
 export const getActiveSalaoId = (): string => {
   try {
     if (typeof window !== 'undefined') {
@@ -22,18 +40,18 @@ export const getActiveSalaoId = (): string => {
       const searchParams = new URLSearchParams(window.location.search);
       const salaoParam = searchParams.get('salao') || searchParams.get('s');
       if (salaoParam && salaoParam.trim()) {
-        const clean = salaoParam.trim().toLowerCase();
-        localStorage.setItem('nail_salao_id', clean);
-        return clean;
+        const canonical = normalizarSalaoId(salaoParam);
+        localStorage.setItem('nail_salao_id', canonical);
+        return canonical;
       }
 
       // 2. Checa hash param (ex: #agendar?salao=slug ou #admin?salao=slug)
       if (window.location.hash.includes('salao=')) {
         const hashMatch = window.location.hash.match(/salao=([a-zA-Z0-9_-]+)/i);
         if (hashMatch && hashMatch[1]) {
-          const clean = hashMatch[1].trim().toLowerCase();
-          localStorage.setItem('nail_salao_id', clean);
-          return clean;
+          const canonical = normalizarSalaoId(hashMatch[1]);
+          localStorage.setItem('nail_salao_id', canonical);
+          return canonical;
         }
       }
 
@@ -43,7 +61,7 @@ export const getActiveSalaoId = (): string => {
         try {
           const lic = JSON.parse(licRaw);
           if (lic?.salao_id && typeof lic.salao_id === 'string' && lic.salao_id.trim()) {
-            return lic.salao_id.trim();
+            return normalizarSalaoId(lic.salao_id);
           }
         } catch (e) {}
       }
@@ -51,7 +69,7 @@ export const getActiveSalaoId = (): string => {
       // 4. Checa tenant salvo explicitamente no localStorage
       const savedSalao = localStorage.getItem('nail_salao_id');
       if (savedSalao && savedSalao.trim()) {
-        return savedSalao.trim();
+        return normalizarSalaoId(savedSalao);
       }
     }
   } catch (e) {}
