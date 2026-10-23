@@ -2627,17 +2627,6 @@ export const Configuracoes: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => {
-                      window.location.hash = 'superadmin';
-                    }}
-                    className="w-full sm:w-auto px-4 py-2.5 bg-[#8C6D58] hover:bg-[#725743] text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <ShieldCheck size={14} />
-                    <span>Painel Super Admin SaaS</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={handleRevogarLicenca}
                     className="w-full sm:w-auto px-4 py-2.5 border border-red-200 hover:bg-red-50 text-red-600 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                   >
