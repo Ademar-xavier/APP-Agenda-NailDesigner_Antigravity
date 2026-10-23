@@ -424,12 +424,14 @@ export const atualizarStatusAgendamentoSupabase = async (
   confirmadoPor?: 'cliente' | 'admin'
 ) => {
   try {
+    // 1. Monta payload seguro compatível estritamente com as colunas reais do Supabase
+    // Observação: 'cancelado_por' e 'motivo_cancelamento' existem na tabela 'agendamentos'.
+    // 'confirmado_por' NÃO existe na tabela relacional e é mantido no localStorage/BroadcastChannel da UI.
     const updates: any = { status };
     if (canceladoPor) updates.cancelado_por = canceladoPor;
     if (motivo) updates.motivo_cancelamento = motivo;
-    if (confirmadoPor) updates.confirmado_por = confirmadoPor;
 
-    // 1. Atualizar localStorage imediatamente para sincronia no mesmo navegador
+    // 2. Atualizar localStorage imediatamente para sincronia no mesmo navegador
     try {
       const saved = localStorage.getItem('nail_agendamentos');
       if (saved) {
@@ -450,7 +452,7 @@ export const atualizarStatusAgendamentoSupabase = async (
       }
     } catch (err) {}
 
-    // 2. Disparar broadcast instantâneo (0ms) para todas as abas abertas no navegador
+    // 3. Disparar broadcast instantâneo (0ms) para todas as abas abertas no navegador
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
         const bc = new BroadcastChannel('nail_agenda_sync');
@@ -459,14 +461,15 @@ export const atualizarStatusAgendamentoSupabase = async (
       }
     } catch (err) {}
 
-    // 3. Atualizar no Supabase (com eq e fallback para case-insensitive)
+    // 4. Atualizar no Supabase (com eq e fallback para case-insensitive se necessário)
     let { error } = await supabase.from('agendamentos').update(updates).eq('id', id);
-    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column'))) {
-      delete updates.confirmado_por;
-      delete updates.cancelado_por;
-      delete updates.motivo_cancelamento;
-      const res = await supabase.from('agendamentos').update(updates).eq('id', id);
-      error = res.error;
+    if (error) {
+      // Se houver qualquer incompatibilidade de coluna opcional, recua para atualizar somente status
+      if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column')) {
+        const safeUpdates = { status };
+        const res = await supabase.from('agendamentos').update(safeUpdates).eq('id', id);
+        error = res.error;
+      }
     }
     if (error) {
       console.warn('Erro ao atualizar agendamento por eq, tentando case-insensitive:', error);

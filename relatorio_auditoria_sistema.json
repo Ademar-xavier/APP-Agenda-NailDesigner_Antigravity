@@ -1,0 +1,278 @@
+{
+  "timestamp": "2026-10-23T18:39:53.318Z",
+  "totalTests": 42,
+  "testsPassed": 42,
+  "testsFailed": 0,
+  "categories": {
+    "Esquema": {
+      "passed": 10,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Tabela agendamentos",
+          "status": "PASS",
+          "details": "311 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela clientes",
+          "status": "PASS",
+          "details": "116 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela servicos",
+          "status": "PASS",
+          "details": "12 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela materiais",
+          "status": "PASS",
+          "details": "13 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela despesas",
+          "status": "PASS",
+          "details": "11 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela usuarios",
+          "status": "PASS",
+          "details": "2 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela configuracoes",
+          "status": "PASS",
+          "details": "1 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela lista_espera",
+          "status": "PASS",
+          "details": "0 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela fotos_clientes",
+          "status": "PASS",
+          "details": "9 registros | salao_id ativo"
+        },
+        {
+          "name": "Tabela licencas",
+          "status": "PASS",
+          "details": "5 registros | salao_id ativo"
+        }
+      ]
+    },
+    "Agendamentos": {
+      "passed": 7,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Criação de agendamento pendente com sinal",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Confirmação de Agendamento (Resolução Caso Juliana)",
+          "status": "PASS",
+          "details": "Status gravado com sucesso no Supabase sem erro PGRST204"
+        },
+        {
+          "name": "Verificação de persistência do status confirmado",
+          "status": "PASS",
+          "details": "Status no banco: confirmado"
+        },
+        {
+          "name": "Transição para status Concluído",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Cancelamento com motivo e cancelado_por",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Atualização de valor do sinal via Pix",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Remoção de agendamento de teste",
+          "status": "PASS",
+          "details": ""
+        }
+      ]
+    },
+    "Clientes": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Cadastro de cliente com anamnese e preferências",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Recuperação e integridade do JSON de anamnese",
+          "status": "PASS",
+          "details": "Formato: amendoada"
+        },
+        {
+          "name": "Exclusão lógica definitiva do cliente",
+          "status": "PASS",
+          "details": "Marcado como excluído"
+        }
+      ]
+    },
+    "Serviços": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Criação de serviço com sinal configurado",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Leitura e validação de preço e duração",
+          "status": "PASS",
+          "details": "R$ 150 - 120 min"
+        },
+        {
+          "name": "Desativação do serviço de teste",
+          "status": "PASS",
+          "details": "Ativo: false"
+        }
+      ]
+    },
+    "Materiais": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Cadastro de material e cálculo de custo por atendimento",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Validação do custo por uso calculado",
+          "status": "PASS",
+          "details": "Custo/uso: R$ 3.6"
+        },
+        {
+          "name": "Limpeza de material de teste",
+          "status": "PASS",
+          "details": "Concluída"
+        }
+      ]
+    },
+    "Financeiro": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Lançamento de despesa fixa",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Persistência do valor da despesa",
+          "status": "PASS",
+          "details": "R$ 245.5"
+        },
+        {
+          "name": "Limpeza da despesa de teste",
+          "status": "PASS",
+          "details": "Concluída"
+        }
+      ]
+    },
+    "Segurança Multi-Tenant": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Isolamento Sheila -> Salão B (Zero Vazamento)",
+          "status": "PASS",
+          "details": "Dados da Sheila e do Novo Salão 100% blindados."
+        },
+        {
+          "name": "Recuperação Exclusiva do Salão B",
+          "status": "PASS",
+          "details": "Encontrado 1 registro(s) exclusivo(s)"
+        },
+        {
+          "name": "Isolamento de Agendamentos entre Salões",
+          "status": "PASS",
+          "details": "Zero agendamentos da Sheila visíveis para o novo salão"
+        }
+      ]
+    },
+    "SuperAdmin": {
+      "passed": 6,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Consulta do catálogo de licenças",
+          "status": "PASS",
+          "details": "5 licenças cadastradas"
+        },
+        {
+          "name": "Licença Mestre Ademar Xavier",
+          "status": "PASS",
+          "details": "Ativa e Vitalícia"
+        },
+        {
+          "name": "Licença Mestre Sheila Santos",
+          "status": "PASS",
+          "details": "Ativa"
+        },
+        {
+          "name": "Criação de Licença no Supabase",
+          "status": "PASS",
+          "details": ""
+        },
+        {
+          "name": "Atualização/Liberação de Licença via Painel",
+          "status": "PASS",
+          "details": "Status atualizado para Ativo e validade estendida"
+        },
+        {
+          "name": "Limpeza da Licença de Teste",
+          "status": "PASS",
+          "details": "Concluída"
+        }
+      ]
+    },
+    "Preservação Sheila": {
+      "passed": 3,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Base histórica de agendamentos da Sheila",
+          "status": "PASS",
+          "details": "312 agendamentos preservados intactos"
+        },
+        {
+          "name": "Base de clientes da Sheila",
+          "status": "PASS",
+          "details": "111 clientes cadastrados preservados"
+        },
+        {
+          "name": "Catálogo de serviços da Sheila",
+          "status": "PASS",
+          "details": "13 serviços preservados"
+        }
+      ]
+    },
+    "Backup": {
+      "passed": 1,
+      "failed": 0,
+      "list": [
+        {
+          "name": "Existência de snapshots locais do Supabase",
+          "status": "PASS",
+          "details": "3 arquivos JSON de backup disponíveis"
+        }
+      ]
+    }
+  }
+}

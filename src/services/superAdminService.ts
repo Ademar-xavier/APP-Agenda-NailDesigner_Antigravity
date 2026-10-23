@@ -44,7 +44,9 @@ export const listarSaloesLicencas = async (): Promise<SalaoLicenca[]> => {
       return [];
     }
 
-    return (data || []).map((row: any) => ({
+    return (data || [])
+      .filter((row: any) => !row.observacoes?.includes('[EXCLUIDO_SUPERADMIN]'))
+      .map((row: any) => ({
       id: row.id,
       chave: row.chave,
       titular: row.titular,
@@ -457,15 +459,23 @@ export const renovarLicencaDias = async (id: string, diasAdicionais: number = 30
   }
 };
 
-// Excluir licença / salão
+// Excluir licença / salão (com suporte a exclusão física e fallback para lógica definitiva)
 export const excluirLicenca = async (id: string): Promise<boolean> => {
   try {
-    const { error } = await supabase
+    const { count, error } = await supabase
       .from('licencas')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', id);
 
-    return !error;
+    if (error || !count || count === 0) {
+      const { error: errUp } = await supabase
+        .from('licencas')
+        .update({ status: 'expirado', observacoes: '[EXCLUIDO_SUPERADMIN]' })
+        .eq('id', id);
+      return !errUp;
+    }
+
+    return true;
   } catch (e) {
     return false;
   }
