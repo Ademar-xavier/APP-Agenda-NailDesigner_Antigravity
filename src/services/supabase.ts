@@ -149,7 +149,7 @@ export const salvarServicoSupabase = async (servico: any) => {
     });
 
     // Envia exatamente as colunas existentes na tabela servicos do Supabase
-    const payload = {
+    const payloadCompleto: any = {
       id: servico.id,
       nome: servico.nome,
       categoria: servico.categoria || 'Geral',
@@ -162,7 +162,43 @@ export const salvarServicoSupabase = async (servico: any) => {
       itens_combo: servico.servicos_pacote || servico.itens_combo || []
     };
 
-    const { error } = await supabase.from('servicos').upsert(payload);
+    let { error } = await supabase.from('servicos').upsert(payloadCompleto);
+
+    // Fallback 1: se der erro de coluna não encontrada (PGRST204 / 42703), tenta com payload universal
+    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column') || error.message?.includes('schema cache'))) {
+      const payloadBasico = {
+        id: servico.id,
+        nome: servico.nome,
+        categoria: servico.categoria || 'Geral',
+        descricao: descricaoComMetadados || null,
+        duracao_minutos: Number(servico.duracao_minutos) || 60,
+        preco: Number(servico.preco) || 0,
+        ativo: servico.ativo !== false
+      };
+      const resBasico = await supabase.from('servicos').upsert(payloadBasico);
+      error = resBasico.error;
+
+      // Se upsert ainda falhar, tenta update direto pelo ID
+      if (error) {
+        const resUpdate = await supabase.from('servicos').update(payloadBasico).eq('id', servico.id);
+        error = resUpdate.error;
+      }
+    }
+
+    // Fallback 2: se der erro de chave/duplicação no upsert, tenta update direto por ID
+    if (error && (error.code === '23505' || error.code === 'PGRST100')) {
+      const payloadUpdate = {
+        nome: servico.nome,
+        categoria: servico.categoria || 'Geral',
+        descricao: descricaoComMetadados || null,
+        duracao_minutos: Number(servico.duracao_minutos) || 60,
+        preco: Number(servico.preco) || 0,
+        ativo: servico.ativo !== false
+      };
+      const resUp = await supabase.from('servicos').update(payloadUpdate).eq('id', servico.id);
+      error = resUp.error;
+    }
+
     if (error) {
       console.error('Erro ao salvar serviço no Supabase:', error);
       return { sucesso: false, erro: error.message };
@@ -252,6 +288,13 @@ export const salvarAgendamentoSupabase = async (
         obsFinal = obsFinal.replace(/\[PRODUTOS:\s*\[.*?\]\s*\]/gi, '').trim();
         obsFinal = `${obsFinal} [PRODUTOS:${prodJson}]`.trim();
       } catch (e) {}
+    }
+    if (agendamento.recorrencia_grupo_id || agendamento.recorrencia_posicao) {
+      const gId = agendamento.recorrencia_grupo_id || '';
+      const rTipo = agendamento.recorrencia_tipo || '';
+      const rPos = agendamento.recorrencia_posicao || '';
+      obsFinal = obsFinal.replace(/\[RECORRENCIA:[^\]]*\]/gi, '').trim();
+      obsFinal = `${obsFinal} [RECORRENCIA:${gId}|${rTipo}|${rPos}]`.trim();
     }
 
     const { error } = await supabase.from('agendamentos').upsert({

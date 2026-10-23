@@ -4,6 +4,41 @@
 -- Padrão: OWASP Top 10 / Proteção de APIs e Dados Sensíveis
 -- ==============================================================================
 
+-- ==============================================================================
+-- 0. GARANTIR PERMISSÕES DO SCHEMA PUBLIC E RECARREGAR POSTGREST CACHE
+-- Resolve o erro PGRST002 (Could not query the database for the schema cache)
+-- ==============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+
+-- Garantir colunas adicionais para sincronização 100% perfeita entre App e Supabase
+ALTER TABLE IF EXISTS servicos ADD COLUMN IF NOT EXISTS is_pacote BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS servicos ADD COLUMN IF NOT EXISTS itens_combo TEXT[] DEFAULT '{}';
+ALTER TABLE IF EXISTS servicos ADD COLUMN IF NOT EXISTS retorno_dias INTEGER DEFAULT 20;
+
+ALTER TABLE IF EXISTS materiais ADD COLUMN IF NOT EXISTS custo_por_uso NUMERIC DEFAULT 0;
+
+ALTER TABLE IF EXISTS clientes ADD COLUMN IF NOT EXISTS sexo TEXT DEFAULT 'feminino';
+
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS servicos_habilitados TEXT[] DEFAULT '{}';
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS chave_pix TEXT;
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS usar_pix_proprio BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS especialidade TEXT DEFAULT 'Nail Designer';
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS horario_almoco_ativo BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS horario_almoco_inicio TEXT DEFAULT '12:00';
+ALTER TABLE IF EXISTS usuarios ADD COLUMN IF NOT EXISTS horario_almoco_fim TEXT DEFAULT '13:00';
+
+ALTER TABLE IF EXISTS agendamentos ADD COLUMN IF NOT EXISTS pago_com_clube BOOLEAN DEFAULT false;
+ALTER TABLE IF EXISTS agendamentos ADD COLUMN IF NOT EXISTS plano_id TEXT;
+ALTER TABLE IF EXISTS agendamentos ADD COLUMN IF NOT EXISTS recorrencia_grupo_id TEXT;
+ALTER TABLE IF EXISTS agendamentos ADD COLUMN IF NOT EXISTS recorrencia_tipo TEXT;
+ALTER TABLE IF EXISTS agendamentos ADD COLUMN IF NOT EXISTS recorrencia_posicao TEXT;
+
+NOTIFY pgrst, 'reload schema';
+
 -- 1. HABILITAR ROW LEVEL SECURITY (RLS) EM TODAS AS TABELAS
 ALTER TABLE IF EXISTS agendamentos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS clientes ENABLE ROW LEVEL SECURITY;
@@ -58,13 +93,15 @@ CREATE POLICY "Acesso a fotos apenas para autenticados"
   WITH CHECK (true);
 
 -- ==============================================================================
--- 5. TABELA 'servicos' (LEITURA PÚBLICA DE ATIVOS / GESTÃO AUTENTICADA)
--- Clientes podem ver serviços ativos no catálogo; Sheila tem controle total.
+-- 5. TABELA 'servicos' (LEITURA PÚBLICA DE ATIVOS / GESTÃO APENAS AUTENTICADA)
+-- Clientes podem ver apenas serviços ativos no catálogo; Sheila tem controle total.
+-- Proteção rigorosa contra alteração de preços ou exclusão por usuários anônimos.
 -- ==============================================================================
 DROP POLICY IF EXISTS "Permitir leitura pública de servicos ativos" ON servicos;
 DROP POLICY IF EXISTS "Permitir modificação de servicos apenas para autenticados" ON servicos;
 DROP POLICY IF EXISTS "Permitir tudo em servicos" ON servicos;
 DROP POLICY IF EXISTS "Acesso total a servicos apenas para autenticados" ON servicos;
+DROP POLICY IF EXISTS "Permitir modificacao de servicos" ON servicos;
 
 CREATE POLICY "Permitir leitura pública de servicos ativos" 
   ON servicos FOR SELECT 

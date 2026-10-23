@@ -1324,6 +1324,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             }
           }
 
+          // Extrair metadados de recorrência se presentes em observações ou objeto
+          let recGrupoId = a.recorrencia_grupo_id;
+          let recTipo = a.recorrencia_tipo;
+          let recPos = a.recorrencia_posicao;
+          if (a.observacoes?.includes('[RECORRENCIA:')) {
+            const recMatch = a.observacoes.match(/\[RECORRENCIA:\s*([^|\]]*)\|([^|\]]*)\|([^\]]*)\]/i);
+            if (recMatch) {
+              recGrupoId = recGrupoId || recMatch[1]?.trim() || undefined;
+              recTipo = recTipo || recMatch[2]?.trim() || undefined;
+              recPos = recPos || recMatch[3]?.trim() || undefined;
+            }
+          }
+          if (!recPos && a.observacoes?.includes('[🔁')) {
+            const posMatch = a.observacoes.match(/Sessão\s+(\d+\s+de\s+\d+)/i);
+            if (posMatch) {
+              recPos = posMatch[1].trim();
+            }
+            const tipoMatch = a.observacoes.match(/\[🔁\s*Recorrência\s+([^:]+):/i);
+            if (tipoMatch && !recTipo) {
+              const tStr = tipoMatch[1].toLowerCase();
+              if (tStr.includes('quinzenal')) recTipo = 'quinzenal';
+              else if (tStr.includes('semanal')) recTipo = 'semanal';
+              else if (tStr.includes('mensal')) recTipo = 'mensal';
+              else recTipo = 'personalizado';
+            }
+          }
+
           return {
             ...a,
             fim: fimEfetivo,
@@ -1334,7 +1361,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             desconto_motivo: descMot,
             valor_adicional: adicVal,
             motivo_adicional: adicMot,
-            produtos: prods
+            produtos: prods,
+            recorrencia_grupo_id: recGrupoId,
+            recorrencia_tipo: recTipo,
+            recorrencia_posicao: recPos
           };
         });
 
@@ -1513,8 +1543,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setMateriais(matsFormatados);
         try { localStorage.setItem('nail_materiais', JSON.stringify(matsFormatados)); } catch (e) {}
       } else if (forcarSobrescrita && dados.materiais && dados.materiais.length === 0) {
-        setMateriais([]);
-        try { localStorage.setItem('nail_materiais', JSON.stringify([])); } catch (e) {}
+        // Se a nuvem retornou vazio (pode ser restrição de RLS ou offline), preserva o cache local se existir
+        setMateriais(prev => prev.length > 0 ? prev : []);
       }
 
       // 8. Despesas da Nuvem
@@ -1582,8 +1612,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setDespesas(despsFormatadas);
         try { localStorage.setItem('nail_despesas', JSON.stringify(despsFormatadas)); } catch (e) {}
       } else if (forcarSobrescrita && dados.despesas && dados.despesas.length === 0) {
-        setDespesas([]);
-        try { localStorage.setItem('nail_despesas', JSON.stringify([])); } catch (e) {}
+        // Se a nuvem retornou vazio (pode ser restrição de RLS ou offline), preserva o cache local se existir
+        setDespesas(prev => prev.length > 0 ? prev : []);
       }
 
       // 9. Configurações Gerais do Salão (Técnicas, Formatos, Categorias)

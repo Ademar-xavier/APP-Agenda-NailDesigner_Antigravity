@@ -342,18 +342,18 @@ export const Agenda: React.FC<AgendaProps> = ({
   // Estados de Recorrência (estilo Google Agenda)
   const [recorrenciaAtiva, setRecorrenciaAtiva] = useState<boolean>(false);
   const [recorrenciaTipo, setRecorrenciaTipo] = useState<'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado'>('quinzenal');
-  const [recorrenciaIntervaloDias, setRecorrenciaIntervaloDias] = useState<number>(15);
+  const [recorrenciaIntervaloDias, setRecorrenciaIntervaloDias] = useState<number>(14);
   const [recorrenciaRepeticoes, setRecorrenciaRepeticoes] = useState<number>(4);
-  const [recorrenciaCustomDias, setRecorrenciaCustomDias] = useState<number>(15);
+  const [recorrenciaCustomDias, setRecorrenciaCustomDias] = useState<number>(14);
 
   const handleMudarTipoRecorrencia = (tipo: 'semanal' | 'quinzenal' | 'dias_20' | 'dias_21' | 'mensal' | 'personalizado') => {
     setRecorrenciaTipo(tipo);
     if (tipo === 'semanal') setRecorrenciaIntervaloDias(7);
-    else if (tipo === 'quinzenal') setRecorrenciaIntervaloDias(15);
+    else if (tipo === 'quinzenal') setRecorrenciaIntervaloDias(14);
     else if (tipo === 'dias_20') setRecorrenciaIntervaloDias(20);
     else if (tipo === 'dias_21') setRecorrenciaIntervaloDias(21);
     else if (tipo === 'mensal') setRecorrenciaIntervaloDias(30);
-    else if (tipo === 'personalizado') setRecorrenciaIntervaloDias(recorrenciaCustomDias || 15);
+    else if (tipo === 'personalizado') setRecorrenciaIntervaloDias(recorrenciaCustomDias || 14);
   };
 
   // Helper para extrair todos os IDs de serviços de um plano ou assinatura
@@ -619,9 +619,9 @@ export const Agenda: React.FC<AgendaProps> = ({
     setDropdownClienteAberto(false);
     setRecorrenciaAtiva(false);
     setRecorrenciaTipo('quinzenal');
-    setRecorrenciaIntervaloDias(15);
+    setRecorrenciaIntervaloDias(14);
     setRecorrenciaRepeticoes(4);
-    setRecorrenciaCustomDias(15);
+    setRecorrenciaCustomDias(14);
     setIsBloqueio(false);
     setObsAgendamento('');
     setBloqueioHoraFim('10:00');
@@ -1364,9 +1364,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         setPlanoVipContratarId('');
         setRecorrenciaAtiva(false);
         setRecorrenciaTipo('quinzenal');
-        setRecorrenciaIntervaloDias(15);
+        setRecorrenciaIntervaloDias(14);
         setRecorrenciaRepeticoes(4);
-        setRecorrenciaCustomDias(15);
+        setRecorrenciaCustomDias(14);
         handleCloseLocalModal();
         return;
       }
@@ -1383,7 +1383,7 @@ export const Agenda: React.FC<AgendaProps> = ({
               : (recorrenciaTipo === 'semanal' 
                 ? 'Semanal' 
                 : recorrenciaTipo === 'quinzenal' 
-                  ? 'Quinzenal (15 dias)' 
+                  ? 'Quinzenal (14 dias)' 
                   : recorrenciaTipo === 'dias_20' 
                     ? 'Manutenção (20 dias)' 
                     : recorrenciaTipo === 'dias_21' 
@@ -1424,9 +1424,9 @@ export const Agenda: React.FC<AgendaProps> = ({
         setPlanoVipContratarId('');
         setRecorrenciaAtiva(false);
         setRecorrenciaTipo('quinzenal');
-        setRecorrenciaIntervaloDias(15);
+        setRecorrenciaIntervaloDias(14);
         setRecorrenciaRepeticoes(4);
-        setRecorrenciaCustomDias(15);
+        setRecorrenciaCustomDias(14);
         handleCloseLocalModal();
       } else {
         setErrorAgendamento(res.error || 'Erro desconhecido');
@@ -3031,7 +3031,7 @@ export const Agenda: React.FC<AgendaProps> = ({
                               className="w-full bg-white border border-[#EFECE6] rounded-xl px-2.5 py-2 text-xs font-bold text-[#5A4535] focus:outline-none focus:border-[#8C6D58]"
                             >
                               <option value="semanal">Semanal (a cada 7 dias)</option>
-                              <option value="quinzenal">Quinzenal (a cada 15 dias)</option>
+                              <option value="quinzenal">Quinzenal (a cada 14 dias)</option>
                               <option value="dias_20">A cada 20 dias (Manutenção Fibra/Gel)</option>
                               <option value="dias_21">A cada 3 semanas (21 dias)</option>
                               <option value="mensal">Mensal (a cada 30 dias)</option>
