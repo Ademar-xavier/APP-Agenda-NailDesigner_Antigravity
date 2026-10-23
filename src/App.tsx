@@ -21,6 +21,7 @@ import { InstalarApp } from './views/InstalarApp';
 import { AtivacaoLicenca } from './views/AtivacaoLicenca';
 import { SuperAdmin } from './views/SuperAdmin';
 import { isLicencaAtiva, sincronizarLicencaAtualComNuvem } from './services/licencaService';
+import { getActiveSalaoSlug } from './utils/urlHelper';
 
 function AppContent() {
   const { 
@@ -653,7 +654,7 @@ function AppContent() {
         <SuperAdmin onVoltar={() => {
           setIsSuperAdminRoute(false);
           setIsAdmin(true);
-          window.location.hash = 'admin';
+          window.location.hash = `admin?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
         }} />
         {renderModalAlerta()}
       </>
@@ -676,7 +677,8 @@ function AppContent() {
       <PublicBooking 
         setIsAdmin={(admin) => {
           setIsAdmin(admin);
-          window.location.hash = admin ? 'admin' : 'agendar';
+          const slug = encodeURIComponent(getActiveSalaoSlug());
+          window.location.hash = admin ? `admin?salao=${slug}` : `agendar?salao=${slug}`;
         }} 
       />
     );
@@ -694,7 +696,7 @@ function AppContent() {
           }}
           onVoltarAgendamento={() => {
             setIsAdmin(false);
-            window.location.hash = 'agendar';
+            window.location.hash = `agendar?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
           }}
         />
         {renderModalAlerta()}
@@ -710,12 +712,12 @@ function AppContent() {
           onEntrarAdmin={() => {
             setIsInstalarRoute(false);
             setIsAdmin(true);
-            window.location.hash = 'admin';
+            window.location.hash = `admin?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
           }}
           onIrAgendar={() => {
             setIsInstalarRoute(false);
             setIsAdmin(false);
-            window.location.hash = 'agendar';
+            window.location.hash = `agendar?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
           }}
         />
         {renderModalAlerta()}
@@ -731,7 +733,7 @@ function AppContent() {
         setIsAdmin={(admin) => {
           setIsAdmin(admin);
           if (!admin) {
-            window.location.hash = 'agendar';
+            window.location.hash = `agendar?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
           }
         }} 
       />
@@ -744,7 +746,8 @@ function AppContent() {
       <PublicBooking 
         setIsAdmin={(admin) => {
           setIsAdmin(admin);
-          window.location.hash = admin ? 'admin' : 'agendar';
+          const slug = encodeURIComponent(getActiveSalaoSlug());
+          window.location.hash = admin ? `admin?salao=${slug}` : `agendar?salao=${slug}`;
         }} 
       />
     );

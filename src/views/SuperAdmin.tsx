@@ -34,6 +34,7 @@ import {
   atualizarLicencaCompleta
 } from '../services/superAdminService';
 import { sha256Hash, criarTokenSessao, validarTokenSessao } from '../utils/cryptoHelper';
+import { gerarLinkWhatsApp } from '../utils/urlHelper';
 
 const SQL_MIGRATION_SCRIPT = `-- ==============================================================================
 -- SAAS MULTI-TENANT & GESTÃO DE SALÕES (ANTIGRAVITY AGENDA)
@@ -644,7 +645,7 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                           <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3">
                             {s.telefone && (
                               <a
-                                href={`https://wa.me/55${s.telefone.replace(/\D/g, '')}`}
+                                href={gerarLinkWhatsApp(s.telefone, `Olá! Gostaria de falar sobre o sistema do ${s.titular}.`)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="text-emerald-400 hover:underline flex items-center gap-1"
@@ -972,7 +973,7 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                   Fechar
                 </button>
                 <a
-                  href={`https://wa.me/55${telefoneWhatsDestino}?text=${encodeURIComponent(mensagemSucessoWhats)}`}
+                  href={gerarLinkWhatsApp(telefoneWhatsDestino, mensagemSucessoWhats)}
                   target="_blank"
                   rel="noreferrer"
                   className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura } from '../types';
-import { gerarLinkWhatsApp, getCatalogoUrl } from '../utils/urlHelper';
+import { gerarLinkWhatsApp, getCatalogoUrl, getActiveSalaoSlug } from '../utils/urlHelper';
 import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
 
 interface ExtraItem {
@@ -234,15 +234,19 @@ export const PublicCatalogo: React.FC = () => {
   }, [planosAssinatura]);
 
   const handleIrParaAgendamento = (servicoId?: string) => {
+    const slug = getActiveSalaoSlug();
+    const salaoParam = slug ? `&salao=${encodeURIComponent(slug)}` : '';
     if (servicoId) {
-      window.location.hash = `agendar?servico=${encodeURIComponent(servicoId)}`;
+      window.location.hash = `agendar?servico=${encodeURIComponent(servicoId)}${salaoParam}`;
     } else {
-      window.location.hash = 'agendar';
+      window.location.hash = `agendar?salao=${encodeURIComponent(slug)}`;
     }
   };
 
   const handleIrParaAgendamentoVip = (planoId: string) => {
-    window.location.hash = `agendar?plano_vip=${encodeURIComponent(planoId)}`;
+    const slug = getActiveSalaoSlug();
+    const salaoParam = slug ? `&salao=${encodeURIComponent(slug)}` : '';
+    window.location.hash = `agendar?plano_vip=${encodeURIComponent(planoId)}${salaoParam}`;
   };
 
   const extrasList = useMemo(() => {
@@ -377,7 +381,7 @@ export const PublicCatalogo: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.hash = 'admin';
+                  window.location.hash = `admin?salao=${encodeURIComponent(getActiveSalaoSlug())}`;
                 }}
                 className="flex items-center gap-1.5 px-3 py-2 bg-[#FAF6F0] hover:bg-[#EFECE6] text-[#5A4535] text-xs font-bold rounded-xl border border-[#EEDDE1] transition-all cursor-pointer shadow-2xs shrink-0"
                 title="Voltar ao Painel Administrativo"

@@ -48,6 +48,35 @@ export const getActiveSalaoSlug = (): string => {
         if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
         return clean.replace(/^salao_/, '').replace(/_/g, '-');
       }
+
+      // Checa licença ativa gravada localmente
+      const licRaw = localStorage.getItem('nail_app_licenca_ativa_v1');
+      if (licRaw) {
+        try {
+          const lic = JSON.parse(licRaw);
+          if (lic?.slug && typeof lic.slug === 'string' && lic.slug.trim()) {
+            return lic.slug.trim().toLowerCase();
+          }
+          if (lic?.salao_id && typeof lic.salao_id === 'string' && lic.salao_id.trim()) {
+            const clean = lic.salao_id.trim().toLowerCase();
+            if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
+            return clean.replace(/^salao_/, '').replace(/_/g, '-');
+          }
+        } catch (e) {}
+      }
+
+      // Checa configurações do salão gravadas localmente
+      const cfgRaw = localStorage.getItem('nail_config_salao');
+      if (cfgRaw) {
+        try {
+          const cfg = JSON.parse(cfgRaw);
+          if (cfg?.salao_id && typeof cfg.salao_id === 'string' && cfg.salao_id.trim()) {
+            const clean = cfg.salao_id.trim().toLowerCase();
+            if (clean === 'salao_sheila' || clean === 'sheila') return 'sheila';
+            return clean.replace(/^salao_/, '').replace(/_/g, '-');
+          }
+        } catch (e) {}
+      }
     }
   } catch (e) {}
   return 'sheila';

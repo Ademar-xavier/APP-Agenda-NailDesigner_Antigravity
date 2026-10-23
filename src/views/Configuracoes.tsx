@@ -62,7 +62,7 @@ import {
 } from '../services/licencaService';
 import { salvarConfiguracoesSupabase } from '../services/supabase';
 import { uploadImagemCloudinary } from '../services/cloudinary';
-import { getBookingUrl, getCatalogoUrl } from '../utils/urlHelper';
+import { getBookingUrl, getCatalogoUrl, getActiveSalaoSlug } from '../utils/urlHelper';
 import { solicitarPermissaoNotificacoes, dispararNotificacaoBarraStatus } from '../services/notificacoesMobile';
 
 export const Configuracoes: React.FC = () => {
@@ -192,11 +192,29 @@ export const Configuracoes: React.FC = () => {
   };
 
   const handleVerLinkCatalogo = () => {
-    window.location.hash = 'catalogo';
+    const slug = getActiveSalaoSlug();
+    const url = getCatalogoUrl(slug);
+    try {
+      const win = window.open(url, '_blank');
+      if (!win) {
+        window.location.hash = `catalogo?salao=${slug}`;
+      }
+    } catch (e) {
+      window.location.hash = `catalogo?salao=${slug}`;
+    }
   };
 
   const handleVerLinkAgendamento = () => {
-    window.location.hash = 'agendar';
+    const slug = getActiveSalaoSlug();
+    const url = getBookingUrl(slug);
+    try {
+      const win = window.open(url, '_blank');
+      if (!win) {
+        window.location.hash = `agendar?salao=${slug}`;
+      }
+    } catch (e) {
+      window.location.hash = `agendar?salao=${slug}`;
+    }
   };
 
   const handleLimparCache = async () => {

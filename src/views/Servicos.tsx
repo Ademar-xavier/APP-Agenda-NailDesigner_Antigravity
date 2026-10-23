@@ -34,7 +34,7 @@ import {
 import { useAppState } from '../context/AppStateContext';
 import { Servico, PlanoAssinatura, ItemServicoPlano, ItemSessaoPlanoConfig, CatalogoPersonalizacao, CatalogoExtraConfig } from '../types';
 import { AlicateIcon } from '../components/AlicateIcon';
-import { getCatalogoUrl } from '../utils/urlHelper';
+import { getCatalogoUrl, getActiveSalaoSlug } from '../utils/urlHelper';
 import { uploadImagemCloudinary } from '../services/cloudinary';
 import { otimizarImagemWebP, gerarThumbnailWebP } from '../utils/imageOptimizer';
 import { obterTextoResumoSessoesVip } from '../utils/planoVipHelper';
@@ -895,7 +895,16 @@ export const Servicos: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                window.location.hash = 'catalogo';
+                const slug = getActiveSalaoSlug();
+                const url = getCatalogoUrl(slug);
+                try {
+                  const win = window.open(url, '_blank');
+                  if (!win) {
+                    window.location.hash = `catalogo?salao=${slug}`;
+                  }
+                } catch (e) {
+                  window.location.hash = `catalogo?salao=${slug}`;
+                }
               }}
               className="h-11 sm:h-10 px-3.5 rounded-xl text-xs font-bold bg-[#FAF9F6] hover:bg-[#EFECE6] border border-[#EFECE6] text-[#5A4535] flex items-center justify-center gap-1.5 transition-all text-center cursor-pointer active:scale-95"
             >
