@@ -207,7 +207,9 @@ export const cadastrarNovoSalao = async (dados: {
     ];
 
     for (const s of servicosPadrao) {
-      await supabase.from('servicos').upsert(s).catch(() => {});
+      try {
+        await supabase.from('servicos').upsert(s);
+      } catch (e) {}
     }
 
     // 4. Cadastra o usuário administrador da proprietária
@@ -222,7 +224,9 @@ export const cadastrarNovoSalao = async (dados: {
       senha: 'admin',
       salao_id: salaoId
     };
-    await supabase.from('usuarios').upsert(usuarioProprietaria).catch(() => {});
+    try {
+      await supabase.from('usuarios').upsert(usuarioProprietaria);
+    } catch (e) {}
 
     // 3. Monta o texto pronto para WhatsApp
     const baseUrl = window.location.origin;

@@ -519,55 +519,6 @@ function AppContent() {
     }
   };
 
-  // Verifica se é aplicativo instalado em qualquer plataforma:
-  // Desktop Windows, Android Nativo ou PWA instalado no celular via link
-  const isInstalledApp = 
-    (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || 
-    (window.navigator as any).standalone === true ||
-    window.location.protocol === 'file:' || 
-    navigator.userAgent.includes('Electron') ||
-    !!(window as any).Capacitor?.isNativePlatform?.() ||
-    window.location.search.includes('app=1');
-
-  // Verifica se o usuário solicitou explicitamente a tela de agendamento (via link, botão ou hash #agendar)
-  const isExplicitAgendamento = window.location.hash.toLowerCase().includes('agendar');
-
-  // 0. Super Admin para Ademar gerenciar salões e licenças comerciais
-  if (isSuperAdminRoute) {
-    return (
-      <>
-        <SuperAdmin onVoltar={() => {
-          setIsSuperAdminRoute(false);
-          setIsAdmin(true);
-          window.location.hash = 'admin';
-        }} />
-        {renderModalAlerta()}
-      </>
-    );
-  }
-
-  // 0. Se for rota pública de confirmação de agendamento em 1 toque (#confirmar?id=...)
-  if (isConfirmarRoute) {
-    return <PublicConfirmacao />;
-  }
-
-  // Se for rota pública de catálogo de serviços online (#catalogo)
-  if (isCatalogoRoute) {
-    return <PublicCatalogo />;
-  }
-
-  // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública
-  if (isAgendarRoute || isExplicitAgendamento) {
-    return (
-      <PublicBooking 
-        setIsAdmin={(admin) => {
-          setIsAdmin(admin);
-          window.location.hash = admin ? 'admin' : 'agendar';
-        }} 
-      />
-    );
-  }
-
   // Renderizador do Modal Global de Alerta (disponível em todas as telas)
   const renderModalAlerta = () => {
     if (!modalAlerta) return null;
@@ -673,6 +624,55 @@ function AppContent() {
       </div>
     );
   };
+
+  // Verifica se é aplicativo instalado em qualquer plataforma:
+  // Desktop Windows, Android Nativo ou PWA instalado no celular via link
+  const isInstalledApp = 
+    (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) || 
+    (window.navigator as any).standalone === true ||
+    window.location.protocol === 'file:' || 
+    navigator.userAgent.includes('Electron') ||
+    !!(window as any).Capacitor?.isNativePlatform?.() ||
+    window.location.search.includes('app=1');
+
+  // Verifica se o usuário solicitou explicitamente a tela de agendamento (via link, botão ou hash #agendar)
+  const isExplicitAgendamento = window.location.hash.toLowerCase().includes('agendar');
+
+  // 0. Super Admin para Ademar gerenciar salões e licenças comerciais
+  if (isSuperAdminRoute) {
+    return (
+      <>
+        <SuperAdmin onVoltar={() => {
+          setIsSuperAdminRoute(false);
+          setIsAdmin(true);
+          window.location.hash = 'admin';
+        }} />
+        {renderModalAlerta()}
+      </>
+    );
+  }
+
+  // 0. Se for rota pública de confirmação de agendamento em 1 toque (#confirmar?id=...)
+  if (isConfirmarRoute) {
+    return <PublicConfirmacao />;
+  }
+
+  // Se for rota pública de catálogo de serviços online (#catalogo)
+  if (isCatalogoRoute) {
+    return <PublicCatalogo />;
+  }
+
+  // 1. Se solicitou explicitamente a página de agendamento, SEMPRE exibe a página pública
+  if (isAgendarRoute || isExplicitAgendamento) {
+    return (
+      <PublicBooking 
+        setIsAdmin={(admin) => {
+          setIsAdmin(admin);
+          window.location.hash = admin ? 'admin' : 'agendar';
+        }} 
+      />
+    );
+  }
 
   // 2. BLOQUEIO OBRIGATÓRIO DE LICENÇA (Vitalícia ou Assinatura Mensal Ativa):
   // Se for qualquer aplicativo instalado ou rota administrativa sem licença ativa
