@@ -325,14 +325,22 @@ export const PublicCatalogo: React.FC = () => {
           
           {/* Logo e Nome do Estúdio */}
           <a href="#inicio" className="flex items-center gap-3 group">
-            <img 
-              src={configSalao?.logo_url || "/logo.png"} 
-              alt={configSalao.nome || 'Salão'} 
-              className="w-10 h-10 rounded-full object-cover shadow-xs border border-[#EEDDE1] transition-transform duration-200 group-hover:scale-105"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-            />
+            {configSalao?.logo_url || (!configSalao?.salao_id || configSalao?.salao_id === 'salao_sheila' || configSalao?.salao_id === 'salao_principal' || (configSalao?.nome && configSalao.nome.toLowerCase().includes('sheila'))) ? (
+              <img 
+                src={configSalao?.logo_url || "/logo.png"} 
+                alt={configSalao.nome || 'Salão'} 
+                className="w-10 h-10 rounded-full object-cover shadow-xs border border-[#EEDDE1] transition-transform duration-200 group-hover:scale-105"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FAF5F0] to-[#FCE4EC] border border-[#EEDDE1] flex items-center justify-center shrink-0">
+                <span className="text-xs font-serif text-[#D48B70] font-bold">
+                  {(configSalao.nome || 'S').substring(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )}
             <div>
               <span className="font-serif font-bold text-base sm:text-lg text-[#2B2426] leading-tight block">
                 {configSalao.nome || 'Sheila Santos Nails Designer'}

@@ -70,6 +70,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   if (!isAdmin) return null;
 
+  const isSalaoSheila = !configSalao?.salao_id || configSalao?.salao_id === 'salao_sheila' || configSalao?.salao_id === 'salao_principal' || (configSalao?.nome && configSalao.nome.toLowerCase().includes('sheila'));
+
   return (
     <>
       {/* Sidebar Desktop */}
@@ -77,21 +79,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Header / Logo */}
         <div className="p-6 border-b border-[#EFECE6] flex flex-col items-center text-center">
           <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-3 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
-            <img 
-              src={configSalao?.logo_url || "./logo.png?v=3"} 
-              alt={`Logo ${configSalao?.nome || 'Salão'}`} 
-              className="w-full h-full object-cover rounded-full" 
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                const parent = e.currentTarget.parentElement;
-                if (parent) {
-                  const span = document.createElement('span');
-                  span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
-                  span.innerText = (configSalao?.nome || 'SS').substring(0, 2).toUpperCase();
-                  parent.appendChild(span);
-                }
-              }}
-            />
+            {configSalao?.logo_url || isSalaoSheila ? (
+              <img 
+                src={configSalao?.logo_url || "./logo.png?v=3"} 
+                alt={`Logo ${configSalao?.nome || 'Salão'}`} 
+                className="w-full h-full object-cover rounded-full" 
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const span = document.createElement('span');
+                    span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
+                    span.innerText = (configSalao?.nome || 'S').substring(0, 2).toUpperCase();
+                    parent.appendChild(span);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-[#FAF5F0] to-[#FCE4EC] flex items-center justify-center">
+                <span className="text-2xl font-serif text-[#D48B70] font-bold tracking-wider">
+                  {(configSalao?.nome || 'S').substring(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )}
           </div>
           <h1 className="font-serif font-semibold text-lg text-[#5A4535] leading-tight">
             {configSalao.nome}

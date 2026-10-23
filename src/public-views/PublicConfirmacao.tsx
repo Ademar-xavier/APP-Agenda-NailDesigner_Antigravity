@@ -722,21 +722,29 @@ export const PublicConfirmacao: React.FC = () => {
         {/* CABEÇALHO DO SALÃO */}
         <div className="text-center space-y-1.5 pb-2">
           <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mx-auto mb-2 border-2 border-[#FCE4EC] overflow-hidden shadow-md p-0.5">
-            <img 
-              src={dadosSalao.logo_url || "./logo.png?v=3"} 
-              alt={dadosSalao.nome || "Salão de Beleza"} 
-              className="w-full h-full object-cover rounded-full"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                const parent = e.currentTarget.parentElement;
-                if (parent) {
-                  const span = document.createElement('span');
-                  span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
-                  span.innerText = (dadosSalao.nome || 'SS').substring(0, 2).toUpperCase();
-                  parent.appendChild(span);
-                }
-              }}
-            />
+            {dadosSalao.logo_url || (dadosSalao.nome && dadosSalao.nome.toLowerCase().includes('sheila')) ? (
+              <img 
+                src={dadosSalao.logo_url || "./logo.png?v=3"} 
+                alt={dadosSalao.nome || "Salão de Beleza"} 
+                className="w-full h-full object-cover rounded-full"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const span = document.createElement('span');
+                    span.className = 'text-2xl font-serif text-[#D48B70] font-bold';
+                    span.innerText = (dadosSalao.nome || 'S').substring(0, 2).toUpperCase();
+                    parent.appendChild(span);
+                  }
+                }}
+              />
+            ) : (
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-[#FAF5F0] to-[#FCE4EC] flex items-center justify-center">
+                <span className="text-2xl font-serif text-[#D48B70] font-bold tracking-wider">
+                  {(dadosSalao.nome || 'S').substring(0, 2).toUpperCase()}
+                </span>
+              </div>
+            )}
           </div>
           <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#5A4535] tracking-tight">
             {dadosSalao.nome}

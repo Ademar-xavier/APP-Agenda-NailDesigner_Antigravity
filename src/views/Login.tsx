@@ -96,21 +96,29 @@ export const Login: React.FC<LoginProps> = ({ setIsAdmin }) => {
       <div className="w-full max-w-md bg-[#1E1E1E] border border-[#2D2D2D] rounded-3xl p-8 shadow-2xl flex flex-col items-center">
         {/* Logo no topo - Imagem 2 Rosa com Borda Suave */}
         <div className="w-24 h-24 rounded-full bg-white border-2 border-[#FCE4EC] flex items-center justify-center mb-6 overflow-hidden shadow-xl p-0.5">
-          <img 
-            src={configSalao?.logo_url || "./logo.png?v=3"} 
-            alt={`Logo ${configSalao?.nome || 'Painel de Gestão'}`} 
-            className="w-full h-full object-cover rounded-full"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-              const parent = e.currentTarget.parentElement;
-              if (parent) {
-                const span = document.createElement('span');
-                span.className = 'text-3xl font-serif text-[#D48B70] font-extrabold';
-                span.innerText = (configSalao?.nome || 'SS').substring(0, 2).toUpperCase();
-                parent.appendChild(span);
-              }
-            }}
-          />
+          {configSalao?.logo_url || (!configSalao?.salao_id || configSalao?.salao_id === 'salao_sheila' || configSalao?.salao_id === 'salao_principal' || (configSalao?.nome && configSalao.nome.toLowerCase().includes('sheila'))) ? (
+            <img 
+              src={configSalao?.logo_url || "./logo.png?v=3"} 
+              alt={`Logo ${configSalao?.nome || 'Painel de Gestão'}`} 
+              className="w-full h-full object-cover rounded-full"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                const parent = e.currentTarget.parentElement;
+                if (parent) {
+                  const span = document.createElement('span');
+                  span.className = 'text-3xl font-serif text-[#D48B70] font-extrabold';
+                  span.innerText = (configSalao?.nome || 'S').substring(0, 2).toUpperCase();
+                  parent.appendChild(span);
+                }
+              }}
+            />
+          ) : (
+            <div className="w-full h-full rounded-full bg-gradient-to-br from-[#2D2426] to-[#1A1A1A] border border-[#D48B70]/40 flex items-center justify-center">
+              <span className="text-3xl font-serif text-[#D48B70] font-bold tracking-wider">
+                {(configSalao?.nome || 'S').substring(0, 2).toUpperCase()}
+              </span>
+            </div>
+          )}
         </div>
 
         <h2 className="font-serif font-bold text-2xl text-white text-center leading-tight">
