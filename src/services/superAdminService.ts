@@ -377,6 +377,34 @@ export const cadastrarNovoSalao = async (dados: {
   }
 };
 
+// Atualizar dados completos da licença (chave, status, tipo, expiração, mensalidade)
+export const atualizarLicencaCompleta = async (id: string, updates: Partial<SalaoLicenca>): Promise<boolean> => {
+  try {
+    const payload: any = {};
+    if (updates.chave !== undefined) payload.chave = updates.chave.trim().toUpperCase();
+    if (updates.titular !== undefined) payload.titular = updates.titular.trim();
+    if (updates.tipo !== undefined) payload.tipo = updates.tipo;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.data_expiracao !== undefined) payload.data_expiracao = updates.data_expiracao;
+    if (updates.valor_mensalidade !== undefined) payload.valor_mensalidade = Number(updates.valor_mensalidade);
+    if (updates.telefone !== undefined) payload.telefone = updates.telefone;
+    if (updates.observacoes !== undefined) payload.observacoes = updates.observacoes;
+
+    const { error } = await supabase
+      .from('licencas')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) {
+      console.error('Erro ao atualizar licença:', error);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
+
 // Alternar status da licença (Ativar / Bloquear inadimplente)
 export const alternarStatusLicenca = async (id: string, novoStatus: 'ativo' | 'bloqueado'): Promise<boolean> => {
   try {

@@ -18,7 +18,8 @@ import {
   Trash2, 
   TrendingUp,
   Clock,
-  ArrowLeft
+  ArrowLeft,
+  Edit
 } from 'lucide-react';
 import { SalaoLicenca } from '../types';
 import { verificarColunaMultiTenantExiste } from '../services/supabase';
@@ -27,7 +28,8 @@ import {
   cadastrarNovoSalao, 
   alternarStatusLicenca, 
   renovarLicencaDias, 
-  excluirLicenca 
+  excluirLicenca,
+  atualizarLicencaCompleta
 } from '../services/superAdminService';
 
 const SQL_MIGRATION_SCRIPT = `-- ==============================================================================
@@ -113,6 +115,66 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
   // Feedbacks
   const [chaveCopiadaId, setChaveCopiadaId] = useState<string | null>(null);
   const [textoCopiado, setTextoCopiado] = useState(false);
+
+  // Modal Editar Licença Completa
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [licencaEditando, setLicencaEditando] = useState<SalaoLicenca | null>(null);
+  const [editChave, setEditChave] = useState('');
+  const [editTitular, setEditTitular] = useState('');
+  const [editTipo, setEditTipo] = useState<'mensal' | 'vitalicio' | 'teste'>('mensal');
+  const [editStatus, setEditStatus] = useState<'ativo' | 'bloqueado'>('ativo');
+  const [editExpiracao, setEditExpiracao] = useState('');
+  const [editValorMensal, setEditValorMensal] = useState('97,00');
+  const [editTelefone, setEditTelefone] = useState('');
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const abrirModalEditar = (s: SalaoLicenca) => {
+    setLicencaEditando(s);
+    setEditChave(s.chave || '');
+    setEditTitular(s.titular || '');
+    setEditTipo((s.tipo as any) || 'mensal');
+    setEditStatus((s.status as any) || 'ativo');
+    setEditExpiracao(s.data_expiracao ? s.data_expiracao.split('T')[0] : '');
+    setEditValorMensal(s.valor_mensalidade ? s.valor_mensalidade.toFixed(2).replace('.', ',') : '97,00');
+    setEditTelefone(s.telefone || '');
+    setModalEditarAberto(true);
+  };
+
+  const handleSalvarEdicao = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!licencaEditando) return;
+    setSalvandoEdicao(true);
+    const expDate = editTipo === 'vitalicio' ? null : (editExpiracao ? new Date(`${editExpiracao}T23:59:59`).toISOString() : null);
+    const valNum = Number(editValorMensal.replace(/\./g, '').replace(',', '.')) || 97;
+
+    const ok = await atualizarLicencaCompleta(licencaEditando.id, {
+      chave: editChave,
+      titular: editTitular,
+      tipo: editTipo,
+      status: editStatus,
+      data_expiracao: expDate,
+      valor_mensalidade: valNum,
+      telefone: editTelefone.replace(/\D/g, '')
+    });
+
+    if (ok) {
+      setSaloes(prev => prev.map(item => item.id === licencaEditando.id ? {
+        ...item,
+        chave: editChave.trim().toUpperCase(),
+        titular: editTitular,
+        tipo: editTipo,
+        status: editStatus,
+        data_expiracao: expDate,
+        valor_mensalidade: valNum,
+        telefone: editTelefone.replace(/\D/g, '')
+      } : item));
+      setModalEditarAberto(false);
+      setLicencaEditando(null);
+    } else {
+      alert('Erro ao atualizar licença no Supabase.');
+    }
+    setSalvandoEdicao(false);
+  };
 
   const handleAutenticar = (e: React.FormEvent) => {
     e.preventDefault();
@@ -609,6 +671,15 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                               {s.status === 'ativo' ? <Lock size={13} /> : <Unlock size={13} />}
                             </button>
 
+                            {/* Editar Licença Completa */}
+                            <button
+                              onClick={() => abrirModalEditar(s)}
+                              className="p-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[11px] transition-colors"
+                              title="Editar dados da licença, chave e tempo de validade"
+                            >
+                              <Edit size={13} />
+                            </button>
+
                             {/* Abrir Link do Salão */}
                             <a
                               href={urlSalaoAdmin}
@@ -821,6 +892,182 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR DADOS E VALIDADE DA LICENÇA */}
+      {modalEditarAberto && licencaEditando && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl text-slate-100 space-y-5 max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
+                  <Edit size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">Editar Licença do Salão</h3>
+                  <p className="text-[11px] text-slate-400">{licencaEditando.titular}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalEditarAberto(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarEdicao} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Chave de Licença Oficial
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editChave}
+                  onChange={(e) => setEditChave(e.target.value.toUpperCase())}
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-amber-300 font-mono font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Tipo de Plano
+                  </label>
+                  <select
+                    value={editTipo}
+                    onChange={(e) => setEditTipo(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  >
+                    <option value="mensal">Mensal Recorrente</option>
+                    <option value="vitalicio">Vitalício (Permanente)</option>
+                    <option value="teste">Período de Teste</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Status do Acesso
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-slate-200 font-bold"
+                  >
+                    <option value="ativo" className="text-emerald-400">Ativo (Liberado)</option>
+                    <option value="bloqueado" className="text-rose-400">Bloqueado (Inadimplente)</option>
+                  </select>
+                </div>
+              </div>
+
+              {editTipo !== 'vitalicio' && (
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Data de Validade (Expiração)
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editExpiracao}
+                    onChange={(e) => setEditExpiracao(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  />
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 30);
+                        setEditExpiracao(d.toISOString().split('T')[0]);
+                      }}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold transition-colors"
+                    >
+                      +30 Dias
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 60);
+                        setEditExpiracao(d.toISOString().split('T')[0]);
+                      }}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold transition-colors"
+                    >
+                      +60 Dias
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setFullYear(d.getFullYear() + 1);
+                        setEditExpiracao(d.toISOString().split('T')[0]);
+                      }}
+                      className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-bold transition-colors"
+                    >
+                      +1 Ano
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditTipo('vitalicio');
+                        setEditExpiracao('');
+                      }}
+                      className="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-[10px] font-bold transition-colors"
+                    >
+                      Tornar Vitalício 👑
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    Valor Mensalidade (R$)
+                  </label>
+                  <input
+                    type="text"
+                    value={editValorMensal}
+                    onChange={(e) => setEditValorMensal(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                    WhatsApp da Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={editTelefone}
+                    onChange={(e) => setEditTelefone(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl px-3 py-2 text-xs text-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setModalEditarAberto(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoEdicao}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  {salvandoEdicao ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                  <span>{salvandoEdicao ? 'Salvando na Nuvem...' : 'Salvar Alterações'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

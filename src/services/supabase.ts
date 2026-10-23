@@ -460,7 +460,14 @@ export const atualizarStatusAgendamentoSupabase = async (
     } catch (err) {}
 
     // 3. Atualizar no Supabase (com eq e fallback para case-insensitive)
-    const { error } = await supabase.from('agendamentos').update(updates).eq('id', id);
+    let { error } = await supabase.from('agendamentos').update(updates).eq('id', id);
+    if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column'))) {
+      delete updates.confirmado_por;
+      delete updates.cancelado_por;
+      delete updates.motivo_cancelamento;
+      const res = await supabase.from('agendamentos').update(updates).eq('id', id);
+      error = res.error;
+    }
     if (error) {
       console.warn('Erro ao atualizar agendamento por eq, tentando case-insensitive:', error);
       await supabase.from('agendamentos').update(updates).ilike('id', id);
