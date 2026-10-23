@@ -21,7 +21,8 @@ import {
   ArrowLeft,
   Edit,
   Smartphone,
-  Link as LinkIcon
+  Link as LinkIcon,
+  BookOpen
 } from 'lucide-react';
 import { SalaoLicenca } from '../types';
 import { verificarColunaMultiTenantExiste } from '../services/supabase';
@@ -265,6 +266,8 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
       `${linkApp}\n\n` +
       `🔗 *Link de Agendamento das suas Clientes:*\n` +
       `${linkAgendamento}\n\n` +
+      `📖 *Manual de Uso Oficial do Salão (com fotos e passo a passo):*\n` +
+      `${baseUrl}/manual.html\n\n` +
       `📅 *Validade da Assinatura:* ${validadeFormatada}\n\n` +
       `Qualquer dúvida ou suporte, estou à disposição! Bons atendimentos e muito sucesso! 💅✨`;
 
@@ -494,6 +497,17 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
           </div>
 
           <div className="flex items-center gap-3">
+            <a
+              href="./manual.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 transition-colors flex items-center gap-2 text-xs font-semibold"
+              title="Abrir o Manual do Usuário para envio a clientes"
+            >
+              <BookOpen size={15} />
+              <span>Manual de Uso</span>
+            </a>
+
             <button
               onClick={carregarDados}
               className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex items-center gap-2 text-xs font-semibold"

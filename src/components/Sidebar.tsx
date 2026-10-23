@@ -14,7 +14,8 @@ import {
   Package,
   ClipboardList,
   Menu,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
 import { useAppState } from '../context/AppStateContext';
 import { AlicateIcon } from './AlicateIcon';
@@ -153,9 +154,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Switch View Link & Logout */}
-        {/* Logout */}
-        <div className="p-4 border-t border-[#EFECE6]">
+        {/* Manual de Uso & Logout */}
+        <div className="p-4 border-t border-[#EFECE6] space-y-2">
+          <a
+            href="./manual.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-[#FAF5F0] to-[#FFF9F8] border border-[#E8D7CE] hover:border-[#D48B70] rounded-xl text-xs font-semibold text-[#8C6D58] transition-all shadow-2xs group"
+            title="Abrir o Manual Oficial do Sistema em nova aba"
+          >
+            <div className="flex items-center gap-2.5">
+              <BookOpen size={16} className="text-[#D48B70] group-hover:scale-110 transition-transform" />
+              <span>Manual de Uso</span>
+            </div>
+            <ExternalLink size={13} className="text-[#8C7A6B] opacity-70 group-hover:opacity-100" />
+          </a>
+
           <button
             onClick={logout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[#FDE2E2] hover:bg-[#FDF2F2] rounded-xl text-xs font-semibold text-[#C81E1E] transition-colors"
@@ -250,7 +264,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
               })}
             </div>
 
-            <div className="mt-5 pt-4 border-t border-[#EFECE6]">
+            <div className="mt-5 pt-4 border-t border-[#EFECE6] space-y-2.5">
+              <a
+                href="./manual.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowMobileMenu(false)}
+                className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-[#FAF5F0] to-[#FFF9F8] border border-[#E8D7CE] rounded-2xl text-xs font-bold text-[#8C6D58] transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <BookOpen size={16} className="text-[#D48B70]" />
+                  <span>Manual de Uso Oficial</span>
+                </div>
+                <ExternalLink size={14} className="text-[#8C7A6B]" />
+              </a>
+
               <button
                 onClick={() => {
                   logout();

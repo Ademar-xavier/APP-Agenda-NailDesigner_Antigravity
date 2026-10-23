@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual do Usuário | Sistema de Gestão & Agendamento para Salões e Nail Designers</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8C6D58;
+      --primary-dark: #6D4C3D;
+      --primary-light: #B88E72;
+      --accent-rose: #D48B70;
+      --accent-soft: #FCE4EC;
+      --bg-cream: #FFF9F8;
+      --bg-card: #FFFFFF;
+      --border-soft: #EFE6DD;
+      --text-main: #2D2426;
+      --text-muted: #756B6D;
+      --emerald: #10B981;
+      --shadow-sm: 0 4px 12px rgba(140, 109, 88, 0.06);
+      --shadow-md: 0 10px 30px rgba(140, 109, 88, 0.10);
+      --shadow-lg: 0 20px 40px rgba(140, 109, 88, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-cream);
+      color: var(--text-main);
+      line-height: 1.65;
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Container */
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Header Superior */
+    .top-bar {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-soft);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 14px 0;
+    }
+
+    .top-bar-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .brand-logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      border: 2px solid var(--accent-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .brand-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      letter-spacing: 0.5px;
+    }
+
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 600;
+    }
+
+    .btn-print {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #FFFFFF;
+      border: none;
+      padding: 9px 18px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(109, 76, 61, 0.25);
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-print:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(109, 76, 61, 0.35);
+    }
+
+    /* Hero Capa */
+    .hero-section {
+      padding: 60px 0 40px;
+      text-align: center;
+      position: relative;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-soft);
+      color: var(--primary-dark);
+      padding: 6px 16px;
+      border-radius: 30px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      border: 1px solid rgba(212, 139, 112, 0.3);
+    }
+
+    .hero-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 46px;
+      line-height: 1.15;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-desc {
+      font-size: 17px;
+      color: var(--text-muted);
+      max-width: 680px;
+      margin: 0 auto 30px;
+    }
+
+    /* Grid de Navegação Rápida */
+    .quick-nav {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 50px;
+    }
+
+    .nav-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 16px;
+      padding: 16px;
+      text-align: left;
+      text-decoration: none;
+      color: var(--text-main);
+      box-shadow: var(--shadow-sm);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .nav-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .nav-card-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: #FDF4F0;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      shrink: 0;
+    }
+
+    .nav-card-text {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--primary-dark);
+      line-height: 1.2;
+    }
+
+    .nav-card-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    /* Módulos de Conteúdo */
+    .manual-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: 28px;
+      padding: 44px;
+      margin-bottom: 40px;
+      box-shadow: var(--shadow-md);
+      position: relative;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--border-soft);
+      padding-bottom: 20px;
+    }
+
+    .section-num {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #FDF4F0, #FCE4EC);
+      border: 1px solid rgba(212, 139, 112, 0.4);
+      color: var(--primary-dark);
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 26px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .section-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      line-height: 1.2;
+    }
+
+    .section-sub {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Imagens Mockup Reais */
+    .mockup-container {
+      background: #181415;
+      border-radius: 20px;
+      padding: 16px 16px 8px;
+      margin: 28px 0;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .mockup-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+      padding-left: 6px;
+    }
+
+    .mockup-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #FF5F56; }
+    .dot-yellow { background: #FFBD2E; }
+    .dot-green { background: #27C93F; }
+
+    .mockup-caption {
+      font-size: 11px;
+      color: #A39A9C;
+      margin-left: 12px;
+      font-family: monospace;
+    }
+
+    .mockup-img {
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      display: block;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Passos numerados */
+    .steps-list {
+      display: grid;
+      gap: 16px;
+      margin: 24px 0;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      background: #FAF8F5;
+      padding: 18px 20px;
+      border-radius: 16px;
+      border-left: 4px solid var(--accent-rose);
+    }
+
+    .step-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary-dark);
+      color: #FFFFFF;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-content h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 4px;
+    }
+
+    .step-content p {
+      font-size: 14px;
+      color: #554A4C;
+      line-height: 1.5;
+    }
+
+    /* Caixas de Destaque / Dicas de Ouro */
+    .tip-box {
+      background: #F0FDF4;
+      border: 1px solid #BBF7D0;
+      border-radius: 18px;
+      padding: 20px;
+      margin: 24px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .tip-icon {
+      font-size: 24px;
+      line-height: 1;
+      shrink: 0;
+    }
+
+    .tip-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #166534;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .tip-desc {
+      font-size: 13px;
+      color: #14532D;
+      line-height: 1.5;
+    }
+
+    .alert-box {
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      border-radius: 18px;
+      padding: 20px;
+      margin: 24px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+
+    .alert-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #92400E;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .alert-desc {
+      font-size: 13px;
+      color: #78350F;
+      line-height: 1.5;
+    }
+
+    /* Tabela de atalhos e cores */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--border-soft);
+    }
+
+    .info-table th {
+      background: #FAF6F0;
+      color: var(--primary-dark);
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .info-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #F5EEE6;
+      color: #4A3E40;
+    }
+
+    .info-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .info-table tr:hover td {
+      background: #FFFDFB;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .pill-green { background: #DCFCE7; color: #15803D; }
+    .pill-yellow { background: #FEF9C3; color: #A16207; }
+    .pill-blue { background: #DBEAFE; color: #1D4ED8; }
+    .pill-purple { background: #F3E8FF; color: #7E22CE; }
+
+    /* Rodapé */
+    .footer {
+      text-align: center;
+      padding: 50px 0 60px;
+      border-top: 1px solid var(--border-soft);
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .footer-brand {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 8px;
+    }
+
+    /* Responsividade */
+    @media (max-width: 768px) {
+      .hero-title { font-size: 34px; }
+      .manual-section { padding: 24px 18px; border-radius: 20px; }
+      .section-title { font-size: 26px; }
+      .section-header { flex-direction: column; gap: 12px; }
+      .mockup-container { padding: 10px 10px 6px; }
+    }
+
+    /* Print Styles */
+    @media print {
+      .top-bar, .btn-print, .quick-nav { display: none !important; }
+      body { background: #FFFFFF; font-size: 12pt; }
+      .manual-section { border: 1px solid #DDD; box-shadow: none; page-break-inside: avoid; margin-bottom: 30px; }
+      .mockup-container { background: transparent; padding: 0; box-shadow: none; border: 1px solid #CCC; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- BARRA DE TOPO -->
+  <header class="top-bar">
+    <div class="container top-bar-content">
+      <a href="./#admin" class="brand">
+        <div class="brand-logo">
+          <img src="./logo.png" alt="Logo do Salão">
+        </div>
+        <div>
+          <div class="brand-title">Manual Oficial do Usuário</div>
+          <div class="brand-subtitle">Guia Passo a Passo para o Seu Salão</div>
+        </div>
+      </a>
+      <button class="btn-print" onclick="window.print()">
+        <span>🖨️</span>
+        <span>Imprimir / Salvar PDF</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- HERO CAPA -->
+    <section class="hero-section">
+      <div class="badge-pill">✨ Versão Oficial do Sistema</div>
+      <h1 class="hero-title">Bem-vinda ao seu novo<br>Sistema de Gestão & Agendamento</h1>
+      <p class="hero-desc">
+        Este manual foi preparado com todo carinho para você dominar cada função do seu sistema.
+        Chega de furos na agenda, mensagens manuais perdidas ou anotações em papel: agora seu salão funciona no piloto automático!
+      </p>
+
+      <!-- NAVEGAÇÃO RÁPIDA -->
+      <div class="quick-nav">
+        <a href="#cap1" class="nav-card">
+          <div class="nav-card-icon">📲</div>
+          <div>
+            <div class="nav-card-text">1. Instalação PWA</div>
+            <div class="nav-card-sub">Como ter o app no celular</div>
+          </div>
+        </a>
+        <a href="#cap2" class="nav-card">
+          <div class="nav-card-icon">⚙️</div>
+          <div>
+            <div class="nav-card-text">2. Sua Marca & Pix</div>
+            <div class="nav-card-sub">Logo, expediente e sinal</div>
+          </div>
+        </a>
+        <a href="#cap3" class="nav-card">
+          <div class="nav-card-icon">📅</div>
+          <div>
+            <div class="nav-card-text">3. Agenda Inteligente</div>
+            <div class="nav-card-sub">Horários e marcações</div>
+          </div>
+        </a>
+        <a href="#cap4" class="nav-card">
+          <div class="nav-card-icon">🔗</div>
+          <div>
+            <div class="nav-card-text">4. Link das Clientes</div>
+            <div class="nav-card-sub">Agendamento 24h</div>
+          </div>
+        </a>
+        <a href="#cap5" class="nav-card">
+          <div class="nav-card-icon">✨</div>
+          <div>
+            <div class="nav-card-text">5. Catálogo Online</div>
+            <div class="nav-card-sub">Vitrine de procedimentos</div>
+          </div>
+        </a>
+        <a href="#cap6" class="nav-card">
+          <div class="nav-card-icon">💅</div>
+          <div>
+            <div class="nav-card-text">6. Ficha de Clientes</div>
+            <div class="nav-card-sub">Anamnese e fotos</div>
+          </div>
+        </a>
+        <a href="#cap7" class="nav-card">
+          <div class="nav-card-icon">💬</div>
+          <div>
+            <div class="nav-card-text">7. WhatsApp Automático</div>
+            <div class="nav-card-sub">Lembretes em 1 toque</div>
+          </div>
+        </a>
+        <a href="#cap8" class="nav-card">
+          <div class="nav-card-icon">💰</div>
+          <div>
+            <div class="nav-card-text">8. Financeiro & Caixa</div>
+            <div class="nav-card-sub">Faturamento e comissões</div>
+          </div>
+        </a>
+      </div>
+    </section>
+
+    <!-- CAPÍTULO 1: INSTALAÇÃO NO CELULAR -->
+    <article id="cap1" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">1</div>
+        <div>
+          <h2 class="section-title">Primeiro Acesso e Instalação no Celular (PWA)</h2>
+          <p class="section-sub">Como transformar seu link administrativo em um aplicativo nativo na tela do seu celular</p>
+        </div>
+      </div>
+
+      <p>
+        O seu sistema utiliza a tecnologia <strong>PWA (Progressive Web App)</strong>. Isso significa que você e suas funcionárias <strong>não precisam pagar nada nem baixar arquivos pesados na Google Play ou App Store</strong>. O sistema fica instalado diretamente na tela inicial com o ícone e nome do seu salão!
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Mensagem de Ativação Oficial recebida pelo WhatsApp</span>
+        </div>
+        <img src="./manual-images/acesso_whatsapp.png" alt="Acesso ao WhatsApp e Chave de Licença" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h4>Abra o Link Oficial do seu Salão</h4>
+            <p>Clique no link que você recebeu no WhatsApp: <code>https://sheilasantos-agenda.vercel.app/#admin?salao=seusalao</code></p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h4>No Android (Google Chrome):</h4>
+            <p>Toque nos <strong>3 pontinhos</strong> no canto superior direito do navegador e selecione a opção <strong>"Adicionar à tela inicial"</strong> ou <strong>"Instalar aplicativo"</strong>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">3</div>
+          <div class="step-content">
+            <h4>No iPhone (Safari da Apple):</h4>
+            <p>Abra o link no navegador <strong>Safari</strong>, toque no botão de <strong>Compartilhar</strong> (o quadradinho com a setinha para cima no rodapé) e selecione <strong>"Adicionar à Tela de Início"</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">💡</div>
+        <div>
+          <div class="tip-title">Dica de Ouro</div>
+          <div class="tip-desc">
+            Pronto! O aplicativo aparecerá na grade de aplicativos do seu celular com o ícone do salão. Ao tocar nele, ele abre em tela cheia, sem barra de internet, funcionando exatamente como um app de loja!
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 2: CONFIGURAÇÕES, LOGO E PIX -->
+    <article id="cap2" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">2</div>
+        <div>
+          <h2 class="section-title">Personalizando sua Marca, Expediente e Chave Pix</h2>
+          <p class="section-sub">Deixe o aplicativo com a identidade visual do seu salão e configure as regras de sinal</p>
+        </div>
+      </div>
+
+      <p>
+        No menu lateral, acesse a aba <strong>Configurações</strong>. Aqui você define tudo que suas clientes verão ao agendar pela internet:
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Painel de Configurações do Salão & Sincronização em Nuvem</span>
+        </div>
+        <img src="./manual-images/configuracoes_salao.png" alt="Tela de Configurações do Salão" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h4>Logotipo da sua Empresa</h4>
+            <p>Clique em <strong>"Enviar Nova Logo"</strong> e selecione a foto do logotipo do seu estúdio. Ela aparecerá no topo do catálogo e na tela de agendamento online das clientes.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h4>Chave Pix do Salão & Instruções</h4>
+            <p>Cadastre sua chave Pix (CNPJ, Celular ou E-mail). Quando a cliente agendar um procedimento com sinal, o sistema exibirá automaticamente a chave e o botão "Copiar Chave Pix" para a cliente pagar!</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">3</div>
+          <div class="step-content">
+            <h4>Horários de Atendimento</h4>
+            <p>Defina o horário de abertura e fechamento de cada dia da semana (ex: Terça a Sábado das 08:00 às 19:00). Nos dias em que o salão estiver fechado (ex: Domingo/Segunda), basta desmarcar o dia.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-box">
+        <div class="alert-title">⚡ Importante: Sincronização em Nuvem</div>
+        <div class="alert-desc">
+          O sistema conta com banco de dados em nuvem em tempo real (Supabase). Sempre que você alterar um preço, criar um serviço ou cadastrar uma funcionária, clique no botão <strong>"Salvar Alterações"</strong> no rodapé da tela para que todos os celulares da sua equipe atualizem instantaneamente.
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 3: AGENDA INTELIGENTE -->
+    <article id="cap3" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">3</div>
+        <div>
+          <h2 class="section-title">A Agenda Inteligente: Visualizando Atendimentos</h2>
+          <p class="section-sub">Controle visual absoluto da sua rotina diária e das profissionais da equipe</p>
+        </div>
+      </div>
+
+      <p>
+        A aba <strong>Agenda</strong> é o coração operacional do salão. Cada atendimento possui um cartão colorido com o nome da cliente, o horário, a profissional responsável e o valor a receber.
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Visualização da Agenda Semanal com Horários e Procedimentos</span>
+        </div>
+        <img src="./manual-images/agenda_horarios.png" alt="Agenda Semanal e Diária" class="mockup-img">
+      </div>
+
+      <table class="info-table">
+        <thead>
+          <tr>
+            <th>Status do Agendamento</th>
+            <th>Cor do Badge</th>
+            <th>O que significa</th>
+            <th>Ação recomendada</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Pendente</strong></td>
+            <td><span class="status-pill pill-yellow">Pendente</span></td>
+            <td>Cliente agendou online e aguarda conferência do sinal Pix</td>
+            <td>Conferir comprovante no WhatsApp e clicar em "Confirmar"</td>
+          </tr>
+          <tr>
+            <td><strong>Confirmado</strong></td>
+            <td><span class="status-pill pill-green">Confirmado</span></td>
+            <td>Presença 100% garantida (sinal pago ou confirmado)</td>
+            <td>Aguardar a cliente no horário marcado</td>
+          </tr>
+          <tr>
+            <td><strong>Concluído</strong></td>
+            <td><span class="status-pill pill-blue">Concluído</span></td>
+            <td>Atendimento finalizado com sucesso</td>
+            <td>O valor entra automaticamente no faturamento do caixa</td>
+          </tr>
+          <tr>
+            <td><strong>Bloqueio de Horário</strong></td>
+            <td><span class="status-pill pill-purple">Bloqueado</span></td>
+            <td>Intervalo de almoço, curso ou folga da manicure</td>
+            <td>Nenhuma cliente consegue agendar esse período pela web</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">+</div>
+          <div class="step-content">
+            <h4>Como Agendar Manualmente uma Cliente</h4>
+            <p>Basta clicar no botão <strong>"+ Novo Agendamento"</strong> no topo da agenda. Escolha a cliente (ou cadastre na hora), selecione os serviços desejados, a profissional e o horário. O sistema calcula a duração e o valor automaticamente!</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 4: LINK DE AUTO-AGENDAMENTO -->
+    <article id="cap4" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">4</div>
+        <div>
+          <h2 class="section-title">Link de Agendamento Online das Clientes (24 Horas)</h2>
+          <p class="section-sub">Permita que suas clientes marquem horário pelo celular a qualquer hora do dia ou da noite</p>
+        </div>
+      </div>
+
+      <p>
+        Você nunca mais vai precisar passar horas no WhatsApp respondendo: <em>"Quais horários você tem livres essa semana?"</em>.
+        Basta enviar o seu <strong>Link Oficial de Agendamento</strong> ou colocar na Bio do Instagram!
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Tela Oficial de Auto-Agendamento que a sua Cliente acessa</span>
+        </div>
+        <img src="./manual-images/agendamento_online.png" alt="Página Pública de Agendamento" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h4>Como a Cliente Escolhe o Horário</h4>
+            <p>1. A cliente clica no seu link e escolhe a profissional que deseja (ou clica em "Qualquer Profissional Disponível").<br>
+            2. Escolhe o procedimento (Alongamento, Manutenção, Esmaltação em Gel, Pé e Mão, etc.).<br>
+            3. O sistema mostra apenas os dias e horários realmente vagos no salão!<br>
+            4. Ela digita o nome e WhatsApp e clica em Finalizar.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h4>Como Funciona a Cobrança do Sinal Pix</h4>
+            <p>Se você configurou sinal no serviço (ex: R$ 30), a cliente visualiza o valor do sinal, a sua Chave Pix e as instruções. Ela faz a transferência e clica em <strong>"Enviar Comprovante pelo WhatsApp"</strong>. O horário fica reservado e você recebe o comprovante diretamente no seu WhatsApp!</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">✨</div>
+        <div>
+          <div class="tip-title">Onde pegar o Link de Agendamento?</div>
+          <div class="tip-desc">
+            Vá em <strong>Configurações</strong> e clique no botão <strong>"Copiar Link Agendamento"</strong>. Cole o link no seu WhatsApp Business e no campo de "Site / Link" do seu perfil do Instagram!
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 5: CATÁLOGO DIGITAL DE SERVIÇOS -->
+    <article id="cap5" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">5</div>
+        <div>
+          <h2 class="section-title">Catálogo Online de Procedimentos & Vitrine de Fotos</h2>
+          <p class="section-sub">Uma vitrine digital de alto padrão para encantar suas clientes e valorizar o seu trabalho</p>
+        </div>
+      </div>
+
+      <p>
+        O seu salão conta com uma página pública de <strong>Catálogo de Procedimentos</strong> (`#catalogo`). Ela funciona como um cardápio digital moderno e sofisticado para você divulgar suas técnicas e planos VIP!
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Vitrine Digital de Serviços com Fotos em Alta Resolução</span>
+        </div>
+        <img src="./manual-images/catalogo_vitrine.png" alt="Catálogo Online de Serviços" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">⭐</div>
+          <div class="step-content">
+            <h4>Filtros Rápidos por Categoria</h4>
+            <p>A cliente pode filtrar por <em>Alongamentos, Manutenções, Esmaltação em Gel, Mão Simples, Spa dos Pés, Combos e Clube VIP</em>.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">💅</div>
+          <div class="step-content">
+            <h4>Botão Direto "Agendar Esse Procedimento"</h4>
+            <p>Ao se interessar por um trabalho no catálogo, a cliente clica no botão e já cai na tela de agendamento com aquele serviço pré-selecionado, sem complicação!</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 6: FICHA DE CLIENTES E ANAMNESE -->
+    <article id="cap6" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">6</div>
+        <div>
+          <h2 class="section-title">Ficha de Clientes, Histórico & Anamnese Digital</h2>
+          <p class="section-sub">Segurança profissional e fidelização com prontuário completo de cada cliente</p>
+        </div>
+      </div>
+
+      <p>
+        Na aba <strong>Clientes</strong>, cada cliente possui um prontuário eletrônico completo. Você nunca mais vai esquecer qual formato de unha ela prefere, qual cor de esmalte usou no mês passado ou se ela tem alergia a algum componente!
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Ficha Detalhada da Cliente com Histórico e Anamnese</span>
+        </div>
+        <img src="./manual-images/clientes_ficha.png" alt="Ficha e Histórico da Cliente" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">📝</div>
+          <div class="step-content">
+            <h4>Ficha de Anamnese Técnica</h4>
+            <p>Registre se a cliente rói unhas, se tem sensibilidade a produtos químicos, se toma medicamentos contínuos ou se tem alergias. Essa ficha protege você juridicamente e garante um atendimento seguro.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">📸</div>
+          <div class="step-content">
+            <h4>Galeria de Fotos do Antes e Depois</h4>
+            <p>Tire fotos dos trabalhos realizados e anexe direto na ficha da cliente! As fotos ficam salvas na nuvem com segurança.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">✍️</div>
+          <div class="step-content">
+            <h4>Assinatura Digital de Consentimento de Imagem</h4>
+            <p>A cliente pode assinar digitalmente na tela do seu celular o termo de autorização para você publicar as fotos das unhas dela no Instagram com segurança e tranquilidade!</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 7: GESTÃO DE SERVIÇOS E PREÇOS -->
+    <article id="cap7" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">7</div>
+        <div>
+          <h2 class="section-title">Gerenciando Serviços, Retornos e Clube VIP</h2>
+          <p class="section-sub">Configure seus procedimentos, tempo de cadeira e planos de assinatura recorrente</p>
+        </div>
+      </div>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Catálogo de Serviços com Duração, Preço e Sinal Pix</span>
+        </div>
+        <img src="./manual-images/servicos_gestao.png" alt="Gestão de Serviços" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">⏱️</div>
+          <div class="step-content">
+            <h4>Tempo de Cadeira Preciso</h4>
+            <p>Ao cadastrar um serviço, defina o tempo em minutos (ex: Alongamento = 120 min, Manutenção = 90 min, Esmaltação = 45 min). O sistema bloqueia exatamente essa faixa de horário na agenda, impedindo agendamentos sobrepostos!</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">🔔</div>
+          <div class="step-content">
+            <h4>Alerta de Retorno Automático</h4>
+            <p>Defina o ciclo de retorno (ex: 20 dias para manutenção). O sistema avisa quando a cliente está no período ideal de manutenção para você mandar uma mensagem convidando-a a agendar.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">👑</div>
+          <div class="step-content">
+            <h4>Clube VIP de Assinaturas (Receita Recorrente)</h4>
+            <p>Crie planos mensais (ex: R$ 180/mês com 2 manutenções inclusas). Suas clientes pagam todo mês como uma mensalidade de academia, garantindo faturamento fixo no seu caixa!</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 8: CONFIRMAÇÕES PELO WHATSAPP -->
+    <article id="cap8" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">8</div>
+        <div>
+          <h2 class="section-title">Confirmações no WhatsApp: Acabe com as Faltas!</h2>
+          <p class="section-sub">Lembretes automáticos com botão de confirmação em 1 toque para suas clientes</p>
+        </div>
+      </div>
+
+      <p>
+        A aba <strong>Confirmações</strong> filtra automaticamente todas as clientes agendadas para o dia seguinte para você enviar os lembretes de forma rápida e profissional.
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Painel de Confirmações com Disparo de Mensagem em 1 Toque</span>
+        </div>
+        <img src="./manual-images/confirmacoes_whatsapp.png" alt="Painel de Confirmações" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">1</div>
+          <div class="step-content">
+            <h4>Clique no Botão de WhatsApp</h4>
+            <p>Ao lado do nome de cada cliente agendada, clique no ícone do WhatsApp. O sistema abre a conversa dela com o texto personalizado pronto, incluindo o nome dela, o serviço, a data e o horário!</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">2</div>
+          <div class="step-content">
+            <h4>Página de Confirmação em 1 Toque</h4>
+            <p>A mensagem contém um link seguro de confirmação. A cliente clica no link, visualiza os detalhes do atendimento e clica em <strong>"Confirmar Presença"</strong>. O status no seu aplicativo muda sozinho para <strong>"Confirmado"</strong> em verde!</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tip-box">
+        <div class="tip-icon">🛡️</div>
+        <div>
+          <div class="tip-title">Redução de até 90% dos Furos na Agenda</div>
+          <div class="tip-desc">
+            Estudos mostram que salões que enviam o lembrete na véspera reduzem as ausências em até 90%. Se a cliente precisar desmarcar, ela avisa com antecedência pelo próprio link e você tem tempo de encaixar outra cliente da lista de espera!
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- CAPÍTULO 9: FINANCEIRO E FECHAMENTO DE CAIXA -->
+    <article id="cap9" class="manual-section">
+      <div class="section-header">
+        <div class="section-num">9</div>
+        <div>
+          <h2 class="section-title">Controle Financeiro, Comissões e Lucro Real</h2>
+          <p class="section-sub">Saiba exatamente quanto seu salão faturou e quanto sobrou de lucro no final do mês</p>
+        </div>
+      </div>
+
+      <p>
+        No <strong>Dashboard</strong> e na aba <strong>Financeiro</strong>, todos os atendimentos concluídos alimentam gráficos e relatórios automáticos.
+      </p>
+
+      <!-- Mockup Real -->
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Dashboard de Faturamento, Métricas e Previsão Mensal</span>
+        </div>
+        <img src="./manual-images/dashboard_financeiro.png" alt="Dashboard Financeiro" class="mockup-img">
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item">
+          <div class="step-badge">💵</div>
+          <div class="step-content">
+            <h4>Faturamento por Forma de Pagamento</h4>
+            <p>Acompanhe separadamente o que entrou via Pix, Cartão de Crédito, Débito ou Dinheiro em espécie.</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">✂️</div>
+          <div class="step-content">
+            <h4>Fechamento de Comissão da Equipe</h4>
+            <p>O sistema calcula automaticamente a porcentagem de comissão de cada manicure (ex: 50%, 60%, 70%) com base nos atendimentos realizados por ela. O relatório de fechamento fica pronto em 1 clique!</p>
+          </div>
+        </div>
+
+        <div class="step-item">
+          <div class="step-badge">📉</div>
+          <div class="step-content">
+            <h4>Controle de Despesas e Insumos</h4>
+            <p>Cadastre suas contas fixas (aluguel, luz, internet) e reposição de insumos (géis, lixas, brocas, top coat) para enxergar o seu lucro líquido real.</p>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- DICAS DE SUCESSO -->
+    <section class="manual-section" style="background: linear-gradient(135deg, #FFFDFB, #FDF7F4); border: 2px solid var(--accent-rose);">
+      <div class="section-header" style="border-bottom: none; margin-bottom: 10px;">
+        <div class="section-num" style="background: var(--primary-dark); color: #FFF;">✨</div>
+        <div>
+          <h2 class="section-title">As 5 Regras de Ouro para o Sucesso do Seu Salão</h2>
+          <p class="section-sub">Boas práticas comprovadas pelas melhores nail designers do Brasil</p>
+        </div>
+      </div>
+
+      <div class="steps-list">
+        <div class="step-item" style="background: #FFFFFF;">
+          <div class="step-badge" style="background: var(--accent-rose);">1</div>
+          <div class="step-content">
+            <h4>Coloque o Link na Bio do seu Instagram</h4>
+            <p>O Instagram é sua maior vitrine. Coloque o link de agendamento na Bio e crie um destaque nos stories chamado "Como Agendar". Suas clientes vão adorar a facilidade!</p>
+          </div>
+        </div>
+
+        <div class="step-item" style="background: #FFFFFF;">
+          <div class="step-badge" style="background: var(--accent-rose);">2</div>
+          <div class="step-content">
+            <h4>Ative o Sinal Pix nos Procedimentos Mais Caros</h4>
+            <p>Para alongamentos e procedimentos de mais de 1 hora, cobre um sinal de R$ 20 a R$ 30. Isso valoriza o seu tempo e elimina desistências em cima da hora.</p>
+          </div>
+        </div>
+
+        <div class="step-item" style="background: #FFFFFF;">
+          <div class="step-badge" style="background: var(--accent-rose);">3</div>
+          <div class="step-content">
+            <h4>Dispare os Lembretes de Véspera Sempre às 17h</h4>
+            <p>Reserve 5 minutos no final da tarde para abrir a aba <strong>Confirmações</strong> e disparar as mensagens de WhatsApp para as clientes de amanhã.</p>
+          </div>
+        </div>
+
+        <div class="step-item" style="background: #FFFFFF;">
+          <div class="step-badge" style="background: var(--accent-rose);">4</div>
+          <div class="step-content">
+            <h4>Tire Foto de Todas as Unhas Prontas</h4>
+            <p>Anexe as fotos na ficha da cliente. Isso cria um histórico visual maravilhoso e gera conteúdo de autoridade para o seu marketing.</p>
+          </div>
+        </div>
+
+        <div class="step-item" style="background: #FFFFFF;">
+          <div class="step-badge" style="background: var(--accent-rose);">5</div>
+          <div class="step-content">
+            <h4>Faça Backup Semanal dos Dados</h4>
+            <p>Na aba Configurações, clique no botão <strong>"Exportar Backup Offline (JSON)"</strong> uma vez por semana para ter uma cópia de segurança de todos os seus dados guardada no seu computador ou celular.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RODAPÉ -->
+    <footer class="footer">
+      <div class="footer-brand">Sistema de Gestão & Agendamento</div>
+      <p>Desenvolvido com tecnologia de ponta para potencializar salões de beleza e nail designers de sucesso.</p>
+      <p style="margin-top: 14px; font-size: 12px; color: #A39A9C;">
+        © Todos os direitos reservados. Suporte oficial à disposição da sua empresa.
+      </p>
+    </footer>
+
+  </main>
+
+</body>
+</html>

@@ -365,6 +365,8 @@ export const cadastrarNovoSalao = async (dados: {
       `${linkApp}\n\n` +
       `🔗 *Link de Agendamento das suas Clientes:*\n` +
       `${linkAgendamento}\n\n` +
+      `📖 *Manual de Uso Oficial do Salão (com fotos e passo a passo):*\n` +
+      `${baseUrl}/manual.html\n\n` +
       `📅 *Validade da Assinatura:* ${validadeFormatada}\n\n` +
       `Qualquer dúvida ou suporte, estou à disposição! Bons atendimentos e muito sucesso! 💅✨`;
 
