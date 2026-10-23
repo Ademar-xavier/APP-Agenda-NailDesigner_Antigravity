@@ -872,13 +872,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             u.perfil === 'admin'
           );
           return userFound || {
-            id: 'admin_master',
+            id: 'u1',
             nome: 'Sheila Santos',
-            email: session.user.email || 'sheila@salao.com',
-            telefone: '',
+            email: session.user.email || 'sheila@agenda.com',
+            telefone: '35 99714-1856',
             perfil: 'admin',
             ativo: true,
-            especialidade: 'Especialista Master'
+            especialidade: 'Nail Designer'
           };
         });
       }
@@ -895,13 +895,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             u.perfil === 'admin'
           );
           return userFound || {
-            id: 'admin_master',
+            id: 'u1',
             nome: 'Sheila Santos',
-            email: session.user.email || 'sheila@salao.com',
-            telefone: '',
+            email: session.user.email || 'sheila@agenda.com',
+            telefone: '35 99714-1856',
             perfil: 'admin',
             ativo: true,
-            especialidade: 'Especialista Master'
+            especialidade: 'Nail Designer'
           };
         });
       }
@@ -2327,7 +2327,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     
     // Normaliza identificador: se for 'admin', 'sheila' ou sem '@', direciona para o e-mail oficial
     const emailTentativa = (termo === 'admin' || termo === 'sheila' || !termo.includes('@'))
-      ? 'sheila@salao.com'
+      ? 'sheila@agenda.com'
       : termo;
 
     // 1. Tenta autenticar diretamente no Supabase Auth nativo
@@ -2345,13 +2345,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (!user) {
           user = {
-            id: 'admin_master',
+            id: 'u1',
             nome: 'Sheila Santos',
             email: emailTentativa,
-            telefone: '',
+            telefone: '35 99714-1856',
             perfil: 'admin',
             ativo: true,
-            especialidade: 'Especialista Master',
+            especialidade: 'Nail Designer',
             senha: senhaDigitada
           };
         }
