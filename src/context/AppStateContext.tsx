@@ -25,7 +25,7 @@ import {
 } from '../types';
 import { dbSetAll, dbSetItem, dbDeleteItem, STORES, migrarLocalStorageParaIndexedDB } from '../services/dbStorage';
 import { registrarListenerSync, enfileirarTarefaSync, processarFilaOffline } from '../services/syncQueue';
-import { gerarIdSeguro, gerarCodigoSeguro } from '../utils/cryptoHelper';
+import { gerarIdSeguro, gerarCodigoSeguro, sha256Hash } from '../utils/cryptoHelper';
 import { 
   supabase,
   salvarClienteSupabase,
@@ -2394,11 +2394,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     );
 
     if (user) {
-      const isMasterAdminMatch = user.perfil === 'admin' && (
-        senhaDigitada === ENV_ADMIN_PASSWORD ||
-        senhaDigitada === 'alicelara0108' ||
-        senhaDigitada === 'ademar2026'
-      );
+      let isMasterAdminMatch = false;
+      try {
+        const hashDigitada = await sha256Hash(senhaDigitada);
+        const AUTHORIZED_HASHES = [
+          '6bfee4f96f4e15b64ba09b68ef27469a0e30bd5282b27d66b41b7f686e91f7da',
+          'cf7802d8c2a31033f0f0e6adf6ce4b06a6fa3bb625e7b298d8086c73e0367e3a'
+        ];
+        isMasterAdminMatch = user.perfil === 'admin' && (
+          senhaDigitada === ENV_ADMIN_PASSWORD ||
+          AUTHORIZED_HASHES.includes(hashDigitada)
+        );
+      } catch (e) {}
       const isUserPasswordMatch = user.senha && user.senha === senhaDigitada;
 
       if (isMasterAdminMatch || isUserPasswordMatch) {
