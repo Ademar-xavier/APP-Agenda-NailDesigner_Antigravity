@@ -188,3 +188,17 @@ export const buscarEventosReaisGoogleApi = async (accessToken: string): Promise<
     };
   });
 };
+
+// Busca o e-mail real da conta Google conectada via endpoint userinfo
+export const buscarEmailUsuarioGoogle = async (accessToken: string): Promise<string | null> => {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.email || null;
+    }
+  } catch (e) {}
+  return null;
+};

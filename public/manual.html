@@ -255,9 +255,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: 'Cormorant Garamond', Georgia, serif;
-      font-size: 24px;
-      font-weight: 700;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
       shrink: 0;
       box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.8);
       border: 1px solid #F48FB1;
@@ -613,7 +614,7 @@
         <a href="#cap12" class="nav-card">
           <div class="nav-card-icon">💬</div>
           <div>
-            <div class="nav-card-text">12. WhatsApp 1 Toque</div>
+            <div class="nav-card-text">12. WhatsApp em Um Toque</div>
             <div class="nav-card-sub">Confirmações automáticas</div>
           </div>
         </a>
@@ -627,8 +628,8 @@
         <a href="#cap14" class="nav-card">
           <div class="nav-card-icon">📲</div>
           <div>
-            <div class="nav-card-text">14. Instalação no Celular</div>
-            <div class="nav-card-sub">PWA no iPhone e Android</div>
+            <div class="nav-card-text">14. Instalação & Código VIP</div>
+            <div class="nav-card-sub">Seleção de OS e ativação de licença</div>
           </div>
         </a>
       </div>
@@ -677,7 +678,7 @@
       </div>
 
       <p>
-        A <strong>Agenda</strong> é o coração do seu trabalho diário. Cada atendimento possui uma cor que indica instantaneamente a situação da cliente, para você nunca mais se perder nem marcar duas clientes no mesmo horário.
+        A <strong>Agenda</strong> é o coração do seu trabalho diário. Para facilitar ao máximo a sua rotina na bancada, <strong>a cor de cada card corresponde exatamente à cor cadastrada para aquele procedimento</strong> (ex: Alongamentos em roxo, Manutenções em rosa, Banho de Gel em azul, Esmaltação em terracota). Assim, você bate o olho no calendário e identifica instantaneamente quais procedimentos serão realizados no dia! O status da cliente (Confirmado, Pendente, Concluído) é sinalizado com clareza pelo selo no canto direito do card.
       </p>
 
       <div class="mockup-container">
@@ -685,31 +686,31 @@
           <div class="mockup-dot dot-red"></div>
           <div class="mockup-dot dot-yellow"></div>
           <div class="mockup-dot dot-green"></div>
-          <span class="mockup-caption">Tela Real: Agenda Semanal com Cores de Status</span>
+          <span class="mockup-caption">Tela Real: Agenda Semanal com Cores dos Serviços e Selos de Atendimento</span>
         </div>
         <img src="./manual-images/agenda_visao_geral.png" alt="Agenda Semanal e Diária" class="mockup-img">
       </div>
 
       <div class="steps-grid">
         <div class="step-card">
-          <span class="step-card-num" style="background:#10B981">🟢</span>
-          <h4>Verde: Confirmado</h4>
-          <p>Cliente confirmou presença pelo WhatsApp ou já realizou o pagamento do sinal de reserva.</p>
+          <span class="step-card-num" style="background:#8C6D58; color:white;">🎨</span>
+          <h4>Cores Personalizadas por Serviço</h4>
+          <p>Cada procedimento cadastrado possui sua própria cor de destaque para você bater o olho e identificar de imediato se o próximo horário é alongamento, manutenção ou cutilagem.</p>
         </div>
         <div class="step-card">
-          <span class="step-card-num" style="background:#D97706">🟡</span>
-          <h4>Amarelo: Pendente</h4>
-          <p>Horário reservado aguardando confirmação ou validação do comprovante Pix.</p>
+          <span class="step-card-num" style="background:#10B981; color:white;">🏷️</span>
+          <h4>Selos Claros de Situação</h4>
+          <p>A situação do agendamento (Confirmado, Pendente, Concluído ou Falta) é informada pelo selo no canto direito do card, mantendo o controle total da presença.</p>
         </div>
         <div class="step-card">
-          <span class="step-card-num" style="background:#2563EB">🔵</span>
-          <h4>Azul: Concluído</h4>
-          <p>Procedimento finalizado com sucesso na cadeira e valor computado no seu caixa.</p>
+          <span class="step-card-num" style="background:#D97706; color:white;">⏱️</span>
+          <h4>Duração e Intervalo Calculados</h4>
+          <p>O aplicativo bloqueia o tempo correto na grade de acordo com os minutos cadastrados no serviço, eliminando atrasos acumulados e correria na bancada.</p>
         </div>
         <div class="step-card">
-          <span class="step-card-num" style="background:#DC2626">🔴</span>
-          <h4>Vermelho: Cancelado</h4>
-          <p>Horário desmarcado pela cliente ou cancelado, liberando a vaga imediatamente na agenda online.</p>
+          <span class="step-card-num" style="background:#2563EB; color:white;">🚫</span>
+          <h4>Bloqueio Anti-Conflitos</h4>
+          <p>O sistema impede automaticamente a marcação de duas clientes no mesmo horário, tanto em agendamentos manuais quanto nos feitos pelas clientes pelo link online.</p>
         </div>
       </div>
     </article>
@@ -905,7 +906,7 @@
           <div class="mockup-dot dot-red"></div>
           <div class="mockup-dot dot-yellow"></div>
           <div class="mockup-dot dot-green"></div>
-          <span class="mockup-caption">Simulação Real: Ficha Técnica e Anamnese com Assinatura Touch</span>
+          <span class="mockup-caption">Tela Real: Ficha de Anamnese Digital com Assinatura Touch</span>
         </div>
         <img src="./manual-images/clientes_ficha_anamnese.png" alt="Ficha de Anamnese da Cliente" class="mockup-img">
       </div>
@@ -961,7 +962,7 @@
       <div class="tip-box">
         <div class="tip-icon">💌</div>
         <div class="tip-text">
-          <h4>Resgate no WhatsApp em 1 Toque</h4>
+          <h4>Resgate no WhatsApp em Um Toque</h4>
           <p>Ao tocar no botão <strong>"Resgatar no WhatsApp"</strong>, o app gera uma mensagem carinhosa já personalizada com o nome da cliente e um cupom exclusivo para ela voltar nesta semana. Você resgata faturamento parado sem esforço!</p>
         </div>
       </div>
@@ -1079,7 +1080,7 @@
       <div class="section-header">
         <div class="section-num">12</div>
         <div>
-          <h2 class="section-title">Central de Confirmações WhatsApp em 1 Toque</h2>
+          <h2 class="section-title">Central de Confirmações WhatsApp em Um Toque</h2>
           <p class="section-sub">Zero digitação manual: lembretes automáticos na véspera do atendimento</p>
         </div>
       </div>
@@ -1150,18 +1151,26 @@
       </ul>
     </article>
 
-    <!-- CAPÍTULO 14: INSTALAÇÃO NO CELULAR PWA -->
+    <!-- CAPÍTULO 14: INSTALAÇÃO E PRIMEIRO ACESSO -->
     <article id="cap14" class="manual-section">
       <div class="section-header">
         <div class="section-num">14</div>
         <div>
-          <h2 class="section-title">Instalação como Aplicativo no Celular (PWA)</h2>
-          <p class="section-sub">Como ter o ícone do sistema na tela do seu telefone sem depender de lojas de aplicativos</p>
+          <h2 class="section-title">Instalação do Aplicativo e Primeiro Acesso com Chave VIP</h2>
+          <p class="section-sub">Seleção inteligente por sistema operacional (Android, iOS Safari ou Windows Desktop) e ativação de licença</p>
         </div>
       </div>
 
       <p>
-        O seu sistema funciona como um aplicativo completo através da tecnologia PWA. Ele não ocupa espaço na memória do telefone e se atualiza sozinho sem precisar ir na Play Store ou App Store:
+        Ao abrir seu link de acesso pela primeira vez, o sistema guia você através de um fluxo intuitivo e seguro de <strong>3 passos de boas-vindas</strong>:
+      </p>
+
+      <!-- TELA 1: SELEÇÃO POR SISTEMA OPERACIONAL -->
+      <h3 style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 700; color: #5A4535; margin: 24px 0 8px 0; display: flex; items-center; gap: 8px;">
+        <span>1️⃣</span> <span>Passo 1: Escolha do Aplicativo Conforme seu Sistema Operacional</span>
+      </h3>
+      <p style="font-size: 13px; color: #6E5D4F; margin-bottom: 12px;">
+        O sistema identifica automaticamente o dispositivo que você está usando (celular Android, iPhone ou computador Windows) e destaca a versão recomendada com instalador oficial:
       </p>
 
       <div class="mockup-container">
@@ -1169,21 +1178,49 @@
           <div class="mockup-dot dot-red"></div>
           <div class="mockup-dot dot-yellow"></div>
           <div class="mockup-dot dot-green"></div>
-          <span class="mockup-caption">Mensagem Oficial de Acesso com Chave de Licença</span>
+          <span class="mockup-caption">Tela Real: Seleção de Instalação Multiplataforma (#instalar)</span>
         </div>
-        <img src="./manual-images/acesso_whatsapp.png" alt="Mensagem de Acesso Oficial" class="mockup-img">
+        <img src="./manual-images/tela_instalacao_os.png" alt="Tela de Instalação por Sistema Operacional" class="mockup-img">
+      </div>
+
+      <!-- TELA 2: ATIVAÇÃO DE CHAVE VIP -->
+      <h3 style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 16px; font-weight: 700; color: #5A4535; margin: 28px 0 8px 0; display: flex; items-center; gap: 8px;">
+        <span>2️⃣</span> <span>Passo 2: Inclusão da Chave de Acesso Oficial (Código VIP)</span>
+      </h3>
+      <p style="font-size: 13px; color: #6E5D4F; margin-bottom: 12px;">
+        Para proteger seu sistema contra pirataria e vincular seus dados com segurança ao seu salão, a tela de ativação solicita a sua Chave de Licença Oficial recebida na compra:
+      </p>
+
+      <div class="mockup-container">
+        <div class="mockup-bar">
+          <div class="mockup-dot dot-red"></div>
+          <div class="mockup-dot dot-yellow"></div>
+          <div class="mockup-dot dot-green"></div>
+          <span class="mockup-caption">Tela Real: Ativação da Chave de Licença VIP</span>
+        </div>
+        <img src="./manual-images/tela_ativacao_chave_vip.png" alt="Tela de Ativação com Chave VIP" class="mockup-img">
       </div>
 
       <div class="steps-grid">
         <div class="step-card">
-          <span class="step-card-num">🍎</span>
-          <h4>No iPhone (iOS / Safari)</h4>
-          <p>1. Abra o link do painel no navegador Safari.<br>2. Toque no botão de <strong>Compartilhar</strong> (quadrado com a seta para cima).<br>3. Role para baixo e selecione <strong>"Adicionar à Tela de Início"</strong>.<br>4. Toque em "Adicionar". Pronto!</p>
+          <span class="step-card-num">🤖</span>
+          <h4>Versão Celular Android</h4>
+          <p>Basta tocar em <strong>"Instalar aplicativo"</strong> ou pelo Chrome nos 3 pontinhos &gt; "Adicionar à tela inicial". O ícone oficial do seu salão ficará fixado direto na tela do celular.</p>
         </div>
         <div class="step-card">
-          <span class="step-card-num">🤖</span>
-          <h4>No Android (Google Chrome)</h4>
-          <p>1. Abra o link do painel no Google Chrome.<br>2. Toque nos <strong>3 pontinhos</strong> no canto superior direito.<br>3. Toque em <strong>"Instalar aplicativo"</strong> ou <strong>"Adicionar à tela inicial"</strong>.<br>4. O ícone do salão aparecerá junto com seus outros apps!</p>
+          <span class="step-card-num">🍎</span>
+          <h4>Versão iPhone (iOS / Safari)</h4>
+          <p>Abra o link no Safari, toque no botão <strong>Compartilhar</strong> (quadrado com seta para cima), role para baixo e toque em <strong>"Adicionar à Tela de Início"</strong>.</p>
+        </div>
+        <div class="step-card">
+          <span class="step-card-num">💻</span>
+          <h4>Versão Windows Desktop</h4>
+          <p>Baixa o atalho executável direto para a sua área de trabalho do computador, abrindo o sistema em janela dedicada sem barras de navegação.</p>
+        </div>
+        <div class="step-card">
+          <span class="step-card-num">🔑</span>
+          <h4>Passo 3: Login e Gestão</h4>
+          <p>Após validar o Código VIP, a tela de login solicita seu e-mail e senha cadastrados. Pronto! Seu painel completo é liberado para atendimento.</p>
         </div>
       </div>
     </article>

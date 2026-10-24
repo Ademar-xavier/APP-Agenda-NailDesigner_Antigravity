@@ -22,6 +22,7 @@ import {
   obterGoogleClientId, 
   salvarGoogleClientId, 
   buscarEventosReaisGoogleApi, 
+  buscarEmailUsuarioGoogle,
   parseIcsCalendar 
 } from '../services/googleCalendar';
 
@@ -38,7 +39,8 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
     desconectarGoogleAgenda, 
     sincronizarGoogleAgenda,
     limparAgendamentosSimuladosGoogle,
-    confirmarAcao
+    confirmarAcao,
+    configSalao
   } = useAppState();
 
   const [carregando, setCarregando] = useState(false);
@@ -109,7 +111,8 @@ export const GoogleSyncModal: React.FC<GoogleSyncModalProps> = ({ onClose }) => 
             const eventos = await buscarEventosReaisGoogleApi(tokenResponse.access_token);
             setEventosReais(eventos);
             setSelectedEventIds(eventos.map(e => e.id));
-            conectarGoogleAgenda('sheilaalicelara18@gmail.com');
+            const emailDetectado = await buscarEmailUsuarioGoogle(tokenResponse.access_token);
+            conectarGoogleAgenda(emailDetectado || configSalao?.email || 'Conta Google Conectada');
             setCarregando(false);
           } catch (err: any) {
             setCarregando(false);

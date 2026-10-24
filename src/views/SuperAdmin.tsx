@@ -237,7 +237,7 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
 
   const handleCopiarLinkAdmin = (s: SalaoLicenca) => {
     const slug = s.slug || (s.chave?.includes('SHEILA') ? 'sheila' : 'salao');
-    const url = `${window.location.origin}/#admin?salao=${slug}`;
+    const url = `${window.location.origin}/#instalar?salao=${slug}`;
     navigator.clipboard.writeText(url);
     setLinkAdminCopiadoId(s.id);
     setTimeout(() => setLinkAdminCopiadoId(null), 2500);
@@ -254,19 +254,23 @@ export const SuperAdmin: React.FC<{ onVoltar?: () => void }> = ({ onVoltar }) =>
   const handleAbrirMensagemAcesso = (s: SalaoLicenca) => {
     const baseUrl = window.location.origin;
     const slug = s.slug || (s.chave?.includes('SHEILA') ? 'sheila' : 'salao');
-    const linkApp = `${baseUrl}/#admin?salao=${slug}`;
+    const linkApp = `${baseUrl}/#instalar?salao=${slug}`;
     const linkAgendamento = `${baseUrl}/#agendar?salao=${slug}`;
     const validadeFormatada = s.data_expiracao ? new Date(s.data_expiracao).toLocaleDateString('pt-BR') : 'Vitalícia';
 
     const textoWhatsApp = `✨ *Acesso ao seu Sistema de Gestão & Agendamento!* ✨\n\n` +
       `Olá, *${s.titular}*! Seguem os links oficiais de acesso ao seu aplicativo:\n\n` +
-      `🔑 *Sua Chave de Acesso Oficial:*\n` +
+      `🔑 *Sua Chave de Acesso Oficial (Código VIP):*\n` +
       `*${s.chave}*\n\n` +
-      `📲 *Link de Acesso Administrativo (Seu Painel PWA):*\n` +
+      `📲 *Link de Instalação e Acesso ao Aplicativo:*\n` +
       `${linkApp}\n\n` +
-      `🔗 *Link de Agendamento das suas Clientes:*\n` +
+      `💡 *Passo a passo no seu primeiro acesso:*\n` +
+      `1️⃣ *Instalação:* Abra o link acima e selecione o aplicativo para seu sistema (Android, iPhone iOS ou Windows Desktop);\n` +
+      `2️⃣ *Ativação:* Digite sua Chave de Acesso Oficial (*${s.chave}*) para ativar sua licença no aparelho;\n` +
+      `3️⃣ *Acesso:* Entre com seu e-mail e senha para gerenciar seus horários e clientes.\n\n` +
+      `🔗 *Link de Agendamento das suas Clientes (Coloque na Bio do Instagram):*\n` +
       `${linkAgendamento}\n\n` +
-      `📖 *Manual de Uso Oficial do Salão (com fotos e passo a passo):*\n` +
+      `📖 *Manual de Uso Oficial do Salão (com fotos reais e passo a passo):*\n` +
       `${baseUrl}/manual.html\n\n` +
       `📅 *Validade da Assinatura:* ${validadeFormatada}\n\n` +
       `Qualquer dúvida ou suporte, estou à disposição! Bons atendimentos e muito sucesso! 💅✨`;

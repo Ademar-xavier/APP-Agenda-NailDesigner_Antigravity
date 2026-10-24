@@ -1318,8 +1318,14 @@ export const Configuracoes: React.FC = () => {
                         Desconectado
                       </span>
                     </div>
-                    <p className="text-xs font-bold text-[#5A4535] mt-1">Conta: sheilaalicelara18@gmail.com</p>
-                    <p className="text-[10px] text-[#8C7A6B]">Clique em conectar para trazer seus compromissos e clientes.</p>
+                    <p className="text-xs font-bold text-[#5A4535] mt-1">
+                      Conta: {email || configSalao.email || 'Nenhuma conta vinculada'}
+                    </p>
+                    <p className="text-[10px] text-[#8C7A6B]">
+                      {email || configSalao.email 
+                        ? 'Clique em conectar para trazer seus compromissos e clientes da Google Agenda.' 
+                        : 'Cadastre seu e-mail comercial acima ou conecte sua conta Google para sincronizar.'}
+                    </p>
                   </div>
                   <button
                     type="button"

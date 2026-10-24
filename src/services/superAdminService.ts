@@ -351,21 +351,25 @@ export const cadastrarNovoSalao = async (dados: {
       } catch (e) {}
     }
 
-    // 3. Monta o texto pronto para WhatsApp
+    // 3. Monta o texto pronto para WhatsApp com rota de instalação multiplataforma
     const baseUrl = window.location.origin;
-    const linkApp = `${baseUrl}/#admin?salao=${slug}`;
+    const linkApp = `${baseUrl}/#instalar?salao=${slug}`;
     const linkAgendamento = `${baseUrl}/#agendar?salao=${slug}`;
     const validadeFormatada = dataExpiracao ? new Date(dataExpiracao).toLocaleDateString('pt-BR') : 'Vitalícia';
 
     const textoWhatsApp = `✨ *Bem-vinda ao seu novo Sistema de Gestão & Agendamento!* ✨\n\n` +
       `Olá, *${propLimpa}*! O aplicativo do *${nomeLimpo}* já está liberado e pronto para uso.\n\n` +
-      `🔑 *Sua Chave de Acesso Oficial:*\n` +
+      `🔑 *Sua Chave de Acesso Oficial (Código VIP):*\n` +
       `*${chave}*\n\n` +
-      `📲 *Link de Acesso Administrativo (Seu Painel):*\n` +
+      `📲 *Link de Instalação e Acesso ao Aplicativo:*\n` +
       `${linkApp}\n\n` +
-      `🔗 *Link de Agendamento das suas Clientes:*\n` +
+      `💡 *Passo a passo no seu primeiro acesso:*\n` +
+      `1️⃣ *Instalação:* Abra o link acima no seu celular ou computador e selecione a versão para o seu sistema (Android, iPhone iOS ou Windows Desktop);\n` +
+      `2️⃣ *Ativação:* Digite sua Chave de Acesso Oficial (*${chave}*) para desbloquear sua licença no aparelho;\n` +
+      `3️⃣ *Acesso:* Entre com seu e-mail e senha cadastrados para acessar o seu painel completo.\n\n` +
+      `🔗 *Link de Agendamento das suas Clientes (Coloque na Bio do Instagram):*\n` +
       `${linkAgendamento}\n\n` +
-      `📖 *Manual de Uso Oficial do Salão (com fotos e passo a passo):*\n` +
+      `📖 *Manual de Uso Oficial do Salão (com fotos reais e passo a passo):*\n` +
       `${baseUrl}/manual.html\n\n` +
       `📅 *Validade da Assinatura:* ${validadeFormatada}\n\n` +
       `Qualquer dúvida ou suporte, estou à disposição! Bons atendimentos e muito sucesso! 💅✨`;
